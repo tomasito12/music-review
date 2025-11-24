@@ -1,0 +1,34 @@
+[project]
+name = "music-review"
+version = "0.1.0"
+description = "Music review scraper and RAG data pipeline."
+readme = "README.md"
+requires-python = ">=3.12"
+
+authors = [
+  { name = "Thomas Plischke" }
+]
+
+dependencies = [
+  "httpx>=0.27",
+  "beautifulsoup4>=4.12",
+  "lxml>=5.2",
+]
+
+[project.optional-dependencies]
+dev = [
+  "ruff>=0.6",
+  "pytest>=8.0",
+]
+
+[build-system]
+requires = ["setuptools>=68.0"]
+build-backend = "setuptools.build_meta"
+
+[tool.setuptools]
+package-dir = { "" = "src" }
+
+[tool.ruff]
+line-length = 88
+target-version = "py312"
+select = ["E", "F", "I", "B"]
