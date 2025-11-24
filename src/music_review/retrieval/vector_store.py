@@ -9,14 +9,23 @@ from typing import Any, Dict, List
 import chromadb
 from chromadb.api.models import Collection
 from chromadb.utils import embedding_functions
+from dotenv import load_dotenv
 
 from music_review.io.reviews_jsonl import load_reviews_from_jsonl
 from music_review.scraper.models import Review
 
-DEFAULT_DATA_PATH = Path("data/reviews.jsonl")
-DEFAULT_CHROMA_PATH = Path("chroma_db")
+# Path to this file
+_THIS_FILE = Path(__file__).resolve()
+
+# Go up to the project root
+PROJECT_ROOT = _THIS_FILE.parents[3]
+
+DEFAULT_DATA_PATH = PROJECT_ROOT / "data" / "reviews.jsonl"
+DEFAULT_CHROMA_PATH = PROJECT_ROOT / "chroma_db"
 COLLECTION_NAME = "music_reviews"
 EMBEDDING_MODEL = "text-embedding-3-small"
+
+load_dotenv(override=True)
 
 
 def review_to_metadata(review: Review) -> Dict[str, Any]:
@@ -41,7 +50,7 @@ def review_to_metadata(review: Review) -> Dict[str, Any]:
 
 
 def get_chroma_collection(
-    persist_directory: Path | str | None = None,
+        persist_directory: Path | str | None = None,
 ) -> Collection:
     """Create or load the Chroma collection configured with OpenAI embeddings."""
     api_key = os.environ.get("OPENAI_API_KEY")
@@ -69,10 +78,10 @@ def get_chroma_collection(
 
 
 def build_index(
-    data_path: Path | str = DEFAULT_DATA_PATH,
-    *,
-    batch_size: int = 100,
-    recreate: bool = False,
+        data_path: Path | str = DEFAULT_DATA_PATH,
+        *,
+        batch_size: int = 100,
+        recreate: bool = False,
 ) -> int:
     """Index all reviews from a JSONL file into the Chroma collection.
 
@@ -94,7 +103,7 @@ def build_index(
         collection.delete(where={})
 
     for start in range(0, len(reviews), batch_size):
-        batch = reviews[start : start + batch_size]
+        batch = reviews[start: start + batch_size]
 
         ids = [str(r.id) for r in batch]
         documents = [r.text for r in batch]
@@ -110,10 +119,10 @@ def build_index(
 
 
 def search_reviews(
-    query_text: str,
-    *,
-    n_results: int = 5,
-    where: Dict[str, Any] | None = None,
+        query_text: str,
+        *,
+        n_results: int = 5,
+        where: Dict[str, Any] | None = None,
 ) -> List[Dict[str, Any]]:
     """Search similar reviews for a free-text query.
 
