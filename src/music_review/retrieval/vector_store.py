@@ -29,30 +29,64 @@ load_dotenv(override=True)
 
 
 def review_to_metadata(review: Review) -> Dict[str, Any]:
-    """Convert a Review into a flat metadata dict for Chroma."""
-    return {
-        "url": review.url,
-        "artist": review.artist,
-        "album": review.album,
-        "title": review.title,
-        "author": review.author,
-        "labels": review.labels,
-        "release_date": (
-            review.release_date.isoformat() if review.release_date else None
-        ),
-        "release_year": review.release_year,
-        "rating": review.rating,
-        "user_rating": review.user_rating,
-        "highlights": review.highlights,
-        "total_duration": review.total_duration,
-        # tracklist, raw_html, extra can be added later if needed
-    }
+    """Convert a Review into a flat metadata dict for Chroma.
+
+    Only includes fields with non-None scalar values, because the current
+    Chroma backend does not accept None as a metadata value.
+    """
+    meta: Dict[str, Any] = {}
+
+    if review.url:
+        meta["url"] = review.url
+
+    if review.artist:
+        meta["artist"] = review.artist
+
+    if review.album:
+        meta["album"] = review.album
+
+    if review.title:
+        meta["title"] = review.title
+
+    if review.author:
+        meta["author"] = review.author
+
+    if review.labels:
+        meta["labels"] = ", ".join(review.labels)
+
+    if review.release_date:
+        meta["release_date"] = review.release_date.isoformat()
+
+    if review.release_year is not None:
+        meta["release_year"] = int(review.release_year)
+
+    if review.rating is not None:
+        meta["rating"] = float(review.rating)
+
+    if review.user_rating is not None:
+        meta["user_rating"] = float(review.user_rating)
+
+    if review.highlights:
+        meta["highlights"] = "; ".join(review.highlights)
+
+    if review.references:
+        meta["references"] = "; ".join(review.references)
+
+    if review.total_duration:
+        meta["total_duration"] = review.total_duration
+
+    return meta
 
 
 def get_chroma_collection(
-        persist_directory: Path | str | None = None,
+    persist_directory: Path | str | None = None,
+    *,
+    recreate: bool = False,
 ) -> Collection:
-    """Create or load the Chroma collection configured with OpenAI embeddings."""
+    """Create or load the Chroma collection configured with OpenAI embeddings.
+
+    If `recreate` is True, the existing collection (if any) is deleted first.
+    """
     api_key = os.environ.get("OPENAI_API_KEY")
     if not api_key:
         msg = "OPENAI_API_KEY environment variable is not set."
@@ -70,6 +104,15 @@ def get_chroma_collection(
     )
 
     client = chromadb.PersistentClient(path=str(directory))
+
+    if recreate:
+        # Delete the collection entirely if it exists, then recreate it fresh.
+        try:
+            client.delete_collection(COLLECTION_NAME)
+        except Exception:
+            # If it does not exist yet, that's fine.
+            pass
+
     collection = client.get_or_create_collection(
         name=COLLECTION_NAME,
         embedding_function=openai_ef,
@@ -78,14 +121,20 @@ def get_chroma_collection(
 
 
 def build_index(
-        data_path: Path | str = DEFAULT_DATA_PATH,
-        *,
-        batch_size: int = 100,
-        recreate: bool = False,
+    data_path: Path | str = DEFAULT_DATA_PATH,
+    *,
+    batch_size: int = 100,
+    recreate: bool = False,
 ) -> int:
-    """Index all reviews from a JSONL file into the Chroma collection.
+    """Index reviews from a JSONL file into the Chroma collection.
 
-    Returns the number of indexed reviews.
+    If `recreate` is False (default), only reviews whose IDs are not yet present
+    in the collection are embedded and added. This avoids paying twice for the
+    same embeddings.
+
+    If `recreate` is True, the collection is dropped and rebuilt from scratch.
+
+    Returns the number of newly indexed reviews.
     """
     file_path = Path(data_path)
     if not file_path.exists():
@@ -97,13 +146,24 @@ def build_index(
         msg = f"No non-empty reviews found in {file_path}"
         raise RuntimeError(msg)
 
-    collection = get_chroma_collection()
-
     if recreate:
-        collection.delete(where={})
+        # Fresh collection, no existing IDs.
+        collection = get_chroma_collection(recreate=True)
+        existing_ids: set[str] = set()
+    else:
+        collection = get_chroma_collection()
+        existing = collection.get(limit=100_000_000)
+        existing_ids = set(existing.get("ids", []))
+
+    new_count = 0
 
     for start in range(0, len(reviews), batch_size):
-        batch = reviews[start: start + batch_size]
+        batch = reviews[start : start + batch_size]
+
+        # Keep only reviews that are not already in the collection.
+        batch = [r for r in batch if str(r.id) not in existing_ids]
+        if not batch:
+            continue
 
         ids = [str(r.id) for r in batch]
         documents = [r.text for r in batch]
@@ -115,7 +175,11 @@ def build_index(
             metadatas=metadatas,
         )
 
-    return len(reviews)
+        existing_ids.update(ids)
+        new_count += len(batch)
+
+    return new_count
+
 
 
 def search_reviews(
@@ -163,6 +227,7 @@ def search_reviews(
                 "rating": meta.get("rating"),
                 "user_rating": meta.get("user_rating"),
                 "highlights": meta.get("highlights"),
+                "references": meta.get("references"),
                 "total_duration": meta.get("total_duration"),
             }
         )
@@ -172,10 +237,10 @@ def search_reviews(
 
 def main() -> None:
     """Build the index and run a small demo query."""
-    count = build_index()
-    print(f"Indexed {count} reviews into collection '{COLLECTION_NAME}'.")
+    new_count = build_index(recreate=True)
+    print(f"Indexed {new_count} new reviews into collection '{COLLECTION_NAME}'.")
 
-    demo_query = "humorvolle Rockplatte mit Weltreise-Thema"
+    demo_query = "Grunge-Platte mit schönen Melodien"
     results = search_reviews(demo_query, n_results=3)
 
     print(f"\nQuery: {demo_query}\n")
@@ -189,6 +254,7 @@ def main() -> None:
         print(f"  rating:  {hit['rating']} (users: {hit['user_rating']})")
         print(f"  year:    {hit['release_year']}")
         print(f"  labels:  {hit['labels']}")
+        print(f"  references:  {hit['references']}")
         print(f"  dist.:   {hit['distance']:.4f}")
         print(f"  text:    {hit['text'][:200]}...")
         print()

@@ -4,7 +4,7 @@
 
 from dataclasses import dataclass, field
 from datetime import date
-from typing import Any
+from typing import Any, List
 
 
 @dataclass(slots=True)
@@ -45,6 +45,8 @@ class Review:
     tracklist: list[Track] = field(default_factory=list)
     highlights: list[str] = field(default_factory=list)
     total_duration: str | None = None    # e.g. "42:17"
+
+    references: list[str] = field(default_factory=list)
 
     # Internal / scraping-related metadata (optional, but useful)
     raw_html: str | None = None

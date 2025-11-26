@@ -110,6 +110,7 @@ def _review_to_dict(review: Review) -> dict:
         ],
         "highlights": review.highlights,
         "total_duration": review.total_duration,
+        "references": review.references,
         "raw_html": review.raw_html,
         "extra": review.extra,
     }

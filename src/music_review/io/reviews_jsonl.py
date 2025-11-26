@@ -58,6 +58,7 @@ def review_from_raw(raw: Dict[str, Any]) -> Review:
         tracklist=[_track_from_raw(t) for t in raw.get("tracklist", [])],
         highlights=list(raw.get("highlights", [])),
         total_duration=raw.get("total_duration"),
+        references=list(raw.get("references", [])),
         raw_html=raw.get("raw_html"),
         extra=dict(raw.get("extra", {})),
     )
@@ -81,6 +82,7 @@ def review_to_raw(review: Review) -> Dict[str, Any]:
         "tracklist": [_track_to_raw(t) for t in review.tracklist],
         "highlights": review.highlights,
         "total_duration": review.total_duration,
+        "references": review.references,
         "raw_html": review.raw_html,
         "extra": review.extra,
     }

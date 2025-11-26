@@ -38,6 +38,7 @@ def parse_review(review_id: int, html: str) -> Review | None:
     title, author, body_text = _parse_text_block(container)
 
     tracklist, highlights, total_duration = _parse_track_and_highlights(container)
+    references = _parse_references(container)
 
     if not artist or not album or not body_text:
         logger.warning(
@@ -68,6 +69,7 @@ def parse_review(review_id: int, html: str) -> Review | None:
         tracklist=tracklist,
         highlights=highlights,
         total_duration=total_duration,
+        references=references,
         raw_html=None,  # set to html if you want to store full HTML
     )
 
@@ -78,7 +80,7 @@ def parse_review(review_id: int, html: str) -> Review | None:
 
 
 def _parse_header(
-    container: Tag,
+        container: Tag,
 ) -> Tuple[str | None, str | None, List[str], date | None, int | None, float | None, float | None]:
     """Parse the header box with artist/album, label, release and ratings."""
     header_box = _find_header_box(container)
@@ -116,8 +118,45 @@ def _parse_artist_album(header_box: Tag) -> Tuple[str | None, str | None]:
     return None, text.strip() or None
 
 
+def _parse_references(container: Tag) -> list[str]:
+    """Parse the 'Referenzen' block into a list of names.
+
+    Example HTML (simplified):
+
+        <div id="reziref">
+            <h4>Referenzen</h4>
+            <p>
+                <a href="suche.php?...">Tweedy</a>;
+                <a href="suche.php?...">Wilco</a>;
+                ...
+            </p>
+        </div>
+    """
+    ref_div = container.find("div", id="reziref")
+    if ref_div is None:
+        return []
+
+    names: list[str] = []
+    for link in ref_div.find_all("a"):
+        text = link.get_text(strip=True)
+        if text:
+            names.append(text)
+
+    # Deduplicate while preserving order (case-insensitive)
+    seen: set[str] = set()
+    unique: list[str] = []
+    for name in names:
+        key = name.lower()
+        if key in seen:
+            continue
+        seen.add(key)
+        unique.append(name)
+
+    return unique
+
+
 def _parse_label_and_release(
-    header_box: Tag,
+        header_box: Tag,
 ) -> Tuple[List[str], date | None, int | None]:
     """Parse label(s) and release date/year from the first non-rating <p>."""
     info_p: Tag | None = None
@@ -201,7 +240,7 @@ def _parse_ratings(header_box: Tag) -> tuple[float | None, float | None]:
 
 
 def _parse_text_block(
-    container: Tag,
+        container: Tag,
 ) -> Tuple[str | None, str | None, str | None]:
     """Parse review title (h2), author and main body text from #rezitext."""
     text_div = container.find("div", id="rezitext")
@@ -239,7 +278,7 @@ def _parse_text_block(
 
 
 def _parse_track_and_highlights(
-    container: Tag,
+        container: Tag,
 ) -> Tuple[List[Track], List[str], str | None]:
     """Parse tracklist, highlight tracks and total duration."""
     tracks: list[Track] = []
@@ -327,7 +366,7 @@ def _split_labels(raw: str) -> List[str]:
 
 
 def _extract_date_and_year_from_text(
-    text: str,
+        text: str,
 ) -> Tuple[date | None, int | None]:
     """Extract a date and/or year from a text like 'VÖ: 26.09.2025'."""
     text = text.strip()
