@@ -6,6 +6,10 @@ src/music_review.egg-info/SOURCES.txt
 src/music_review.egg-info/dependency_links.txt
 src/music_review.egg-info/requires.txt
 src/music_review.egg-info/top_level.txt
+src/music_review/io/__init__.py
+src/music_review/io/reviews_jsonl.py
+src/music_review/retrieval/__init__.py
+src/music_review/retrieval/vector_store.py
 src/music_review/scraper/__init__.py
 src/music_review/scraper/cli.py
 src/music_review/scraper/client.py

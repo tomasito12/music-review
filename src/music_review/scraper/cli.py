@@ -5,6 +5,7 @@ from __future__ import annotations
 import argparse
 import logging
 import sys
+from enum import Enum
 from pathlib import Path
 from typing import Iterable
 
@@ -14,9 +15,20 @@ from music_review.scraper.client import (
     iter_review_html,
 )
 from music_review.scraper.parser import parse_review
-from music_review.scraper.storage import append_review, load_existing_ids
+from music_review.scraper.storage import (
+    append_review,
+    load_corpus,
+    load_existing_ids,
+    write_corpus,
+    review_to_dict,
+)
 
 logger = logging.getLogger(__name__)
+
+
+class ExistingMode(str, Enum):
+    ADD = "add"
+    UPDATE = "update"
 
 
 def main(argv: list[str] | None = None) -> None:
@@ -26,6 +38,7 @@ def main(argv: list[str] | None = None) -> None:
     _configure_logging(verbose=args.verbose)
 
     output_path = Path(args.output)
+    existing_mode = ExistingMode(args.existing)
 
     try:
         if args.command == "run":
@@ -34,6 +47,7 @@ def main(argv: list[str] | None = None) -> None:
                 end_id=args.end_id,
                 output_path=output_path,
                 max_rps=args.max_rps,
+                existing_mode=existing_mode,
             )
         elif args.command == "full":
             _cmd_run(
@@ -41,12 +55,14 @@ def main(argv: list[str] | None = None) -> None:
                 end_id=args.max_id,
                 output_path=output_path,
                 max_rps=args.max_rps,
+                existing_mode=existing_mode,
             )
         elif args.command == "resume":
             _cmd_resume(
                 max_id=args.max_id,
                 output_path=output_path,
                 max_rps=args.max_rps,
+                existing_mode=existing_mode,
             )
         else:
             msg = f"Unknown command: {args.command}"
@@ -78,6 +94,15 @@ def _build_arg_parser() -> argparse.ArgumentParser:
         "--verbose",
         action="store_true",
         help="Enable verbose logging.",
+    )
+    parser.add_argument(
+        "--existing",
+        choices=[m.value for m in ExistingMode],
+        default=ExistingMode.ADD.value,
+        help=(
+            "How to handle IDs that already exist in the corpus: "
+            "'add' (default) only adds new IDs, 'update' overwrites existing IDs."
+        ),
     )
 
     subparsers = parser.add_subparsers(
@@ -145,6 +170,7 @@ def _cmd_run(
     end_id: int,
     output_path: Path,
     max_rps: float,
+    existing_mode: ExistingMode,
 ) -> None:
     if start_id < 1:
         msg = "start_id must be >= 1."
@@ -153,14 +179,51 @@ def _cmd_run(
         msg = "end_id must be >= start_id."
         raise ValueError(msg)
 
-    ids: Iterable[int] = range(start_id, end_id + 1)
-    logger.info("Scraping IDs from %s to %s into %s.", start_id, end_id, output_path)
+    all_ids: list[int] = list(range(start_id, end_id + 1))
+
+    # Handle existing IDs according to mode
+    if existing_mode is ExistingMode.ADD and output_path.exists():
+        existing_ids = load_existing_ids(output_path)
+        id_set = set(all_ids)
+        skip = id_set & existing_ids
+        ids: Iterable[int] = [i for i in all_ids if i not in existing_ids]
+        if skip:
+            logger.info(
+                "Mode 'add': skipping %s IDs that already exist in %s.",
+                len(skip),
+                output_path,
+            )
+    else:
+        ids = all_ids
+
+    logger.info(
+        "Scraping IDs from %s to %s into %s (mode=%s).",
+        start_id,
+        end_id,
+        output_path,
+        existing_mode.value,
+    )
 
     rate_limiter = RateLimiter(max_per_second=max_rps)
 
+    corpus: dict[int, dict] | None = None
+    if existing_mode is ExistingMode.UPDATE and output_path.exists():
+        corpus = load_corpus(output_path)
+        logger.info(
+            "Loaded existing corpus from %s with %s reviews.",
+            output_path,
+            len(corpus),
+        )
+
+    processed = 0
+    scraped_ids: list[int] = []
+
     with ScraperClient() as client:
-        processed = 0
-        for review_id, html in iter_review_html(client, ids, rate_limiter=rate_limiter):
+        for review_id, html in iter_review_html(
+            client,
+            ids,
+            rate_limiter=rate_limiter,
+        ):
             if html is None:
                 continue
 
@@ -168,13 +231,31 @@ def _cmd_run(
             if review is None:
                 continue
 
-            append_review(output_path, review)
+            if existing_mode is ExistingMode.ADD:
+                append_review(output_path, review)
+            else:
+                assert corpus is not None
+                corpus[review.id] = review_to_dict(review)
+
+            scraped_ids.append(review.id)
             processed += 1
 
             if processed % 50 == 0:
                 logger.info("Processed %s reviews so far.", processed)
 
-    logger.info("Done. Processed %s reviews.", processed)
+    if existing_mode is ExistingMode.UPDATE:
+        assert corpus is not None
+        # Stable, deterministic ordering by ID
+        ordered = [corpus[i] for i in sorted(corpus.keys())]
+        write_corpus(output_path, ordered)
+        logger.info(
+            "Mode 'update': wrote %s reviews (including %s updated IDs) to %s.",
+            len(ordered),
+            len(scraped_ids),
+            output_path,
+        )
+    else:
+        logger.info("Done. Processed %s reviews.", processed)
 
 
 def _cmd_resume(
@@ -182,6 +263,7 @@ def _cmd_resume(
     max_id: int,
     output_path: Path,
     max_rps: float,
+    existing_mode: ExistingMode,
 ) -> None:
     if max_id < 1:
         msg = "max_id must be >= 1."
@@ -197,6 +279,7 @@ def _cmd_resume(
             end_id=max_id,
             output_path=output_path,
             max_rps=max_rps,
+            existing_mode=existing_mode,
         )
         return
 
@@ -211,6 +294,7 @@ def _cmd_resume(
             end_id=max_id,
             output_path=output_path,
             max_rps=max_rps,
+            existing_mode=existing_mode,
         )
         return
 
@@ -225,18 +309,22 @@ def _cmd_resume(
         return
 
     logger.info(
-        "Resuming scrape from ID %s up to %s (existing IDs: %s entries).",
+        "Resuming scrape from ID %s up to %s (existing IDs: %s entries, mode=%s).",
         start_id,
         max_id,
         len(existing_ids),
+        existing_mode.value,
     )
     _cmd_run(
         start_id=start_id,
         end_id=max_id,
         output_path=output_path,
         max_rps=max_rps,
+        existing_mode=existing_mode,
     )
 
 
 if __name__ == "__main__":
+    # python -m music_review.scraper.cli -v --existing add run --start-id 1 --end-id 100
+    # python -m music_review.scraper.cli -v --existing update run --start-id 1 --end-id 100
     main()

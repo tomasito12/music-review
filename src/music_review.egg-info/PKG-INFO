@@ -8,6 +8,9 @@ Description-Content-Type: text/markdown
 Requires-Dist: httpx>=0.27
 Requires-Dist: beautifulsoup4>=4.12
 Requires-Dist: lxml>=5.2
+Requires-Dist: chromadb
+Requires-Dist: openai
+Requires-Dist: python-dotenv
 Provides-Extra: dev
 Requires-Dist: ruff>=0.6; extra == "dev"
 Requires-Dist: pytest>=8.0; extra == "dev"
