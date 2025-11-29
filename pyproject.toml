@@ -16,6 +16,7 @@ dependencies = [
   "chromadb",
   "openai",
   "python-dotenv",
+  "musicbrainzngs"
 ]
 
 [project.optional-dependencies]
