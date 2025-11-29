@@ -21,6 +21,7 @@ import requests
 from urllib3.exceptions import InsecureRequestWarning
 
 from dotenv import load_dotenv
+
 load_dotenv(override=True)
 
 LOGGER = logging.getLogger(__name__)
@@ -49,10 +50,128 @@ if not MB_VERIFY_TLS:
         "Do not use this setting in production."
     )
 
-
 _RATE_LIMIT_SECONDS = 1.0
 _last_call_ts: float | None = None
 
+
+@dataclass(slots=True)
+class ArtistInfo:
+    mbid: str
+    name: str
+    country: str | None
+    artist_type: str | None
+    disambiguation: str | None
+    tags: list[str]
+    members: list[str]
+
+
+def fetch_artist_info(name: str) -> ArtistInfo | None:
+    """Best-effort lookup of a MusicBrainz artist by human-readable name.
+
+    Steps:
+        1) Search artist by name
+        2) Select best match (highest score)
+        3) Lookup artist by MBID including tags
+        4) Return normalized ArtistInfo
+    """
+    candidates = _search_artists(name=name, limit=5)
+    best = _select_best_artist(candidates)
+
+    if best is None:
+        LOGGER.info("No MusicBrainz artist found for name=%s", name)
+        return None
+
+    mbid = best["id"]
+    artist_name = best.get("name", name)
+    country = best.get("country")
+    artist_type = best.get("type")
+    disambiguation = best.get("disambiguation")
+
+    detailed = _lookup_artist_with_tags(mbid)
+    if detailed is None:
+        tags: list[str] = []
+    else:
+        tags = _extract_tag_names(detailed)
+    members = _extract_band_members(detailed) if detailed else []
+
+    LOGGER.debug(
+        "Fetched artist info for %s (mbid=%s, country=%s, type=%s, tags=%d)",
+        artist_name,
+        mbid,
+        country,
+        artist_type,
+        len(tags),
+    )
+
+    return ArtistInfo(
+        mbid=mbid,
+        name=artist_name,
+        country=country,
+        artist_type=artist_type,
+        disambiguation=disambiguation,
+        tags=tags,
+        members=members,
+    )
+
+
+def _search_artists(name: str, limit: int = 5) -> list[dict[str, Any]]:
+    """Search MusicBrainz artists by name."""
+    params = {
+        "query": name,
+        "fmt": "json",
+        "limit": limit,
+    }
+
+    try:
+        data = _get("/artist", params)
+    except Exception as exc:  # requests.RequestException o.ä. je nach _get-Implementierung
+        LOGGER.warning("MusicBrainz artist search failed for %s: %s", name, exc)
+        return []
+
+    return list(data.get("artists", []))
+
+
+def _select_best_artist(candidates: Iterable[dict[str, Any]]) -> dict[str, Any] | None:
+    """Pick the most likely artist candidate from a search result list."""
+    artists = list(candidates)
+    if not artists:
+        return None
+
+    # Prefer highest MusicBrainz score if present
+    def score(a: dict[str, Any]) -> int:
+        try:
+            return int(a.get("score", 0))
+        except (TypeError, ValueError):
+            return 0
+
+    artists.sort(key=score, reverse=True)
+
+    return artists[0]
+
+
+def _lookup_artist_with_tags(mbid: str) -> dict[str, Any] | None:
+    """Lookup a MusicBrainz artist by MBID and include tag information."""
+    params = {
+        "fmt": "json",
+        "inc": "tags",
+    }
+
+    try:
+        data = _get(f"/artist/{mbid}", params)
+    except Exception as exc:  # requests.RequestException o.ä.
+        LOGGER.warning("MusicBrainz artist lookup failed for mbid=%s: %s", mbid, exc)
+        return None
+
+    return data
+
+def _extract_band_members(entity: dict[str, Any]) -> list[str]:
+    members = []
+    for rel in entity.get("relations", []):
+        if rel.get("type") == "member of band":
+            artist = rel.get("artist")
+            if artist and artist.get("name"):
+                members.append(artist["name"])
+    return members
 
 @dataclass(slots=True)
 class ExternalGenreInfo:
@@ -94,9 +213,9 @@ def _get(path: str, params: dict[str, Any]) -> dict[str, Any]:
 
 
 def search_release_groups(
-    artist: str,
-    album: str,
-    limit: int = 5,
+        artist: str,
+        album: str,
+        limit: int = 5,
 ) -> list[dict[str, Any]]:
     """Search MusicBrainz release-groups by artist + album name."""
     params = {
@@ -121,7 +240,7 @@ def search_release_groups(
 
 
 def _select_best_release_group(
-    release_groups: Iterable[dict[str, Any]],
+        release_groups: Iterable[dict[str, Any]],
 ) -> dict[str, Any] | None:
     """Pick the most likely album candidate (prefer primary-type Album)."""
     groups = list(release_groups)
@@ -237,8 +356,8 @@ RAW_TAG_TO_GENRE: dict[str, str] = {
 
 
 def map_tags_to_genres(
-    tags: Iterable[str],
-    mapping: dict[str, str] | None = None,
+        tags: Iterable[str],
+        mapping: dict[str, str] | None = None,
 ) -> list[str]:
     """Map raw MusicBrainz tags to internal canonical genre names."""
     if mapping is None:
