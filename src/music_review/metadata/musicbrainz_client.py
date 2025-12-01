@@ -71,7 +71,7 @@ def fetch_artist_info(name: str) -> ArtistInfo | None:
     Steps:
         1) Search artist by name
         2) Select best match (highest score)
-        3) Lookup artist by MBID including tags
+        3) Lookup artist by MBID including tags & relations
         4) Return normalized ArtistInfo
     """
     candidates = _search_artists(name=name, limit=5)
@@ -90,17 +90,19 @@ def fetch_artist_info(name: str) -> ArtistInfo | None:
     detailed = _lookup_artist_with_tags(mbid)
     if detailed is None:
         tags: list[str] = []
+        members: list[str] = []
     else:
         tags = _extract_tag_names(detailed)
-    members = _extract_band_members(detailed) if detailed else []
+        members = _extract_band_members(detailed)
 
     LOGGER.debug(
-        "Fetched artist info for %s (mbid=%s, country=%s, type=%s, tags=%d)",
+        "Fetched artist info for %s (mbid=%s, country=%s, type=%s, tags=%d, members=%d)",
         artist_name,
         mbid,
         country,
         artist_type,
         len(tags),
+        len(members),
     )
 
     return ArtistInfo(
@@ -149,29 +151,30 @@ def _select_best_artist(candidates: Iterable[dict[str, Any]]) -> dict[str, Any] 
     return artists[0]
 
 
-def _lookup_artist_with_tags(mbid: str) -> dict[str, Any] | None:
-    """Lookup a MusicBrainz artist by MBID and include tag information."""
-    params = {
-        "fmt": "json",
-        "inc": "tags",
-    }
-
-    try:
-        data = _get(f"/artist/{mbid}", params)
-    except Exception as exc:  # requests.RequestException o.ä.
-        LOGGER.warning("MusicBrainz artist lookup failed for mbid=%s: %s", mbid, exc)
-        return None
-
-    return data
-
 def _extract_band_members(entity: dict[str, Any]) -> list[str]:
-    members = []
+    """Extract band member names from a MusicBrainz artist JSON dict."""
+    names: set[str] = set()
+
     for rel in entity.get("relations", []):
-        if rel.get("type") == "member of band":
-            artist = rel.get("artist")
-            if artist and artist.get("name"):
-                members.append(artist["name"])
-    return members
+        if rel.get("type") != "member of band":
+            continue
+        if rel.get("target-type") != "artist":
+            continue
+
+        direction = rel.get("direction")
+        # For a band entity, relations to members are typically 'backward'
+        if direction and direction != "backward":
+            continue
+
+        artist = rel.get("artist") or {}
+        name = artist.get("name")
+        if not name:
+            continue
+
+        names.add(name)
+
+    return sorted(names)
+
 
 @dataclass(slots=True)
 class ExternalGenreInfo:
@@ -239,6 +242,22 @@ def search_release_groups(
     return list(data.get("release-groups", []))
 
 
+def _lookup_release_group_with_tags(mbid: str) -> dict[str, Any] | None:
+    """Lookup a release-group by MBID and include tag information."""
+    params = {
+        "fmt": "json",
+        "inc": "tags",
+    }
+
+    try:
+        data = _get(f"/release-group/{mbid}", params)
+    except requests.RequestException as exc:
+        LOGGER.warning("MusicBrainz lookup failed for mbid=%s: %s", mbid, exc)
+        return None
+
+    return data
+
+
 def _select_best_release_group(
         release_groups: Iterable[dict[str, Any]],
 ) -> dict[str, Any] | None:
@@ -256,17 +275,18 @@ def _select_best_release_group(
     return groups[0]
 
 
-def _lookup_release_group_with_tags(mbid: str) -> dict[str, Any] | None:
-    """Lookup a release-group by MBID and include tag information."""
+def _lookup_artist_with_tags(mbid: str) -> dict[str, Any] | None:
+    """Lookup a MusicBrainz artist by MBID and include tag and relation information."""
     params = {
         "fmt": "json",
-        "inc": "tags",
+        # important: we need artist-rels to get band members
+        "inc": "aliases+tags+artist-rels",
     }
 
     try:
-        data = _get(f"/release-group/{mbid}", params)
-    except requests.RequestException as exc:
-        LOGGER.warning("MusicBrainz lookup failed for mbid=%s: %s", mbid, exc)
+        data = _get(f"/artist/{mbid}", params)
+    except Exception as exc:  # requests.RequestException etc.
+        LOGGER.warning("MusicBrainz artist lookup failed for mbid=%s: %s", mbid, exc)
         return None
 
     return data

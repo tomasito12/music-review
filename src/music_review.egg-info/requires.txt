@@ -4,6 +4,7 @@ lxml>=5.2
 chromadb
 openai
 python-dotenv
+musicbrainzngs
 
 [dev]
 ruff>=0.6

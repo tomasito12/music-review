@@ -250,7 +250,7 @@ def iter_reviews(input_path: Path) -> Iterable[tuple[int, str, str]]:
 
 
 def load_existing_review_ids(output_path: Path) -> set[int]:
-    """Load existing metadata.jsonl and return set of review_ids already present."""
+    """Load existing metadata_1.jsonl and return set of review_ids already present."""
     if not output_path.exists():
         return set()
 
@@ -285,7 +285,7 @@ def load_existing_review_ids(output_path: Path) -> set[int]:
 
 
 def load_existing_metadata_map(output_path: Path) -> dict[int, dict]:
-    """Load full existing metadata.jsonl into a dict keyed by review_id.
+    """Load full existing metadata_1.jsonl into a dict keyed by review_id.
 
     Used for update mode where we want to rewrite the whole file.
     """
@@ -533,7 +533,7 @@ def main() -> None:
     parser.add_argument(
         "--output",
         type=Path,
-        default=Path("data/metadata.jsonl"),
+        default=Path("data/metadata_1.jsonl"),
         help="Path to output metadata JSONL file.",
     )
     parser.add_argument(
@@ -546,7 +546,7 @@ def main() -> None:
         action="store_true",
         help=(
             "Update existing metadata entries instead of skipping them. "
-            "Existing metadata.jsonl is read, updated in memory and then fully rewritten."
+            "Existing metadata_1.jsonl is read, updated in memory and then fully rewritten."
         ),
     )
 
@@ -559,6 +559,10 @@ def main() -> None:
         update=args.update,
     )
 
+    # Example: python -m music_review.metadata.fetch_metadata \
+    #     --input data/reviews.jsonl \
+    #     --output data/metadata.jsonl \
+    #     --overwrite
 
 if __name__ == "__main__":
     main()

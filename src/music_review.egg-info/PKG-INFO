@@ -11,6 +11,7 @@ Requires-Dist: lxml>=5.2
 Requires-Dist: chromadb
 Requires-Dist: openai
 Requires-Dist: python-dotenv
+Requires-Dist: musicbrainzngs
 Provides-Extra: dev
 Requires-Dist: ruff>=0.6; extra == "dev"
 Requires-Dist: pytest>=8.0; extra == "dev"
