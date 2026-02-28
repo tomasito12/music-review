@@ -3,22 +3,20 @@ from __future__ import annotations
 import json
 import logging
 import re
+from collections.abc import Iterable
 from dataclasses import asdict, dataclass
 from pathlib import Path
-from typing import Iterable
 
-# Optional: load .env if python-dotenv is installed
-try:
-    from dotenv import load_dotenv
-
-    load_dotenv()
-except ImportError:
-    pass
-
-from music_review.metadata.musicbrainz_client import fetch_album_tags, fetch_artist_info
+import music_review.config  # noqa: F401 - load .env early
+from music_review.io.jsonl import (
+    iter_jsonl_objects,
+    load_ids_from_jsonl,
+    load_jsonl_as_map,
+)
 from music_review.metadata.genre_regex import GENRE_REGEX
+from music_review.metadata.musicbrainz_client import fetch_album_tags, fetch_artist_info
 
-LOGGER = logging.getLogger(__name__)
+logger = logging.getLogger(__name__)
 
 # ---------------------------------------------------------------------------
 # Genre regex mapping
@@ -215,72 +213,27 @@ class AlbumMetadata:
 
 
 def iter_reviews(input_path: Path) -> Iterable[tuple[int, str, str]]:
-    """Iterate over reviews in a JSONL corpus."""
-    with input_path.open("r", encoding="utf-8") as f:
-        for line_number, line in enumerate(f, start=1):
-            line = line.strip()
-            if not line:
-                continue
-
-            try:
-                obj = json.loads(line)
-            except json.JSONDecodeError as exc:
-                LOGGER.warning(
-                    "Skipping invalid JSON line %d in %s: %s",
-                    line_number,
-                    input_path,
-                    exc,
-                )
-                continue
-
-            try:
-                review_id = int(obj["id"])
-                artist = str(obj["artist"])
-                album = str(obj["album"])
-            except KeyError as exc:
-                LOGGER.warning(
-                    "Missing key %s in line %d of %s; skipping.",
-                    exc,
-                    line_number,
-                    input_path,
-                )
-                continue
-
-            yield review_id, artist, album
+    """Iterate over reviews in a JSONL corpus, yielding (id, artist, album)."""
+    for obj in iter_jsonl_objects(input_path):
+        try:
+            review_id = int(obj["id"])
+            artist = str(obj["artist"])
+            album = str(obj["album"])
+        except (KeyError, ValueError, TypeError) as exc:
+            logger.warning("Skipping line with invalid id/artist/album: %s", exc)
+            continue
+        yield review_id, artist, album
 
 
 def load_existing_review_ids(output_path: Path) -> set[int]:
     """Load existing metadata_1.jsonl and return set of review_ids already present."""
-    if not output_path.exists():
-        return set()
-
-    existing_ids: set[int] = set()
-    with output_path.open("r", encoding="utf-8") as f:
-        for line_number, line in enumerate(f, start=1):
-            line = line.strip()
-            if not line:
-                continue
-
-            try:
-                obj = json.loads(line)
-            except json.JSONDecodeError as exc:
-                LOGGER.warning(
-                    "Invalid JSON in metadata file %s line %d: %s",
-                    output_path,
-                    line_number,
-                    exc,
-                )
-                continue
-
-            review_id = obj.get("review_id")
-            if isinstance(review_id, int):
-                existing_ids.add(review_id)
-
-    LOGGER.info(
-        "Loaded %d existing metadata entries from %s",
-        len(existing_ids),
-        output_path,
-    )
+    existing_ids = load_ids_from_jsonl(output_path, id_key="review_id")
+    if existing_ids:
+        logger.info(
+            "Loaded %d existing metadata entries from %s",
+            len(existing_ids),
+            output_path,
+        )
     return existing_ids
 
 
@@ -289,36 +242,13 @@ def load_existing_metadata_map(output_path: Path) -> dict[int, dict]:
 
     Used for update mode where we want to rewrite the whole file.
     """
-    meta_map: dict[int, dict] = {}
-    if not output_path.exists():
-        return meta_map
-
-    with output_path.open("r", encoding="utf-8") as f:
-        for line_number, line in enumerate(f, start=1):
-            line = line.strip()
-            if not line:
-                continue
-
-            try:
-                obj = json.loads(line)
-            except json.JSONDecodeError as exc:
-                LOGGER.warning(
-                    "Invalid JSON in metadata file %s line %d: %s",
-                    output_path,
-                    line_number,
-                    exc,
-                )
-                continue
-
-            review_id = obj.get("review_id")
-            if isinstance(review_id, int):
-                meta_map[review_id] = obj
-
-    LOGGER.info(
-        "Loaded %d existing metadata entries from %s (for update mode)",
-        len(meta_map),
-        output_path,
-    )
+    meta_map = load_jsonl_as_map(output_path, id_key="review_id")
+    if meta_map:
+        logger.info(
+            "Loaded %d existing metadata entries from %s (for update mode)",
+            len(meta_map),
+            output_path,
+        )
     return meta_map
 
 
@@ -331,7 +261,7 @@ def fetch_metadata_for_review(
     info = fetch_album_tags(artist=artist, album=album)
 
     if info is None:
-        LOGGER.info(
+        logger.info(
             "No MusicBrainz album info for %s - %s (review_id=%d)",
             artist,
             album,
@@ -414,7 +344,7 @@ def build_metadata(
 
     if overwrite:
         if output_path.exists():
-            LOGGER.info("Overwriting existing metadata file %s", output_path)
+            logger.info("Overwriting existing metadata file %s", output_path)
             output_path.unlink()
 
         new_entries: list[AlbumMetadata] = []
@@ -427,7 +357,7 @@ def build_metadata(
 
             if len(new_entries) >= 50:
                 write_metadata_jsonl(new_entries, output_path=output_path, append=True)
-                LOGGER.info(
+                logger.info(
                     "Flushed %d metadata entries to %s",
                     len(new_entries),
                     output_path,
@@ -436,13 +366,13 @@ def build_metadata(
 
         if new_entries:
             write_metadata_jsonl(new_entries, output_path=output_path, append=True)
-            LOGGER.info(
+            logger.info(
                 "Flushed final %d metadata entries to %s",
                 len(new_entries),
                 output_path,
             )
 
-        LOGGER.info(
+        logger.info(
             "Metadata build (overwrite) done. Processed=%d, new=%d",
             total_processed,
             total_processed,
@@ -465,7 +395,7 @@ def build_metadata(
         all_entries = [meta_map[rid] for rid in sorted(meta_map.keys())]
         write_metadata_jsonl(all_entries, output_path=output_path, append=False)
 
-        LOGGER.info(
+        logger.info(
             "Metadata build (update) done. Processed=%d, written(updated+new)=%d",
             total_processed,
             updated_or_new,
@@ -489,7 +419,7 @@ def build_metadata(
 
         if len(new_entries) >= 50:
             write_metadata_jsonl(new_entries, output_path=output_path, append=True)
-            LOGGER.info(
+            logger.info(
                 "Flushed %d new metadata entries to %s",
                 len(new_entries),
                 output_path,
@@ -498,13 +428,13 @@ def build_metadata(
 
     if new_entries:
         write_metadata_jsonl(new_entries, output_path=output_path, append=True)
-        LOGGER.info(
+        logger.info(
             "Flushed final %d new metadata entries to %s",
             len(new_entries),
             output_path,
         )
 
-    LOGGER.info(
+    logger.info(
         "Metadata build (append+skip) done. Processed=%d, skipped(existing)=%d, new=%d",
         total_processed,
         total_skipped,

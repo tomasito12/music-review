@@ -3,11 +3,12 @@
 from __future__ import annotations
 
 import json
+from collections.abc import Iterable
 from datetime import date
 from pathlib import Path
-from typing import Any, Dict, Iterable, List
+from typing import Any
 
-from music_review.scraper.models import Review, Track
+from music_review.domain.models import Review, Track
 
 
 def _parse_date(value: str | None) -> date | None:
@@ -22,7 +23,7 @@ def _date_to_str(value: date | None) -> str | None:
     return value.isoformat()
 
 
-def _track_from_raw(raw: Dict[str, Any]) -> Track:
+def _track_from_raw(raw: dict[str, Any]) -> Track:
     return Track(
         number=raw["number"],
         title=raw["title"],
@@ -31,7 +32,7 @@ def _track_from_raw(raw: Dict[str, Any]) -> Track:
     )
 
 
-def _track_to_raw(track: Track) -> Dict[str, Any]:
+def _track_to_raw(track: Track) -> dict[str, Any]:
     return {
         "number": track.number,
         "title": track.title,
@@ -40,7 +41,7 @@ def _track_to_raw(track: Track) -> Dict[str, Any]:
     }
 
 
-def review_from_raw(raw: Dict[str, Any]) -> Review:
+def review_from_raw(raw: dict[str, Any]) -> Review:
     """Convert a raw JSON dict into a Review instance."""
     return Review(
         id=int(raw["id"]),
@@ -64,7 +65,7 @@ def review_from_raw(raw: Dict[str, Any]) -> Review:
     )
 
 
-def review_to_raw(review: Review) -> Dict[str, Any]:
+def review_to_raw(review: Review) -> dict[str, Any]:
     """Convert a Review instance into a JSON-serialisable dict."""
     return {
         "id": review.id,
@@ -88,10 +89,14 @@ def review_to_raw(review: Review) -> Dict[str, Any]:
     }
 
 
-def load_reviews_from_jsonl(path: str | Path) -> List[Review]:
+# Alias for consumers that expect the older name.
+review_to_dict = review_to_raw
+
+
+def load_reviews_from_jsonl(path: str | Path) -> list[Review]:
     """Load reviews from a JSONL file into a list of Review objects."""
     file_path = Path(path)
-    reviews: List[Review] = []
+    reviews: list[Review] = []
 
     with file_path.open("r", encoding="utf-8") as f:
         for line in f:

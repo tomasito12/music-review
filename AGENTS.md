@@ -2,6 +2,11 @@
 
 ## Cursor Cloud specific instructions
 
+### Workflow instructions
+
+- Always include type hints.
+- Provide readable, understandable, concise, non-technical (if possible) docstrings.
+
 ### Project overview
 
 Music Review is a Python 3.12+ CLI-based data pipeline that scrapes album reviews from plattentests.de, enriches them with MusicBrainz metadata, and indexes reviews into a ChromaDB vector store using OpenAI embeddings. There is no web framework or Docker setup — everything runs as local CLI commands.
@@ -29,6 +34,8 @@ Music Review is a Python 3.12+ CLI-based data pipeline that scrapes album review
 ### Gotchas
 
 - `musicbrainz_client.py` uses `requests` (via `requests.get`). This is now explicitly listed in `pyproject.toml` dependencies.
+- `data/moods.py` contains mood constants but is currently unused by the pipeline.
+- Set `MUSIC_REVIEW_PROJECT_ROOT` to override the project root (used by vector store paths). Defaults to current working directory.
 - The vector store module (`retrieval/vector_store.py`) requires the `OPENAI_API_KEY` environment variable. Without it, only scraping and metadata enrichment stages can run.
 - MusicBrainz API is rate-limited to ~1 req/s; the client handles this internally.
 - The scraper rate-limits to ~2.5 req/s against plattentests.de by default.

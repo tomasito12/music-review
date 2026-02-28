@@ -5,10 +5,11 @@ from __future__ import annotations
 import argparse
 import logging
 import sys
+from collections.abc import Iterable
 from enum import Enum
 from pathlib import Path
-from typing import Iterable
 
+from music_review.io.reviews_jsonl import review_to_raw
 from music_review.scraper.client import (
     RateLimiter,
     ScraperClient,
@@ -20,7 +21,6 @@ from music_review.scraper.storage import (
     load_corpus,
     load_existing_ids,
     write_corpus,
-    review_to_dict,
 )
 
 logger = logging.getLogger(__name__)
@@ -235,7 +235,7 @@ def _cmd_run(
                 append_review(output_path, review)
             else:
                 assert corpus is not None
-                corpus[review.id] = review_to_dict(review)
+                corpus[review.id] = review_to_raw(review)
 
             scraped_ids.append(review.id)
             processed += 1
