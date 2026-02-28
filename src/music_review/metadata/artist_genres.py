@@ -3,7 +3,7 @@ from __future__ import annotations
 import argparse
 import json
 import logging
-from collections import Counter, defaultdict
+from collections import Counter
 from dataclasses import asdict, dataclass
 from pathlib import Path
 from typing import Iterable
@@ -298,7 +298,7 @@ def impute_missing_review_genres(
 def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     parser = argparse.ArgumentParser(
         description=(
-            "Build artist genre profiles from metadata_1.jsonl and optionally "
+            "Build artist genre profiles from metadata.jsonl and optionally "
             "impute missing review genres based on those profiles."
         ),
     )

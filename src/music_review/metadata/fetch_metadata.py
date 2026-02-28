@@ -546,7 +546,7 @@ def main() -> None:
         action="store_true",
         help=(
             "Update existing metadata entries instead of skipping them. "
-            "Existing metadata_1.jsonl is read, updated in memory and then fully rewritten."
+            "Existing metadata.jsonl is read, updated in memory and then fully rewritten."
         ),
     )
 
@@ -561,7 +561,7 @@ def main() -> None:
 
     # Example: python -m music_review.metadata.fetch_metadata \
     #     --input data/reviews.jsonl \
-    #     --output data/metadata.jsonl \
+    #     --output data/metadata_2.jsonl \
     #     --overwrite
 
 if __name__ == "__main__":
