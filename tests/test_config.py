@@ -25,3 +25,10 @@ def test_resolve_data_path_relative_joins_project_root(monkeypatch: pytest.Monke
     assert root == fake_root
     assert resolve_data_path("data/reviews.jsonl") == fake_root / "data" / "reviews.jsonl"
     assert resolve_data_path(Path("metadata.jsonl")) == fake_root / "metadata.jsonl"
+
+
+def test_get_project_root_returns_cwd_when_env_unset(monkeypatch: pytest.MonkeyPatch) -> None:
+    """When MUSIC_REVIEW_PROJECT_ROOT is not set, get_project_root returns current working directory."""
+    monkeypatch.delenv("MUSIC_REVIEW_PROJECT_ROOT", raising=False)
+    root = get_project_root()
+    assert root == Path.cwd()

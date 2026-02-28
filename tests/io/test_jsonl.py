@@ -89,3 +89,25 @@ def test_write_jsonl_creates_parent_directory(tmp_path: Path) -> None:
     path = tmp_path / "nested" / "file.jsonl"
     write_jsonl(path, [{"x": 1}])
     assert path.exists()
+
+
+def test_load_ids_from_jsonl_skips_non_integer_id(tmp_path: Path) -> None:
+    """Lines whose id_key value is not an int are skipped; only integer IDs are collected."""
+    path = tmp_path / "ids.jsonl"
+    path.write_text(
+        '{"id": 1}\n{"id": "two"}\n{"id": 2.5}\n{"other": 3}\n',
+        encoding="utf-8",
+    )
+    assert load_ids_from_jsonl(path) == {1}
+    assert load_ids_from_jsonl(path, id_key="other") == {3}
+
+
+def test_load_jsonl_as_map_skips_non_integer_id(tmp_path: Path) -> None:
+    """Lines whose id_key value is not an int are skipped for the map."""
+    path = tmp_path / "map.jsonl"
+    path.write_text(
+        '{"id": 1, "name": "a"}\n{"id": "x", "name": "b"}\n{"id": 2, "name": "c"}\n',
+        encoding="utf-8",
+    )
+    result = load_jsonl_as_map(path)
+    assert result == {1: {"id": 1, "name": "a"}, 2: {"id": 2, "name": "c"}}

@@ -122,3 +122,81 @@ def test_parse_review_references() -> None:
     review = parse_review(1, html)
     assert review is not None
     assert review.references == ["Tweedy", "Wilco"]
+
+
+def test_parse_review_references_deduplicate_case_insensitive() -> None:
+    """Reference list deduplicates by lowercased name; first occurrence is kept."""
+    html = """
+    <div id="rezension">
+      <div class="headerbox"><h1>A - B</h1><p>X</p></div>
+      <div id="rezitext"><p>Text.</p></div>
+      <div id="reziref">
+        <p><a href="#">Tweedy</a>; <a href="#">tweedy</a>; <a href="#">TWEEdy</a>;</p>
+      </div>
+    </div>
+    """
+    review = parse_review(1, html)
+    assert review is not None
+    assert review.references == ["Tweedy"]
+
+
+def test_parse_review_labels_multiple_separators() -> None:
+    """Labels are split on slash, comma, and semicolon."""
+    html = """
+    <div id="rezension">
+      <div class="headerbox">
+        <h1>Artist - Album</h1>
+        <p>Sony / Sub Label, Partner; Other</p>
+      </div>
+      <div id="rezitext"><p>Body.</p></div>
+    </div>
+    """
+    review = parse_review(1, html)
+    assert review is not None
+    assert set(review.labels) >= {"Sony", "Sub Label", "Partner", "Other"}
+
+
+def test_parse_review_rating_comma_decimal() -> None:
+    """Rating values with comma as decimal separator (e.g. 7,5/10) are parsed."""
+    html = """
+    <div id="rezension">
+      <div class="headerbox">
+        <h1>A - B</h1>
+        <p>Label</p>
+        <p class="bewertung b7">Unsere Bewertung: <strong>7,5/10</strong></p>
+      </div>
+      <div id="rezitext"><p>Body.</p></div>
+    </div>
+    """
+    review = parse_review(1, html)
+    assert review is not None
+    assert review.rating == 7.5
+
+
+def test_parse_review_release_year_only() -> None:
+    """Release info with only a 4-digit year (no full date) sets release_year."""
+    html = """
+    <div id="rezension">
+      <div class="headerbox">
+        <h1>A - B</h1>
+        <p>Label<br>2024</p>
+      </div>
+      <div id="rezitext"><p>Body.</p></div>
+    </div>
+    """
+    review = parse_review(1, html)
+    assert review is not None
+    assert review.release_year == 2024
+    assert review.release_date is None
+
+
+def test_parse_review_returns_none_when_no_headerbox_has_h1() -> None:
+    """parse_review returns None when #rezension has no headerbox containing an h1."""
+    html = """
+    <div id="rezension">
+      <div class="headerbox"><h2>No h1 here</h2><p>X</p></div>
+      <div id="rezitext"><p>Body text.</p></div>
+    </div>
+    """
+    result = parse_review(1, html)
+    assert result is None

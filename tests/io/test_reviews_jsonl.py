@@ -86,6 +86,20 @@ def test_review_to_raw_roundtrip() -> None:
     assert out["rating"] == 7.0
 
 
+def test_load_reviews_from_jsonl_skips_reviews_with_empty_text(tmp_path: Path) -> None:
+    """Reviews whose text is empty or only whitespace are skipped when loading."""
+    path = tmp_path / "reviews.jsonl"
+    path.write_text(
+        '{"id": 1, "url": "u1", "artist": "A", "album": "B", "text": "Valid text."}\n'
+        '{"id": 2, "url": "u2", "artist": "C", "album": "D", "text": "   "}\n'
+        '{"id": 3, "url": "u3", "artist": "E", "album": "F", "text": ""}\n',
+        encoding="utf-8",
+    )
+    loaded = load_reviews_from_jsonl(path)
+    assert len(loaded) == 1
+    assert loaded[0].id == 1 and loaded[0].text == "Valid text."
+
+
 def test_load_and_save_reviews_roundtrip(tmp_path: Path) -> None:
     """Saving reviews to JSONL and loading back yields equivalent reviews (by id and main fields)."""
     path = tmp_path / "reviews.jsonl"
