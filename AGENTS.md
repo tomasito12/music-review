@@ -6,23 +6,32 @@
 
 Music Review is a Python 3.12+ CLI-based data pipeline that scrapes album reviews from plattentests.de, enriches them with MusicBrainz metadata, and indexes reviews into a ChromaDB vector store using OpenAI embeddings. There is no web framework or Docker setup — everything runs as local CLI commands.
 
-### Running the application
+### Tooling
 
-- **Scraper**: `python3 -m music_review.scraper.cli -v run --start-id 1 --end-id 10`
-- **Metadata fetch**: `python3 -m music_review.metadata.fetch_metadata` (requires scraped data in `data/`)
-- **Artist genres**: `python3 -m music_review.metadata.artist_genres` (requires metadata)
-- **Vector store / RAG**: `python3 -m music_review.retrieval.vector_store` (requires `OPENAI_API_KEY`)
+- **Build/env manager**: [Hatch](https://hatch.pypa.io/) with `hatchling` build backend
+- **Package installer**: [uv](https://docs.astral.sh/uv/) (configured via `hatch config set installer uv`)
+- **Linting**: ruff + mypy, orchestrated through hatch environments
+- **Testing**: pytest + pytest-cov, orchestrated through hatch environments
+- **Pre-commit**: ruff and mypy hooks via `.pre-commit-config.yaml`
 
-### Lint and test
+### Key commands
 
-- **Lint**: `ruff check .` — project has 15 pre-existing lint warnings (import sorting, line length, unused import). These are not introduced by agents.
-- **Test**: `python3 -m pytest` — no test files exist in the project currently; pytest exits with code 5 (no tests collected).
+| Task | Command |
+|------|---------|
+| Show all lint + type errors | `hatch run lint:all` |
+| Auto-fix ruff errors + reformat | `hatch run lint:fix` |
+| Run tests | `hatch run test:run` |
+| Run tests with coverage | `hatch run test:cov` |
+| Run individual tools | `hatch run lint:check`, `hatch run lint:format`, `hatch run lint:typing` |
+| Run scraper | `hatch run python -m music_review.scraper.cli -v run --start-id 1 --end-id 10` |
+| Install pre-commit hooks | `hatch run pre-commit install` |
 
 ### Gotchas
 
-- `musicbrainz_client.py` uses `requests` (via `requests.get`) but `requests` is **not** listed in `pyproject.toml` dependencies. It is available as a transitive dependency (via `kubernetes` pulled by `chromadb`). If ChromaDB is ever removed, `requests` must be added explicitly.
-- The ruff config in `pyproject.toml` uses a deprecated top-level `select` key; ruff emits a deprecation warning suggesting `lint.select` instead.
-- The vector store module (`retrieval/vector_store.py`) requires the `OPENAI_API_KEY` environment variable to be set for embedding generation. Without it, only the scraping and metadata enrichment stages can run.
+- `musicbrainz_client.py` uses `requests` (via `requests.get`). This is now explicitly listed in `pyproject.toml` dependencies.
+- The vector store module (`retrieval/vector_store.py`) requires the `OPENAI_API_KEY` environment variable. Without it, only scraping and metadata enrichment stages can run.
 - MusicBrainz API is rate-limited to ~1 req/s; the client handles this internally.
 - The scraper rate-limits to ~2.5 req/s against plattentests.de by default.
 - Scraped data is stored in `data/reviews.jsonl` (gitignored). The `data/` directory is auto-created on first scrape.
+- `hatch run lint:all` runs ruff check, ruff format --check, and mypy in sequence — all three run even if earlier ones fail, and the exit code reflects any failure.
+- Pre-existing mypy errors exist in `parser.py` (BeautifulSoup typing) and `vector_store.py` (ChromaDB type signatures). These are not regressions.
