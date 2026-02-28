@@ -8,6 +8,7 @@ from dataclasses import asdict, dataclass
 from pathlib import Path
 
 import music_review.config  # noqa: F401 - load .env early
+from music_review.config import resolve_data_path
 from music_review.io.jsonl import (
     iter_jsonl_objects,
     load_ids_from_jsonl,
@@ -486,8 +487,8 @@ def main() -> None:
     args = parser.parse_args()
 
     build_metadata(
-        input_path=args.input,
-        output_path=args.output,
+        input_path=resolve_data_path(args.input),
+        output_path=resolve_data_path(args.output),
         overwrite=args.overwrite,
         update=args.update,
     )

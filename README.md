@@ -72,12 +72,28 @@ hatch run python -m music_review.pipeline.retrieval.vector_store
 
 ## Updating data
 
-Refresh each data file with the most current data:
+### One command (full update)
+
+Update reviews, metadata, and artist_genres in sequence. All data paths are resolved relative to the project root (or `MUSIC_REVIEW_PROJECT_ROOT` if set), so the command works regardless of your current directory.
+
+```bash
+# Auto-detect end: scraper stops after 3 consecutive missing IDs (no max-id needed)
+hatch run update-db
+
+# Or specify a maximum review ID to stop at
+hatch run update-db -- --max-id MAX_ID
+```
+
+Options: `--verbose`, `--metadata-update` (refresh existing metadata), `--skip-reviews` (only metadata + artist_genres).
+
+### Step by step
+
+Refresh each data file individually:
 
 ```bash
 # 1. Update reviews.jsonl – scrape new reviews (append to existing)
-#    Replace MAX_ID with the current highest review ID on plattentests.de
-hatch run python -m music_review.pipeline.scraper.cli -v resume --max-id MAX_ID
+#    Omit --max-id to auto-stop after 3 consecutive missing IDs
+hatch run python -m music_review.pipeline.scraper.cli -v resume
 
 # 2. Update metadata.jsonl – fetch MusicBrainz metadata for (new) reviews
 #    Appends new entries by default. Add --update to refresh existing; --overwrite to start fresh.

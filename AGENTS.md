@@ -6,6 +6,7 @@
 
 - Always include type hints.
 - Provide readable, understandable, concise, non-technical (if possible) docstrings.
+- **Testing**: Use one test module per source module (e.g. `config.py` → `tests/test_config.py`; `io/jsonl.py` → `tests/io/test_jsonl.py`; `pipeline/scraper/client.py` → `tests/pipeline/scraper/test_client.py`). Prefer tests that are readable and serve as documentation; use mocks only when necessary (e.g. network or external APIs).
 
 ### Project overview
 
@@ -29,13 +30,14 @@ Music Review is a Python 3.12+ CLI-based data pipeline that scrapes album review
 | Run tests with coverage | `hatch run test:cov` |
 | Run individual tools | `hatch run lint:check`, `hatch run lint:format`, `hatch run lint:typing` |
 | Run scraper | `hatch run python -m music_review.pipeline.scraper.cli -v run --start-id 1 --end-id 10` |
+| Update full DB | `hatch run update-db` (or `-- --max-id MAX_ID` to set an upper bound) |
 | Install pre-commit hooks | `hatch run pre-commit install` |
 
 ### Gotchas
 
 - `musicbrainz_client.py` uses `requests` (via `requests.get`). This is now explicitly listed in `pyproject.toml` dependencies.
 - `data/moods.py` contains mood constants but is currently unused by the pipeline.
-- Set `MUSIC_REVIEW_PROJECT_ROOT` to override the project root (used by vector store paths). Defaults to current working directory.
+- Set `MUSIC_REVIEW_PROJECT_ROOT` to override the project root. Data paths like `data/reviews.jsonl` are resolved against this (or cwd) so commands work regardless of where you run them from.
 - The vector store module (`pipeline/retrieval/vector_store.py`) requires the `OPENAI_API_KEY` environment variable. Without it, only scraping and metadata enrichment stages can run.
 - MusicBrainz API is rate-limited to ~1 req/s; the client handles this internally.
 - The scraper rate-limits to ~2.5 req/s against plattentests.de by default.

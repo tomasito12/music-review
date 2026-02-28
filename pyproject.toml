@@ -56,6 +56,9 @@ packages = ["src/music_review"]
 installer = "uv"
 features = ["dev"]
 
+[tool.hatch.envs.default.scripts]
+update-db = "python scripts/update_database.py {args:}"
+
 # --- Lint environment -------------------------------------------------------
 
 [tool.hatch.envs.lint]

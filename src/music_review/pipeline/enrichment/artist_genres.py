@@ -8,6 +8,7 @@ from collections.abc import Iterable
 from dataclasses import asdict, dataclass
 from pathlib import Path
 
+from music_review.config import resolve_data_path
 from music_review.io.jsonl import iter_jsonl_objects
 
 logger = logging.getLogger(__name__)
@@ -339,20 +340,23 @@ def main(argv: list[str] | None = None) -> None:
 
     args = parse_args(argv)
 
+    metadata_path = resolve_data_path(args.metadata)
     profiles = build_artist_genre_profiles(
-        metadata_path=args.metadata,
+        metadata_path=metadata_path,
         min_artist_albums=args.min_artist_albums,
         min_genre_share=args.min_genre_share,
         top_k_main_genres=args.top_k_main_genres,
     )
 
     if args.artist_profiles_output is not None:
-        save_artist_genre_profiles(profiles, args.artist_profiles_output)
+        save_artist_genre_profiles(
+            profiles, resolve_data_path(args.artist_profiles_output)
+        )
 
     if args.imputed_metadata_output is not None:
         impute_missing_review_genres(
-            metadata_path=args.metadata,
-            output_path=args.imputed_metadata_output,
+            metadata_path=metadata_path,
+            output_path=resolve_data_path(args.imputed_metadata_output),
             min_artist_albums=args.min_artist_albums,
             min_genre_share=args.min_genre_share,
             top_k_main_genres=args.top_k_main_genres,
