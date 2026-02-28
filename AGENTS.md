@@ -28,7 +28,7 @@ Music Review is a Python 3.12+ CLI-based data pipeline that scrapes album review
 | Run tests | `hatch run test:run` |
 | Run tests with coverage | `hatch run test:cov` |
 | Run individual tools | `hatch run lint:check`, `hatch run lint:format`, `hatch run lint:typing` |
-| Run scraper | `hatch run python -m music_review.scraper.cli -v run --start-id 1 --end-id 10` |
+| Run scraper | `hatch run python -m music_review.pipeline.scraper.cli -v run --start-id 1 --end-id 10` |
 | Install pre-commit hooks | `hatch run pre-commit install` |
 
 ### Gotchas
@@ -36,7 +36,7 @@ Music Review is a Python 3.12+ CLI-based data pipeline that scrapes album review
 - `musicbrainz_client.py` uses `requests` (via `requests.get`). This is now explicitly listed in `pyproject.toml` dependencies.
 - `data/moods.py` contains mood constants but is currently unused by the pipeline.
 - Set `MUSIC_REVIEW_PROJECT_ROOT` to override the project root (used by vector store paths). Defaults to current working directory.
-- The vector store module (`retrieval/vector_store.py`) requires the `OPENAI_API_KEY` environment variable. Without it, only scraping and metadata enrichment stages can run.
+- The vector store module (`pipeline/retrieval/vector_store.py`) requires the `OPENAI_API_KEY` environment variable. Without it, only scraping and metadata enrichment stages can run.
 - MusicBrainz API is rate-limited to ~1 req/s; the client handles this internally.
 - The scraper rate-limits to ~2.5 req/s against plattentests.de by default.
 - Scraped data is stored in `data/reviews.jsonl` (gitignored). The `data/` directory is auto-created on first scrape.

@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from music_review.scraper.models import Review, Track
+from music_review.pipeline.scraper.models import Review, Track
 
 
 def test_track_creation() -> None:
