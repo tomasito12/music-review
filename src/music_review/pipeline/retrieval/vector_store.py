@@ -1,40 +1,34 @@
-# music_review/retrieval/vector_store.py
+# music_review/pipeline/retrieval/vector_store.py
 
 from __future__ import annotations
 
 import os
 from pathlib import Path
-from typing import Any, Dict, List
+from typing import Any
 
 import chromadb
 from chromadb.api.models import Collection
 from chromadb.utils import embedding_functions
-from dotenv import load_dotenv
 
+import music_review.config  # noqa: F401 - load .env early
+from music_review.config import get_project_root
+from music_review.domain.models import Review
 from music_review.io.reviews_jsonl import load_reviews_from_jsonl
-from music_review.scraper.models import Review
 
-# Path to this file
-_THIS_FILE = Path(__file__).resolve()
-
-# Go up to the project root
-PROJECT_ROOT = _THIS_FILE.parents[3]
-
+PROJECT_ROOT = get_project_root()
 DEFAULT_DATA_PATH = PROJECT_ROOT / "data" / "reviews.jsonl"
 DEFAULT_CHROMA_PATH = PROJECT_ROOT / "chroma_db"
 COLLECTION_NAME = "music_reviews"
 EMBEDDING_MODEL = "text-embedding-3-small"
 
-load_dotenv(override=True)
 
-
-def review_to_metadata(review: Review) -> Dict[str, Any]:
+def review_to_metadata(review: Review) -> dict[str, Any]:
     """Convert a Review into a flat metadata dict for Chroma.
 
     Only includes fields with non-None scalar values, because the current
     Chroma backend does not accept None as a metadata value.
     """
-    meta: Dict[str, Any] = {}
+    meta: dict[str, Any] = {}
 
     if review.url:
         meta["url"] = review.url
@@ -186,15 +180,15 @@ def search_reviews(
         query_text: str,
         *,
         n_results: int = 5,
-        where: Dict[str, Any] | None = None,
-) -> List[Dict[str, Any]]:
+        where: dict[str, Any] | None = None,
+) -> list[dict[str, Any]]:
     """Search similar reviews for a free-text query.
 
     Optional `where` allows metadata filtering (e.g. {"release_year": {"$gte": 2010}}).
     """
     collection = get_chroma_collection()
 
-    query_kwargs: Dict[str, Any] = {
+    query_kwargs: dict[str, Any] = {
         "query_texts": [query_text],
         "n_results": n_results,
     }
@@ -203,7 +197,7 @@ def search_reviews(
 
     result = collection.query(**query_kwargs)
 
-    hits: List[Dict[str, Any]] = []
+    hits: list[dict[str, Any]] = []
 
     ids = result.get("ids", [[]])[0]
     documents = result.get("documents", [[]])[0]

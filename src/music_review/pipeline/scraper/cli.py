@@ -1,26 +1,26 @@
-# src/music_review/scraper/cli.py
+# music_review/pipeline/scraper/cli.py
 
 from __future__ import annotations
 
 import argparse
 import logging
 import sys
+from collections.abc import Iterable
 from enum import Enum
 from pathlib import Path
-from typing import Iterable
 
-from music_review.scraper.client import (
+from music_review.io.reviews_jsonl import review_to_raw
+from music_review.pipeline.scraper.client import (
     RateLimiter,
     ScraperClient,
     iter_review_html,
 )
-from music_review.scraper.parser import parse_review
-from music_review.scraper.storage import (
+from music_review.pipeline.scraper.parser import parse_review
+from music_review.pipeline.scraper.storage import (
     append_review,
     load_corpus,
     load_existing_ids,
     write_corpus,
-    review_to_dict,
 )
 
 logger = logging.getLogger(__name__)
@@ -235,7 +235,7 @@ def _cmd_run(
                 append_review(output_path, review)
             else:
                 assert corpus is not None
-                corpus[review.id] = review_to_dict(review)
+                corpus[review.id] = review_to_raw(review)
 
             scraped_ids.append(review.id)
             processed += 1
@@ -325,6 +325,5 @@ def _cmd_resume(
 
 
 if __name__ == "__main__":
-    # python -m music_review.scraper.cli -v --existing add run --start-id 1 --end-id 100
-    # python -m music_review.scraper.cli -v --existing update run --start-id 1 --end-id 100
+    # python -m music_review.pipeline.scraper.cli -v run --start-id 1 --end-id 100
     main()

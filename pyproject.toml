@@ -1,12 +1,21 @@
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+# ---------------------------------------------------------------------------
+# Project metadata
+# ---------------------------------------------------------------------------
+
 [project]
 name = "music-review"
 version = "0.1.0"
 description = "Music review scraper and RAG data pipeline."
 readme = "README.md"
 requires-python = ">=3.12"
+license = "MIT"
 
 authors = [
-  { name = "Thomas Plischke" }
+  { name = "Thomas Plischke" },
 ]
 
 dependencies = [
@@ -16,23 +25,110 @@ dependencies = [
   "chromadb",
   "openai",
   "python-dotenv",
-  "musicbrainzngs"
+  "musicbrainzngs",
+  "requests",
 ]
 
 [project.optional-dependencies]
 dev = [
   "ruff>=0.6",
+  "mypy>=1.11",
   "pytest>=8.0",
+  "pytest-cov>=5.0",
+  "pre-commit>=3.8",
+  "types-requests",
+  "types-beautifulsoup4",
+  "lxml-stubs",
 ]
 
-[build-system]
-requires = ["setuptools>=68.0"]
-build-backend = "setuptools.build_meta"
+# ---------------------------------------------------------------------------
+# Hatch build configuration
+# ---------------------------------------------------------------------------
 
-[tool.setuptools]
-package-dir = { "" = "src" }
+[tool.hatch.build.targets.wheel]
+packages = ["src/music_review"]
+
+# ---------------------------------------------------------------------------
+# Hatch environments
+# ---------------------------------------------------------------------------
+
+[tool.hatch.envs.default]
+installer = "uv"
+features = ["dev"]
+
+# --- Lint environment -------------------------------------------------------
+
+[tool.hatch.envs.lint]
+installer = "uv"
+features = ["dev"]
+
+[tool.hatch.envs.lint.scripts]
+check = "ruff check {args:.}"
+format = "ruff format --check {args:.}"
+typing = "mypy {args:src/music_review}"
+all = "rc=0; ruff check {args:.} || rc=$?; ruff format --check {args:.} || rc=$?; mypy {args:src/music_review} || rc=$?; exit $rc"
+fix = [
+  "ruff check --fix {args:.}",
+  "ruff format {args:.}",
+]
+
+# --- Test environment -------------------------------------------------------
+
+[tool.hatch.envs.test]
+installer = "uv"
+features = ["dev"]
+
+[tool.hatch.envs.test.scripts]
+run = "pytest {args:tests}"
+cov = "pytest --cov=music_review --cov-report=term-missing {args:tests}"
+
+# ---------------------------------------------------------------------------
+# Ruff configuration
+# ---------------------------------------------------------------------------
 
 [tool.ruff]
 line-length = 88
 target-version = "py312"
-select = ["E", "F", "I", "B"]
+src = ["src"]
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "B", "UP", "SIM", "RUF"]
+
+[tool.ruff.lint.isort]
+known-first-party = ["music_review"]
+
+# ---------------------------------------------------------------------------
+# Mypy configuration
+# ---------------------------------------------------------------------------
+
+[tool.mypy]
+python_version = "3.12"
+mypy_path = "src"
+packages = ["music_review"]
+explicit_package_bases = true
+strict = false
+warn_return_any = true
+warn_unused_configs = true
+disallow_untyped_defs = false
+check_untyped_defs = true
+ignore_missing_imports = true
+
+# ---------------------------------------------------------------------------
+# Pytest configuration
+# ---------------------------------------------------------------------------
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+addopts = "-v"
+
+# ---------------------------------------------------------------------------
+# Coverage configuration
+# ---------------------------------------------------------------------------
+
+[tool.coverage.run]
+source_pkgs = ["music_review"]
+branch = true
+
+[tool.coverage.report]
+show_missing = true
+skip_empty = true

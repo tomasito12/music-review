@@ -3,11 +3,10 @@ from __future__ import annotations
 import logging
 import re
 from datetime import date
-from typing import Tuple, List
 
 from bs4 import BeautifulSoup, Tag
 
-from music_review.scraper.models import Review, Track
+from music_review.pipeline.scraper.models import Review, Track
 
 logger = logging.getLogger(__name__)
 
@@ -81,7 +80,7 @@ def parse_review(review_id: int, html: str) -> Review | None:
 
 def _parse_header(
         container: Tag,
-) -> Tuple[str | None, str | None, List[str], date | None, int | None, float | None, float | None]:
+) -> tuple[str | None, str | None, list[str], date | None, int | None, float | None, float | None]:
     """Parse the header box with artist/album, label, release and ratings."""
     header_box = _find_header_box(container)
 
@@ -103,7 +102,7 @@ def _find_header_box(container: Tag) -> Tag | None:
     return None
 
 
-def _parse_artist_album(header_box: Tag) -> Tuple[str | None, str | None]:
+def _parse_artist_album(header_box: Tag) -> tuple[str | None, str | None]:
     """Parse artist and album from the <h1> 'Artist - Album'."""
     heading = header_box.find("h1")
     if not heading:
@@ -157,7 +156,7 @@ def _parse_references(container: Tag) -> list[str]:
 
 def _parse_label_and_release(
         header_box: Tag,
-) -> Tuple[List[str], date | None, int | None]:
+) -> tuple[list[str], date | None, int | None]:
     """Parse label(s) and release date/year from the first non-rating <p>."""
     info_p: Tag | None = None
 
@@ -241,7 +240,7 @@ def _parse_ratings(header_box: Tag) -> tuple[float | None, float | None]:
 
 def _parse_text_block(
         container: Tag,
-) -> Tuple[str | None, str | None, str | None]:
+) -> tuple[str | None, str | None, str | None]:
     """Parse review title (h2), author and main body text from #rezitext."""
     text_div = container.find("div", id="rezitext")
     if text_div is None:
@@ -279,7 +278,7 @@ def _parse_text_block(
 
 def _parse_track_and_highlights(
         container: Tag,
-) -> Tuple[List[Track], List[str], str | None]:
+) -> tuple[list[Track], list[str], str | None]:
     """Parse tracklist, highlight tracks and total duration."""
     tracks: list[Track] = []
     highlights: list[str] = []
@@ -329,20 +328,19 @@ def _parse_track_and_highlights(
         else:
             ol = tracklist_div.find("ol")
             if ol:
-                if ol:
-                    for li_track in ol.find_all("li"):
-                        text = li_track.get_text(" ", strip=True)
-                        if not text:
-                            continue
-                        tracks.append(
-                            Track(
-                                number=track_no,
-                                title=text,
-                                duration=None,
-                                is_highlight=False,
-                            ),
-                        )
-                        track_no += 1
+                for li_track in ol.find_all("li"):
+                    text = li_track.get_text(" ", strip=True)
+                    if not text:
+                        continue
+                    tracks.append(
+                        Track(
+                            number=track_no,
+                            title=text,
+                            duration=None,
+                            is_highlight=False,
+                        ),
+                    )
+                    track_no += 1
 
     # Mark highlights in tracks by title match (case-insensitive)
     if tracks and highlights:
@@ -359,7 +357,7 @@ def _parse_track_and_highlights(
 # ---------------------------------------------------------------------------
 
 
-def _split_labels(raw: str) -> List[str]:
+def _split_labels(raw: str) -> list[str]:
     """Split a label string like 'Sony / Sub Label' into a list."""
     parts = re.split(r"[\/,;]", raw)
     return [p.strip() for p in parts if p.strip()]
@@ -367,7 +365,7 @@ def _split_labels(raw: str) -> List[str]:
 
 def _extract_date_and_year_from_text(
         text: str,
-) -> Tuple[date | None, int | None]:
+) -> tuple[date | None, int | None]:
     """Extract a date and/or year from a text like 'VÖ: 26.09.2025'."""
     text = text.strip()
 

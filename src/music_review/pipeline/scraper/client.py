@@ -1,11 +1,11 @@
-# src/music_review/scraper/client.py
+# music_review/pipeline/scraper/client.py
 
 from __future__ import annotations
 
 import logging
 import random
 import time
-from typing import Iterable, Iterator
+from collections.abc import Iterable, Iterator
 
 import httpx
 
@@ -84,7 +84,7 @@ class ScraperClient:
         """Close the underlying HTTP client."""
         self._client.close()
 
-    def __enter__(self) -> "ScraperClient":
+    def __enter__(self) -> ScraperClient:
         return self
 
     def __exit__(self, exc_type, exc, tb) -> None:  # type: ignore[override]
