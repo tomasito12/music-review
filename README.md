@@ -68,7 +68,20 @@ hatch run python -m music_review.pipeline.enrichment.artist_genres \
 
 # Build the vector store (requires OPENAI_API_KEY)
 hatch run python -m music_review.pipeline.retrieval.vector_store
+
+# Start the Streamlit dashboard (browse reviews and metadata)
+hatch run dashboard
 ```
+
+## Dashboard
+
+A Streamlit dashboard lets you browse reviews and metadata by artist and album:
+
+```bash
+hatch run dashboard
+```
+
+Then open the URL shown in the terminal (default: http://localhost:8501). Select an **artist**, then an **album**, to view the full review text plus metadata (rating, labels, release, tracklist, highlights, references) and MusicBrainz data (genres, artist MBID, etc.) when available. Data paths are resolved from the project root, so run from any directory.
 
 ## Updating data
 

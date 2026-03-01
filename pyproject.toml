@@ -27,6 +27,7 @@ dependencies = [
   "python-dotenv",
   "musicbrainzngs",
   "requests",
+  "streamlit>=1.40",
 ]
 
 [project.optional-dependencies]
@@ -58,6 +59,7 @@ features = ["dev"]
 
 [tool.hatch.envs.default.scripts]
 update-db = "python scripts/update_database.py {args:}"
+dashboard = "streamlit run streamlit_app.py {args:}"
 
 # --- Lint environment -------------------------------------------------------
 
