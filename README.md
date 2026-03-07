@@ -19,26 +19,35 @@ The pipeline builds three data files in sequence; each step uses the output of t
 
 ### Genre imputation (metadata_imputed.jsonl)
 
-Many reviews in `metadata.jsonl` have empty genres because MusicBrainz has no tags for that album. **metadata_imputed.jsonl** is a copy of `metadata.jsonl` where those missing genres are filled in from artist profiles.
+Many reviews in `metadata.jsonl` have empty genres because MusicBrainz has no tags for that album. **metadata_imputed.jsonl** is produced in two steps:
 
-**How it works:**
+**Step 1 – Same-artist imputation** (artist_genres):
 
-1. The tool builds an artist profile from all *other* albums by that artist in `metadata.jsonl` (e.g. “Artist X has 5 albums with genres indie_rock, post_rock; those are this artist’s main genres”).
-2. For each metadata entry with empty genres, it looks up the artist profile and uses that artist’s main genres.
-3. Imputed entries get a flag `genres_inferred_from_artist: true` so you can see which genres came from MusicBrainz vs which were inferred.
+1. Build an artist profile from all *other* albums by that artist in `metadata.jsonl`.
+2. For each metadata entry with empty genres, use that artist’s main genres from their profile.
+3. Imputed entries get `genres_inferred_from_artist: true`.
 
-**What it does *not* use:** plattentests.de references, similar artists, or any cross-artist logic. It only reuses genres from other albums by the *same* artist.
+**Step 2 – Reference imputation** (reference_imputation):
 
-**How to create it:**
+4. For entries that *still* have empty genres, use the review’s “Referenzen” (reference artists) from plattentests.de.
+5. Take the first N references (default 3) that match an artist in `artist_genres.json` and have genres; aggregate their genre counts and apply the same main-genre rule.
+6. Imputed entries get `genres_inferred_from_references: true` and `reference_artists_used: ["…", "…"]`.
+
+**How to create it:** The full pipeline (including both imputation steps) is run by `hatch run update-db`. To run only imputation:
 
 ```bash
 hatch run python -m music_review.pipeline.enrichment.artist_genres \
   --metadata data/metadata.jsonl \
   --artist-profiles-output data/artist_genres.json \
   --imputed-metadata-output data/metadata_imputed.jsonl
+
+hatch run python -m music_review.pipeline.enrichment.reference_imputation \
+  --imputed-metadata data/metadata_imputed.jsonl \
+  --reviews data/reviews.jsonl \
+  --artist-genres data/artist_genres.json
 ```
 
-You can omit `--artist-profiles-output` if you only want the imputed metadata.
+Reference imputation overwrites `metadata_imputed.jsonl` with the result (or use `--output` to write elsewhere).
 
 ## Quick start
 
@@ -112,11 +121,14 @@ hatch run python -m music_review.pipeline.scraper.cli -v resume
 #    Appends new entries by default. Add --update to refresh existing; --overwrite to start fresh.
 hatch run python -m music_review.pipeline.enrichment.fetch_metadata
 
-# 3. Update artist_genres.json – build artist genre profiles from metadata
+# 3. Update artist_genres.json and metadata_imputed.jsonl (same-artist + reference imputation)
 hatch run python -m music_review.pipeline.enrichment.artist_genres \
   --metadata data/metadata.jsonl \
   --artist-profiles-output data/artist_genres.json \
   --imputed-metadata-output data/metadata_imputed.jsonl
+hatch run python -m music_review.pipeline.enrichment.reference_imputation \
+  --imputed-metadata data/metadata_imputed.jsonl --reviews data/reviews.jsonl \
+  --artist-genres data/artist_genres.json
 ```
 
 ## Pre-commit hooks

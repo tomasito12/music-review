@@ -11,7 +11,7 @@ name = "music-review"
 version = "0.1.0"
 description = "Music review scraper and RAG data pipeline."
 readme = "README.md"
-requires-python = ">=3.12"
+requires-python = ">=3.12,<3.14"
 license = "MIT"
 
 authors = [
@@ -60,6 +60,7 @@ features = ["dev"]
 [tool.hatch.envs.default.scripts]
 update-db = "python scripts/update_database.py {args:}"
 dashboard = "streamlit run streamlit_app.py {args:}"
+batch-embed = "python -m music_review.pipeline.retrieval.cli {args:}"
 
 # --- Lint environment -------------------------------------------------------
 

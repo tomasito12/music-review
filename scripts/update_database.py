@@ -114,6 +114,19 @@ def main() -> int:
     ):
         return 1
 
+    if not run_module(
+        "music_review.pipeline.enrichment.reference_imputation",
+        [
+            "--imputed-metadata",
+            args.metadata_imputed,
+            "--reviews",
+            args.reviews,
+            "--artist-genres",
+            args.artist_genres,
+        ],
+    ):
+        return 1
+
     logger.info("Database update complete.")
     return 0
 

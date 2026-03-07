@@ -4,6 +4,8 @@
 from __future__ import annotations
 
 import random
+from collections import Counter
+from typing import Any
 
 import streamlit as st
 
@@ -16,7 +18,10 @@ from music_review.io.reviews_jsonl import load_reviews_from_jsonl
 def load_data() -> tuple[list, dict[int, dict]]:
     """Load reviews and metadata; return (reviews_list, metadata_by_review_id)."""
     reviews_path = resolve_data_path("data/reviews.jsonl")
-    metadata_path = resolve_data_path("data/metadata.jsonl")
+    # Prefer imputed metadata (includes same-artist and reference imputation)
+    imputed_path = resolve_data_path("data/metadata_imputed.jsonl")
+    fallback_path = resolve_data_path("data/metadata.jsonl")
+    metadata_path = imputed_path if imputed_path.exists() else fallback_path
 
     if not reviews_path.exists():
         return [], {}
@@ -32,24 +37,53 @@ def load_data() -> tuple[list, dict[int, dict]]:
     return reviews, metadata_map
 
 
-def main() -> None:
-    st.set_page_config(
-        page_title="Music Review Dashboard",
-        page_icon="🎵",
-        layout="wide",
-    )
-    st.title("🎵 Music Review Dashboard")
-    st.caption("Browse plattentests.de reviews and MusicBrainz metadata.")
+def build_records(
+    reviews: list,
+    metadata_map: dict[int, dict],
+) -> list[dict[str, Any]]:
+    """Flatten reviews and metadata into simple records for summaries."""
+    records: list[dict[str, Any]] = []
+    for r in reviews:
+        meta = metadata_map.get(r.id, {})
+        if not isinstance(meta, dict):
+            meta = {}
+        genres = meta.get("genres") or []
+        if not isinstance(genres, list):
+            genres = []
 
-    reviews, metadata_map = load_data()
-    if not reviews:
-        st.warning(
-            "No reviews found. Run the pipeline first: "
-            "`hatch run update-db` or scrape into `data/reviews.jsonl`."
+        year: int | None = None
+        if r.release_year is not None:
+            year = r.release_year
+        elif r.release_date is not None:
+            year = r.release_date.year
+
+        records.append(
+            {
+                "id": r.id,
+                "artist": r.artist,
+                "album": r.album,
+                "author": r.author,
+                "rating": r.rating,
+                "user_rating": r.user_rating,
+                "year": year,
+                "genres": genres,
+                "genres_inferred_from_artist": bool(
+                    meta.get("genres_inferred_from_artist"),
+                ),
+                "genres_inferred_from_references": bool(
+                    meta.get("genres_inferred_from_references"),
+                ),
+            },
         )
-        return
+    return records
 
-    # Persist selection across reruns so "Select a random review" can set it
+
+def render_browse_page(
+    reviews: list,
+    metadata_map: dict[int, dict],
+) -> None:
+    """Main browse page: artist/album selection and full review."""
+    # Persist selection across reruns so "Random" can set it
     if "selected_artist" not in st.session_state:
         st.session_state["selected_artist"] = reviews[0].artist
     if "selected_album" not in st.session_state:
@@ -135,7 +169,7 @@ def main() -> None:
             st.caption("—")
 
     # Rest of metadata in one line
-    other_parts = []
+    other_parts: list[str] = []
     if review.author:
         other_parts.append(f"Author: {review.author}")
     if review.labels:
@@ -170,6 +204,11 @@ def main() -> None:
             with st.expander("MusicBrainz metadata", expanded=False):
                 if meta.get("genres"):
                     st.markdown("**Genres:** " + ", ".join(meta["genres"]))
+                    if meta.get("genres_inferred_from_references"):
+                        refs = meta.get("reference_artists_used", [])
+                        st.caption(f"From references: {', '.join(refs)}")
+                    elif meta.get("genres_inferred_from_artist"):
+                        st.caption("From same-artist profile")
                 if meta.get("mbid"):
                     st.caption(f"Release MBID: {meta['mbid']}")
                 if meta.get("artist_mbid"):
@@ -180,6 +219,242 @@ def main() -> None:
                     st.caption(f"Artist type: {meta['artist_type']}")
                 if meta.get("raw_tags"):
                     st.caption("Raw tags: " + ", ".join(meta["raw_tags"]))
+
+
+def render_genres_page(records: list[dict[str, Any]]) -> None:
+    """Overview by genre: filters + per-genre counts and album table."""
+    all_genres: set[str] = set()
+    years: list[int] = []
+    ratings: list[float] = []
+    for rec in records:
+        for g in rec["genres"]:
+            all_genres.add(str(g))
+        if rec["year"] is not None:
+            years.append(rec["year"])
+        if rec["rating"] is not None:
+            ratings.append(rec["rating"])
+
+    st.subheader("Genres overview")
+    selected_genres = st.multiselect(
+        "Filter by genre",
+        options=sorted(all_genres),
+    )
+
+    year_range: tuple[int, int] | None = None
+    if years:
+        min_year, max_year = min(years), max(years)
+        year_range = st.slider(
+            "Filter by release year",
+            min_value=min_year,
+            max_value=max_year,
+            value=(min_year, max_year),
+        )
+
+    min_rating: float | None = None
+    if ratings:
+        min_rating = st.slider(
+            "Minimum rating",
+            min_value=float(int(min(ratings))),
+            max_value=float(int(max(ratings))),
+            value=float(int(min(ratings))),
+        )
+
+    def _matches_filters(rec: dict[str, Any]) -> bool:
+        if selected_genres:
+            if not any(g in selected_genres for g in rec["genres"]):
+                return False
+        if year_range and rec["year"] is not None:
+            if not (year_range[0] <= rec["year"] <= year_range[1]):
+                return False
+        if min_rating is not None and rec["rating"] is not None:
+            if rec["rating"] < min_rating:
+                return False
+        return True
+
+    filtered = [rec for rec in records if _matches_filters(rec)]
+
+    genre_counts: Counter[str] = Counter()
+    for rec in filtered:
+        for g in rec["genres"]:
+            genre_counts[str(g)] += 1
+
+    genre_rows = [
+        {"genre": genre, "albums": count}
+        for genre, count in genre_counts.most_common()
+    ]
+    st.markdown("**Genre counts (filtered)**")
+    st.dataframe(genre_rows, use_container_width=True)
+
+    album_rows: list[dict[str, Any]] = []
+    for rec in filtered:
+        album_rows.append(
+            {
+                "artist": rec["artist"],
+                "album": rec["album"],
+                "year": rec["year"],
+                "rating": rec["rating"],
+                "genres": ", ".join(str(g) for g in rec["genres"]),
+            },
+        )
+    st.markdown("**Albums (filtered)**")
+    st.dataframe(album_rows, use_container_width=True)
+
+
+def render_artists_page(records: list[dict[str, Any]]) -> None:
+    """Overview by artist: album counts, ratings, and main genres."""
+    st.subheader("Artists overview")
+
+    by_artist: dict[str, list[dict[str, Any]]] = {}
+    for rec in records:
+        by_artist.setdefault(rec["artist"], []).append(rec)
+
+    min_albums = st.slider(
+        "Minimum albums per artist",
+        min_value=1,
+        max_value=max(len(v) for v in by_artist.values()),
+        value=1,
+    )
+
+    rows: list[dict[str, Any]] = []
+    for artist, recs in by_artist.items():
+        if len(recs) < min_albums:
+            continue
+        years = [r["year"] for r in recs if r["year"] is not None]
+        ratings = [r["rating"] for r in recs if r["rating"] is not None]
+        genre_counter: Counter[str] = Counter()
+        for r in recs:
+            for g in r["genres"]:
+                genre_counter[str(g)] += 1
+        main_genres = [g for g, _ in genre_counter.most_common(3)]
+        rows.append(
+            {
+                "artist": artist,
+                "albums": len(recs),
+                "first_year": min(years) if years else None,
+                "last_year": max(years) if years else None,
+                "avg_rating": sum(ratings) / len(ratings) if ratings else None,
+                "main_genres": ", ".join(main_genres),
+            },
+        )
+
+    rows.sort(key=lambda r: (-(r["albums"] or 0), r["artist"].lower()))
+    st.dataframe(rows, use_container_width=True)
+
+
+def render_authors_page(records: list[dict[str, Any]]) -> None:
+    """Overview by author: review counts, ratings, and favorite genres."""
+    st.subheader("Authors overview")
+
+    by_author: dict[str, list[dict[str, Any]]] = {}
+    for rec in records:
+        author = rec.get("author")
+        if not author:
+            continue
+        by_author.setdefault(str(author), []).append(rec)
+
+    if not by_author:
+        st.info("No authors found in the data.")
+        return
+
+    min_reviews = st.slider(
+        "Minimum reviews per author",
+        min_value=1,
+        max_value=max(len(v) for v in by_author.values()),
+        value=1,
+    )
+
+    rows: list[dict[str, Any]] = []
+    for author, recs in by_author.items():
+        if len(recs) < min_reviews:
+            continue
+        years = [r["year"] for r in recs if r["year"] is not None]
+        ratings = [r["rating"] for r in recs if r["rating"] is not None]
+        genre_counter: Counter[str] = Counter()
+        for r in recs:
+            for g in r["genres"]:
+                genre_counter[str(g)] += 1
+        main_genres = [g for g, _ in genre_counter.most_common(3)]
+        rows.append(
+            {
+                "author": author,
+                "reviews": len(recs),
+                "first_year": min(years) if years else None,
+                "last_year": max(years) if years else None,
+                "avg_rating": sum(ratings) / len(ratings) if ratings else None,
+                "favorite_genres": ", ".join(main_genres),
+            },
+        )
+
+    rows.sort(key=lambda r: (-(r["reviews"] or 0), r["author"].lower()))
+    st.dataframe(rows, use_container_width=True)
+
+
+def render_years_page(records: list[dict[str, Any]]) -> None:
+    """Overview by year: review counts, average rating, and top genres."""
+    st.subheader("Years overview")
+
+    by_year: dict[int, list[dict[str, Any]]] = {}
+    for rec in records:
+        year = rec["year"]
+        if year is None:
+            continue
+        by_year.setdefault(year, []).append(rec)
+
+    rows: list[dict[str, Any]] = []
+    for year, recs in sorted(by_year.items()):
+        ratings = [r["rating"] for r in recs if r["rating"] is not None]
+        genre_counter: Counter[str] = Counter()
+        for r in recs:
+            for g in r["genres"]:
+                genre_counter[str(g)] += 1
+        top_genres = [g for g, _ in genre_counter.most_common(3)]
+        rows.append(
+            {
+                "year": year,
+                "albums": len(recs),
+                "avg_rating": sum(ratings) / len(ratings) if ratings else None,
+                "top_genres": ", ".join(top_genres),
+            },
+        )
+
+    st.dataframe(rows, use_container_width=True)
+
+
+def main() -> None:
+    st.set_page_config(
+        page_title="Music Review Dashboard",
+        page_icon="🎵",
+        layout="wide",
+    )
+    st.title("🎵 Music Review Dashboard")
+    st.caption("Browse plattentests.de reviews and MusicBrainz metadata.")
+
+    reviews, metadata_map = load_data()
+    if not reviews:
+        st.warning(
+            "No reviews found. Run the pipeline first: "
+            "`hatch run update-db` or scrape into `data/reviews.jsonl`.",
+        )
+        return
+
+    records = build_records(reviews, metadata_map)
+
+    page = st.sidebar.radio(
+        "View",
+        options=["Browse", "Genres", "Artists", "Authors", "Years"],
+        index=0,
+    )
+
+    if page == "Browse":
+        render_browse_page(reviews, metadata_map)
+    elif page == "Genres":
+        render_genres_page(records)
+    elif page == "Artists":
+        render_artists_page(records)
+    elif page == "Authors":
+        render_authors_page(records)
+    elif page == "Years":
+        render_years_page(records)
 
 
 if __name__ == "__main__":
