@@ -4,12 +4,14 @@ import argparse
 import json
 import logging
 from collections import Counter
+from collections.abc import Iterable
 from dataclasses import asdict, dataclass
 from pathlib import Path
-from typing import Iterable
 
-LOGGER = logging.getLogger(__name__)
+from music_review.config import resolve_data_path
+from music_review.io.jsonl import iter_jsonl_objects
 
+logger = logging.getLogger(__name__)
 
 # ---------------------------------------------------------------------------
 # Data structures
@@ -34,24 +36,7 @@ class ArtistGenreProfile:
 
 def iter_metadata(metadata_path: Path) -> Iterable[dict]:
     """Iterate over metadata_1.jsonl entries as dicts."""
-    with metadata_path.open("r", encoding="utf-8") as f:
-        for line_number, line in enumerate(f, start=1):
-            line = line.strip()
-            if not line:
-                continue
-
-            try:
-                obj = json.loads(line)
-            except json.JSONDecodeError as exc:
-                LOGGER.warning(
-                    "Skipping invalid JSON line %d in %s: %s",
-                    line_number,
-                    metadata_path,
-                    exc,
-                )
-                continue
-
-            yield obj
+    yield from iter_jsonl_objects(metadata_path)
 
 
 # ---------------------------------------------------------------------------
@@ -86,7 +71,7 @@ def build_artist_genre_profiles(
         Mapping artist_key -> ArtistGenreProfile.
         The artist_key is artist_mbid if present, otherwise "name:<artist_name>".
     """
-    # artist_key -> {"name": str, "mbid": str|None, "albums": set[int], "genre_counts": Counter}
+    # artist_key -> {"name", "mbid", "albums", "genre_counts"}
     grouped: dict[str, dict] = {}
 
     for obj in iter_metadata(metadata_path):
@@ -160,7 +145,7 @@ def build_artist_genre_profiles(
         )
         profiles[artist_key] = profile
 
-    LOGGER.info(
+    logger.info(
         "Built %d artist genre profiles from %s",
         len(profiles),
         metadata_path,
@@ -182,7 +167,7 @@ def save_artist_genre_profiles(
     with output_path.open("w", encoding="utf-8") as f:
         json.dump(serializable, f, ensure_ascii=False, indent=2)
 
-    LOGGER.info("Saved %d artist profiles to %s", len(profiles), output_path)
+    logger.info("Saved %d artist profiles to %s", len(profiles), output_path)
 
 
 # ---------------------------------------------------------------------------
@@ -252,7 +237,7 @@ def impute_missing_review_genres(
             try:
                 obj = json.loads(line)
             except json.JSONDecodeError as exc:
-                LOGGER.warning(
+                logger.warning(
                     "Skipping invalid JSON line %d in %s during imputation: %s",
                     line_number,
                     metadata_path,
@@ -282,7 +267,7 @@ def impute_missing_review_genres(
             json_line = json.dumps(obj, ensure_ascii=False)
             fout.write(json_line + "\n")
 
-    LOGGER.info(
+    logger.info(
         "Imputation done. Total entries=%d, genres imputed=%d",
         total_entries,
         imputed_count,
@@ -355,20 +340,23 @@ def main(argv: list[str] | None = None) -> None:
 
     args = parse_args(argv)
 
+    metadata_path = resolve_data_path(args.metadata)
     profiles = build_artist_genre_profiles(
-        metadata_path=args.metadata,
+        metadata_path=metadata_path,
         min_artist_albums=args.min_artist_albums,
         min_genre_share=args.min_genre_share,
         top_k_main_genres=args.top_k_main_genres,
     )
 
     if args.artist_profiles_output is not None:
-        save_artist_genre_profiles(profiles, args.artist_profiles_output)
+        save_artist_genre_profiles(
+            profiles, resolve_data_path(args.artist_profiles_output)
+        )
 
     if args.imputed_metadata_output is not None:
         impute_missing_review_genres(
-            metadata_path=args.metadata,
-            output_path=args.imputed_metadata_output,
+            metadata_path=metadata_path,
+            output_path=resolve_data_path(args.imputed_metadata_output),
             min_artist_albums=args.min_artist_albums,
             min_genre_share=args.min_genre_share,
             top_k_main_genres=args.top_k_main_genres,

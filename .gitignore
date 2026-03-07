@@ -4,6 +4,8 @@ __pycache__/
 *.pyo
 *.pyd
 *.sqlite3
+*.egg-info/
+dist/
 
 # Virtual environments
 .env
@@ -26,3 +28,11 @@ tmp/
 logs/
 *.csv
 *.json
+
+# ChromaDB
+chroma_db/
+
+# Coverage
+htmlcov/
+.coverage
+.coverage.*

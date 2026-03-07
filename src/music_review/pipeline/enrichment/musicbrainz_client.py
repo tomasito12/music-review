@@ -9,22 +9,20 @@ You *must* set a sensible USER_AGENT_* configuration before using this module.
 
 from __future__ import annotations
 
-from dataclasses import dataclass
-from os import getenv
-from typing import Any, Iterable
-
 import logging
 import time
 import warnings
+from collections.abc import Iterable
+from dataclasses import dataclass
+from os import getenv
+from typing import Any
 
 import requests
 from urllib3.exceptions import InsecureRequestWarning
 
-from dotenv import load_dotenv
+import music_review.config  # noqa: F401 - load .env early
 
-load_dotenv(override=True)
-
-LOGGER = logging.getLogger(__name__)
+logger = logging.getLogger(__name__)
 
 BASE_URL = "https://musicbrainz.org/ws/2"
 
@@ -45,7 +43,7 @@ MB_VERIFY_TLS = getenv("MB_VERIFY_TLS", "true").lower() == "true"
 if not MB_VERIFY_TLS:
     # Suppress only this specific warning when we *intentionally* skip verification
     warnings.filterwarnings("ignore", category=InsecureRequestWarning)
-    LOGGER.warning(
+    logger.warning(
         "MusicBrainz TLS verification is DISABLED (MB_VERIFY_TLS=false). "
         "Do not use this setting in production."
     )
@@ -78,7 +76,7 @@ def fetch_artist_info(name: str) -> ArtistInfo | None:
     best = _select_best_artist(candidates)
 
     if best is None:
-        LOGGER.info("No MusicBrainz artist found for name=%s", name)
+        logger.info("No MusicBrainz artist found for name=%s", name)
         return None
 
     mbid = best["id"]
@@ -95,7 +93,7 @@ def fetch_artist_info(name: str) -> ArtistInfo | None:
         tags = _extract_tag_names(detailed)
         members = _extract_band_members(detailed)
 
-    LOGGER.debug(
+    logger.debug(
         "Fetched artist info for %s (mbid=%s, country=%s, type=%s, tags=%d, members=%d)",
         artist_name,
         mbid,
@@ -127,7 +125,7 @@ def _search_artists(name: str, limit: int = 5) -> list[dict[str, Any]]:
     try:
         data = _get("/artist", params)
     except Exception as exc:  # requests.RequestException o.ä. je nach _get-Implementierung
-        LOGGER.warning("MusicBrainz artist search failed for %s: %s", name, exc)
+        logger.warning("MusicBrainz artist search failed for %s: %s", name, exc)
         return []
 
     return list(data.get("artists", []))
@@ -230,7 +228,7 @@ def search_release_groups(
     try:
         data = _get("/release-group", params)
     except requests.RequestException as exc:
-        LOGGER.warning(
+        logger.warning(
             "MusicBrainz search failed for %s - %s: %s",
             artist,
             album,
@@ -252,7 +250,7 @@ def _lookup_release_group_with_tags(mbid: str) -> dict[str, Any] | None:
     try:
         data = _get(f"/release-group/{mbid}", params)
     except requests.RequestException as exc:
-        LOGGER.warning("MusicBrainz lookup failed for mbid=%s: %s", mbid, exc)
+        logger.warning("MusicBrainz lookup failed for mbid=%s: %s", mbid, exc)
         return None
 
     return data
@@ -286,7 +284,7 @@ def _lookup_artist_with_tags(mbid: str) -> dict[str, Any] | None:
     try:
         data = _get(f"/artist/{mbid}", params)
     except Exception as exc:  # requests.RequestException etc.
-        LOGGER.warning("MusicBrainz artist lookup failed for mbid=%s: %s", mbid, exc)
+        logger.warning("MusicBrainz artist lookup failed for mbid=%s: %s", mbid, exc)
         return None
 
     return data
@@ -319,7 +317,7 @@ def fetch_album_tags(artist: str, album: str) -> ExternalGenreInfo | None:
     release_groups = search_release_groups(artist=artist, album=album, limit=5)
     best = _select_best_release_group(release_groups)
     if best is None:
-        LOGGER.info("No release-group found for %s - %s", artist, album)
+        logger.info("No release-group found for %s - %s", artist, album)
         return None
 
     mbid = best["id"]
@@ -327,12 +325,12 @@ def fetch_album_tags(artist: str, album: str) -> ExternalGenreInfo | None:
 
     detailed = _lookup_release_group_with_tags(mbid)
     if detailed is None:
-        LOGGER.info("No detailed release-group found for mbid=%s", mbid)
+        logger.info("No detailed release-group found for mbid=%s", mbid)
         return None
 
     tags = _extract_tag_names(detailed)
 
-    LOGGER.debug(
+    logger.debug(
         "Fetched %d tags for %s - %s (mbid=%s)",
         len(tags),
         artist,
@@ -349,7 +347,8 @@ def fetch_album_tags(artist: str, album: str) -> ExternalGenreInfo | None:
 
 
 # ---------------------------------------------------------------------------
-# Optional: map raw MusicBrainz tags to your internal genre taxonomy
+# Optional: simple dict-based tag→genre mapping (legacy/alternative).
+# The main metadata pipeline uses genre_regex.py + map_tags_to_genres_regex.
 # ---------------------------------------------------------------------------
 
 RAW_TAG_TO_GENRE: dict[str, str] = {

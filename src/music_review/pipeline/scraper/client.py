@@ -1,11 +1,11 @@
-# src/music_review/scraper/client.py
+# music_review/pipeline/scraper/client.py
 
 from __future__ import annotations
 
 import logging
 import random
 import time
-from typing import Iterable, Iterator
+from collections.abc import Iterable, Iterator
 
 import httpx
 
@@ -84,7 +84,7 @@ class ScraperClient:
         """Close the underlying HTTP client."""
         self._client.close()
 
-    def __enter__(self) -> "ScraperClient":
+    def __enter__(self) -> ScraperClient:
         return self
 
     def __exit__(self, exc_type, exc, tb) -> None:  # type: ignore[override]
@@ -117,12 +117,20 @@ class ScraperClient:
                     return None
 
                 response.raise_for_status()
+                text = response.text
+                # Non-existent IDs return 200 with "Error: Array is empty" on the site.
+                if text and "array is empty" in text.lower():
+                    logger.info(
+                        "Review %s not found (page shows 'Array is empty').",
+                        review_id,
+                    )
+                    return None
                 logger.debug(
                     "Fetched review %s (status=%s).",
                     review_id,
                     response.status_code,
                 )
-                return response.text
+                return text
             except httpx.HTTPStatusError as exc:
                 status = exc.response.status_code
                 # Retry only on 5xx errors.

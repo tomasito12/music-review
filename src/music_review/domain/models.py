@@ -1,15 +1,17 @@
-# src/music_review/scraper/models.py
+# music_review/domain/models.py
 
-#from __future__ import annotations
+"""Core domain models for music reviews and album metadata."""
+
+from __future__ import annotations
 
 from dataclasses import dataclass, field
 from datetime import date
-from typing import Any, List
+from typing import Any
 
 
 @dataclass(slots=True)
 class Track:
-    """Represents a single track on an album."""
+    """A single track on an album."""
 
     number: int | None
     title: str
@@ -19,35 +21,23 @@ class Track:
 
 @dataclass(slots=True)
 class Review:
-    """Represents a single plattentests.de review."""
+    """A single album review from plattentests.de."""
 
-    # Required core fields
     id: int
     url: str
     artist: str
     album: str
     text: str
-
-    # Optional meta
     title: str | None = None
     author: str | None = None
-
-    # Release info
     labels: list[str] = field(default_factory=list)
     release_date: date | None = None
     release_year: int | None = None
-
-    # Ratings
-    rating: float | None = None          # "Unsere Bewertung"
-    user_rating: float | None = None     # "Eure Durchschnitts-Bewertung"
-
-    # Content details
+    rating: float | None = None
+    user_rating: float | None = None
     tracklist: list[Track] = field(default_factory=list)
     highlights: list[str] = field(default_factory=list)
-    total_duration: str | None = None    # e.g. "42:17"
-
+    total_duration: str | None = None
     references: list[str] = field(default_factory=list)
-
-    # Internal / scraping-related metadata (optional, but useful)
     raw_html: str | None = None
     extra: dict[str, Any] = field(default_factory=dict)
