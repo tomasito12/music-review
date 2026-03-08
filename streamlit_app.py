@@ -3,6 +3,7 @@
 
 from __future__ import annotations
 
+import html
 import random
 from collections import Counter
 from typing import Any
@@ -13,6 +14,7 @@ import music_review.config  # noqa: F401 - load .env and set up paths
 from music_review.config import resolve_data_path
 from music_review.io.jsonl import load_jsonl_as_map
 from music_review.io.reviews_jsonl import load_reviews_from_jsonl
+from music_review.pipeline.retrieval.vector_store import search_reviews
 
 
 def load_data() -> tuple[list, dict[int, dict]]:
@@ -420,6 +422,207 @@ def render_years_page(records: list[dict[str, Any]]) -> None:
     st.dataframe(rows, use_container_width=True)
 
 
+def _recommendations_css() -> None:
+    st.markdown(
+        """
+        <style>
+        .rec-page-title { font-size: 1.5rem; font-weight: 600; letter-spacing: -0.02em; margin-bottom: 0.25rem; }
+        .rec-page-desc { color: #6b7280; font-size: 0.9rem; margin-bottom: 1.5rem; }
+        .rec-card {
+            background: #fafafa;
+            border: 1px solid #e5e7eb;
+            border-radius: 8px;
+            padding: 1rem 1.25rem;
+            margin-bottom: 1rem;
+        }
+        .rec-card:hover { border-color: #d1d5db; }
+        .rec-header { margin-bottom: 0.35rem; }
+        .rec-title { font-size: 1.05rem; font-weight: 600; text-decoration: none; color: #111827; }
+        .rec-title:hover { text-decoration: underline; color: #1d4ed8; }
+        .rec-meta { font-size: 0.8rem; color: #6b7280; margin-bottom: 0.5rem; }
+        .rec-excerpt { font-size: 0.85rem; line-height: 1.5; color: #4b5563; }
+        .rec-rank { font-variant-numeric: tabular-nums; color: #9ca3af; font-size: 0.85rem; margin-right: 0.75rem; }
+        </style>
+        """,
+        unsafe_allow_html=True,
+    )
+
+
+def render_recommendations_page(metadata_map: dict[int, dict]) -> None:
+    """Semantic search over reviews using the Chroma index; show recommendations."""
+    _recommendations_css()
+
+    st.markdown('<p class="rec-page-title">Recommendations</p>', unsafe_allow_html=True)
+    st.markdown(
+        '<p class="rec-page-desc">Describe what you\'re in the mood for. '
+        'Results are similar reviews from the index.</p>',
+        unsafe_allow_html=True,
+    )
+
+    col_query, col_filters = st.columns([2, 1])
+    with col_query:
+        query = st.text_area(
+            "Search",
+            placeholder="e.g. Grunge mit Melodien, ruhiger Jazz, laute Gitarren",
+            label_visibility="collapsed",
+            height=220,
+        )
+    with col_filters:
+        n_results = st.slider(
+            "Number of results",
+            min_value=3,
+            max_value=20,
+            value=8,
+        )
+        year_range = st.slider(
+            "Release year",
+            min_value=1990,
+            max_value=2030,
+            value=(1990, 2030),
+            step=1,
+        )
+        rating_range = st.slider(
+            "Rating (0–10)",
+            min_value=0,
+            max_value=10,
+            value=(0, 10),
+            step=1,
+        )
+        all_genres: set[str] = set()
+        for meta in metadata_map.values():
+            if isinstance(meta, dict):
+                for g in meta.get("genres") or []:
+                    if isinstance(g, str) and g.strip():
+                        all_genres.add(g.strip())
+        selected_genres = st.multiselect(
+            "Genres (OR)",
+            options=sorted(all_genres),
+            default=[],
+            help="Select one or more genres. Results match any selected genre.",
+        )
+
+    min_year, max_year = year_range[0], year_range[1]
+    min_rating, max_rating = int(rating_range[0]), int(rating_range[1])
+
+    conditions: list[dict[str, Any]] = []
+    if min_year > 1990:
+        conditions.append({"release_year": {"$gte": int(min_year)}})
+    if max_year < 2030:
+        conditions.append({"release_year": {"$lte": int(max_year)}})
+    if min_rating > 0:
+        conditions.append({"rating": {"$gte": min_rating}})
+    if max_rating < 10:
+        conditions.append({"rating": {"$lte": max_rating}})
+    # Genre filter is applied in Python from metadata_map (works without Chroma genre metadata)
+    if len(conditions) == 1:
+        where = conditions[0]
+    elif len(conditions) > 1:
+        where = {"$and": conditions}
+    else:
+        where = None
+
+    if not query or not query.strip():
+        st.info("Enter a description above to get recommendations.")
+        return
+
+    # When filtering by genre we fetch more candidates, then filter in Python
+    fetch_n = n_results * 5 if selected_genres else n_results
+    try:
+        hits = search_reviews(
+            query.strip(),
+            n_results=fetch_n,
+            where=where,
+        )
+    except RuntimeError as e:
+        if "OPENAI_API_KEY" in str(e):
+            st.error(
+                "OpenAI API key not set. Set OPENAI_API_KEY in your environment or .env."
+            )
+        else:
+            st.error(f"Cannot search: {e}")
+        return
+    except Exception as e:
+        st.error(f"Search failed: {e}")
+        return
+
+    if selected_genres:
+        genre_set = set(selected_genres)
+        filtered = []
+        for h in hits:
+            review_id = h.get("id")
+            if not review_id:
+                continue
+            try:
+                rid = int(review_id)
+            except (ValueError, TypeError):
+                continue
+            doc_genres = metadata_map.get(rid, {}).get("genres") or []
+            if not isinstance(doc_genres, list):
+                doc_genres = []
+            if genre_set.intersection(set(str(g) for g in doc_genres)):
+                filtered.append(h)
+            if len(filtered) >= n_results:
+                break
+        hits = filtered[:n_results]
+
+    if not hits:
+        st.warning("No results found. Ensure the Chroma index is built (hatch run batch-embed run).")
+        return
+
+    cards: list[str] = []
+    for i, hit in enumerate(hits, start=1):
+        url = hit.get("url") or ""
+        title = hit.get("title") or ""
+        artist = hit.get("artist") or ""
+        album = hit.get("album") or ""
+        rating = hit.get("rating")
+        year = hit.get("release_year")
+        text = (hit.get("text") or "")[:400]
+        if len((hit.get("text") or "")) > 400:
+            text += "\u2026"
+
+        meta_parts: list[str] = []
+        if rating is not None:
+            meta_parts.append(f"{rating:.1f}/10")
+        if year is not None:
+            meta_parts.append(str(year))
+
+        rank = f"{i:02d}"
+        artist_esc = html.escape(artist)
+        album_esc = html.escape(album)
+        title_esc = html.escape(title) if title else ""
+        if url:
+            link_attrs = f'href="{html.escape(url)}" target="_blank" rel="noopener"'
+            header_inner = f'<a {link_attrs} class="rec-title">{artist_esc} \u2014 {album_esc}</a>'
+        else:
+            header_inner = f'<span class="rec-title">{artist_esc} \u2014 {album_esc}</span>'
+        if title_esc:
+            header_inner += f' <span style="color:#6b7280;font-weight:400;">\u00b7 {title_esc}</span>'
+
+        meta_html = html.escape(" \u00b7 ".join(meta_parts)) if meta_parts else ""
+        excerpt_html = html.escape(text).replace("\n", "<br>") if text else ""
+
+        card = (
+            f'<div class="rec-card">'
+            f'<div class="rec-header"><span class="rec-rank">{rank}</span>{header_inner}</div>'
+        )
+        if meta_html:
+            card += f'<div class="rec-meta">{meta_html}</div>'
+        if excerpt_html:
+            card += f'<div class="rec-excerpt">{excerpt_html}</div>'
+        card += "</div>"
+        cards.append(card)
+
+    num_cols = 3
+    for row_start in range(0, len(cards), num_cols):
+        row_cards = cards[row_start : row_start + num_cols]
+        cols = st.columns(num_cols)
+        for c, col in enumerate(cols):
+            with col:
+                if c < len(row_cards):
+                    st.markdown(row_cards[c], unsafe_allow_html=True)
+
+
 def main() -> None:
     st.set_page_config(
         page_title="Music Review Dashboard",
@@ -441,11 +644,13 @@ def main() -> None:
 
     page = st.sidebar.radio(
         "View",
-        options=["Browse", "Genres", "Artists", "Authors", "Years"],
-        index=0,
+        options=["Recommendations", "Browse", "Genres", "Artists", "Authors", "Years"],
+        index=1,
     )
 
-    if page == "Browse":
+    if page == "Recommendations":
+        render_recommendations_page(metadata_map)
+    elif page == "Browse":
         render_browse_page(reviews, metadata_map)
     elif page == "Genres":
         render_genres_page(records)

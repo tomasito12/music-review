@@ -404,7 +404,7 @@ def _parse_batch_output_lines(path: Path) -> list[tuple[str, list[float]]]:
                 continue
             if not isinstance(row, dict):
                 continue
-            if "error" in row:
+            if row.get("error") is not None:
                 continue
             custom_id = row.get("custom_id")
             response = row.get("response", {})
@@ -460,9 +460,13 @@ def import_batch_results_into_chroma(
         if review is None:
             continue
         meta = metadata_map.get(review.id, {})
+        rmeta = review_to_metadata(review)
+        genres = meta.get("genres")
+        if isinstance(genres, list) and genres:
+            rmeta["genres"] = genres
         ids.append(custom_id)
         embeddings.append(embedding)
-        metadatas.append(review_to_metadata(review))
+        metadatas.append(rmeta)
         documents.append(build_enriched_document(review, meta))
 
     if not ids:
@@ -541,7 +545,13 @@ def build_index(
             continue
 
         ids = [str(r.id) for r in batch]
-        metadatas = [review_to_metadata(r) for r in batch]
+        metadatas = []
+        for r in batch:
+            m = review_to_metadata(r)
+            genres = metadata_map.get(r.id, {}).get("genres")
+            if isinstance(genres, list) and genres:
+                m["genres"] = genres
+            metadatas.append(m)
         # Enriched document = metadata prefix + review body (for embedding).
         documents = [
             build_enriched_document(r, metadata_map.get(r.id, {})) for r in batch
@@ -608,6 +618,7 @@ def search_reviews(
                 "highlights": meta.get("highlights"),
                 "references": meta.get("references"),
                 "total_duration": meta.get("total_duration"),
+                "genres": meta.get("genres") or [],
             }
         )
 

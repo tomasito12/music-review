@@ -1,0 +1,3 @@
+# Force light theme (disable dark mode as default)
+[theme]
+base = "light"
