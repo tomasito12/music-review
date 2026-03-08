@@ -23,6 +23,7 @@ dependencies = [
   "beautifulsoup4>=4.12",
   "lxml>=5.2",
   "chromadb",
+  "networkx>=3.2",
   "openai",
   "python-dotenv",
   "musicbrainzngs",
@@ -61,6 +62,7 @@ features = ["dev"]
 update-db = "python scripts/update_database.py {args:}"
 dashboard = "streamlit run streamlit_app.py {args:}"
 batch-embed = "python -m music_review.pipeline.retrieval.cli {args:}"
+graph-build = "python -m music_review.pipeline.retrieval.reference_graph {args:}"
 
 # --- Lint environment -------------------------------------------------------
 

@@ -32,6 +32,7 @@ Music Review is a Python 3.12+ CLI-based data pipeline that scrapes album review
 | Run scraper | `hatch run python -m music_review.pipeline.scraper.cli -v run --start-id 1 --end-id 10` |
 | Update full DB | `hatch run update-db` (or `-- --max-id MAX_ID` to set an upper bound) |
 | Batch embeddings (OpenAI Batch API → Chroma) | `hatch run batch-embed prepare` then `batch-embed submit <batch_id>` etc., or `hatch run batch-embed run` for full pipeline |
+| Artist reference graph | `hatch run graph-build` (builds from `data/reviews.jsonl`, writes `data/artist_reference_graph.graphml`) |
 | Streamlit dashboard | `hatch run dashboard` (browse reviews by artist/album) |
 | Install pre-commit hooks | `hatch run pre-commit install` |
 
