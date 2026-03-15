@@ -6,6 +6,7 @@
 
 - Always include type hints.
 - Provide readable, understandable, concise, non-technical (if possible) docstrings.
+- **Logging**: Write adequate logs so that progress can be evaluated when running pipelines or CLI tools. Use appropriate levels: **INFO** for normal progress (start, steps, completion), **WARN** for recoverable issues (e.g. fallbacks, retries), **DEBUG** for detailed diagnostics. In CLI tools, support a verbose/DEBUG option (e.g. `-v` / `--verbose`) where useful.
 - **Testing**: Use one test module per source module (e.g. `config.py` → `tests/test_config.py`; `io/jsonl.py` → `tests/io/test_jsonl.py`; `pipeline/scraper/client.py` → `tests/pipeline/scraper/test_client.py`). Prefer tests that are readable and serve as documentation; use mocks only when necessary (e.g. network or external APIs).
 
 ### Project overview

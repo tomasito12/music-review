@@ -4,16 +4,25 @@
 from __future__ import annotations
 
 import html
+import json
 import random
 from collections import Counter
+from pathlib import Path
 from typing import Any
 
 import streamlit as st
+from plotly import graph_objects as go
 
 import music_review.config  # noqa: F401 - load .env and set up paths
 from music_review.config import resolve_data_path
-from music_review.io.jsonl import load_jsonl_as_map
+from music_review.io.jsonl import iter_jsonl_objects, load_jsonl_as_map
 from music_review.io.reviews_jsonl import load_reviews_from_jsonl
+from music_review.pipeline.retrieval.reference_graph import (
+    centroid_distance_between_communities,
+    community_centroid,
+    detect_communities,
+    load_graph,
+)
 from music_review.pipeline.retrieval.vector_store import search_reviews
 
 
@@ -448,6 +457,35 @@ def _recommendations_css() -> None:
     )
 
 
+def _communities_css() -> None:
+    """Lightweight styling for community 'chips'."""
+    st.markdown(
+        """
+        <style>
+        /* Make checkboxes look like rounded chips in the main area */
+        div[data-testid="stHorizontalBlock"] div[data-testid="stCheckbox"] > label {
+            background-color: #f3f4f6;
+            border-radius: 999px;
+            border: 1px solid #e5e7eb;
+            padding: 0.15rem 0.6rem;
+            margin: 0.15rem 0.2rem;
+            display: inline-flex;
+            align-items: center;
+            justify-content: flex-start;
+            font-size: 0.8rem;
+            cursor: pointer;
+            white-space: nowrap;
+        }
+        div[data-testid="stHorizontalBlock"] div[data-testid="stCheckbox"] > label:hover {
+            border-color: #9ca3af;
+            background-color: #eef2ff;
+        }
+        </style>
+        """,
+        unsafe_allow_html=True,
+    )
+
+
 def render_recommendations_page(metadata_map: dict[int, dict]) -> None:
     """Semantic search over reviews using the Chroma index; show recommendations."""
     _recommendations_css()
@@ -623,6 +661,310 @@ def render_recommendations_page(metadata_map: dict[int, dict]) -> None:
                     st.markdown(row_cards[c], unsafe_allow_html=True)
 
 
+def render_communities_page() -> None:
+    """Overview of fixed clusterings and album affinities."""
+
+    _communities_css()
+
+    @st.cache_data(ttl=3600)
+    def _load_clusterings(base_dir: str) -> dict[float, list[dict[str, Any]]]:
+        resolutions = [2.0, 6.0, 10.0]
+        clusterings: dict[float, list[dict[str, Any]]] = {}
+        for res in resolutions:
+            res_name = (
+                str(int(res)) if float(res).is_integer() else str(res).replace(".", "_")
+            )
+            path = Path(base_dir) / f"communities_res_{res_name}.json"
+            if not path.exists():
+                continue
+            try:
+                with path.open("r", encoding="utf-8") as f:
+                    data = json.load(f)
+            except Exception:
+                continue
+            comms = data.get("communities")
+            if isinstance(comms, list):
+                clusterings[float(res)] = [
+                    c for c in comms if isinstance(c, dict) and c.get("id")
+                ]
+        return clusterings
+
+    data_dir = resolve_data_path("data")
+    clusterings = _load_clusterings(str(data_dir))
+
+    if not clusterings:
+        st.warning(
+            "No fixed clusterings found. Run\n\n"
+            "`hatch run graph-build -- --export-communities \"2,6,10\"`\n\n"
+            "to generate communities_res_{2,6,10}.json and community_memberships.jsonl."
+        )
+        return
+
+    st.subheader("Fixed clusterings (resolutions 2, 6, 10)")
+
+    available_res = sorted(clusterings.keys())
+    res_labels = {r: f"Resolution {int(r) if float(r).is_integer() else r}" for r in available_res}
+    selected_res = st.sidebar.selectbox(
+        "Select resolution",
+        options=available_res,
+        format_func=lambda r: res_labels[r],
+        index=available_res.index(2.0) if 2.0 in available_res else 0,
+    )
+
+    communities = clusterings.get(selected_res, [])
+    if not communities:
+        st.info(f"No communities found for resolution {selected_res}.")
+        return
+
+    sizes = [int(c.get("size", 0)) for c in communities]
+    st.markdown(
+        f"**Resolution:** {selected_res} · "
+        f"**Communities:** {len(communities)} · "
+        f"**Avg size:** {sum(sizes) / len(sizes):.1f} · "
+        f"**Min/Max size:** {min(sizes)} / {max(sizes)}"
+    )
+
+    rows: list[dict[str, Any]] = []
+    for c in communities:
+        rows.append(
+            {
+                "ID": c.get("id"),
+                "Size": c.get("size"),
+                "Centroid": c.get("centroid") or "",
+                "Top artists": ", ".join(c.get("top_artists") or []),
+            }
+        )
+
+    st.dataframe(rows, use_container_width=True, hide_index=True)
+
+    # --- Album → community affinities ---
+    @st.cache_data(ttl=3600)
+    def _load_affinities(path: str) -> list[dict[str, Any]]:
+        p = Path(path)
+        if not p.exists():
+            return []
+        records: list[dict[str, Any]] = []
+        for obj in iter_jsonl_objects(p, log_errors=False):
+            if isinstance(obj, dict) and "review_id" in obj and "communities" in obj:
+                records.append(obj)
+        return records
+
+    affinities_path = resolve_data_path("data/album_community_affinities.jsonl")
+    affinities = _load_affinities(str(affinities_path))
+
+    st.subheader("Album → community affinities")
+    if not affinities:
+        st.info(
+            "No album community affinities found. Run\n\n"
+            "`hatch run graph-build -- --export-communities \"2,6,10\" "
+            "--export-album-affinities`\n\n"
+            "to generate data/album_community_affinities.jsonl."
+        )
+        return
+
+    # Build lookup for centroid names per resolution and community ID
+    centroid_labels: dict[str, dict[str, str]] = {}
+    for res, comms in clusterings.items():
+        if float(res).is_integer():
+            res_key = f"res_{int(res)}"
+        else:
+            res_key = f"res_{res}"
+        centroid_labels[res_key] = {
+            str(c.get("id")): str(c.get("centroid") or c.get("id"))
+            for c in comms
+            if c.get("id")
+        }
+
+    def _format_labels_for_res(
+        row: dict[str, Any],
+        res_key: str,
+    ) -> str:
+        comms = row.get("communities", {})
+        if not isinstance(comms, dict):
+            return ""
+        entries = comms.get(res_key)
+        if not isinstance(entries, list):
+            return ""
+        labels = centroid_labels.get(res_key, {})
+        parts: list[str] = []
+        for entry in entries:
+            if not isinstance(entry, dict):
+                continue
+            cid = str(entry.get("id"))
+            score = entry.get("score")
+            if score is None:
+                continue
+            name = labels.get(cid, cid)
+            parts.append(f"{name} ({score:.2f})")
+        return ", ".join(parts)
+
+    res2_key = "res_2"
+    res6_key = "res_6"
+    res10_key = "res_10"
+
+    table_rows: list[dict[str, Any]] = []
+    for obj in affinities:
+        table_rows.append(
+            {
+                "Artist": obj.get("artist", ""),
+                "Album": obj.get("album", ""),
+                "Resolution 2": _format_labels_for_res(obj, res2_key),
+                "Resolution 6": _format_labels_for_res(obj, res6_key),
+                "Resolution 10": _format_labels_for_res(obj, res10_key),
+            }
+        )
+
+    st.dataframe(table_rows, use_container_width=True, hide_index=True)
+
+    # --- Simple recommendations based on liked communities ---
+    st.subheader("Pick communities you like")
+    st.caption(
+        "Choose a resolution and communities that feel like your taste. "
+        "We will rank albums by how strongly they belong to these communities."
+    )
+
+    # Resolutions for which we have both clusterings and affinities
+    available_res_keys = [
+        k for k in [res2_key, res6_key, res10_key] if k in centroid_labels
+    ]
+    if not available_res_keys:
+        return
+
+    res_label_map = {
+        res2_key: "Resolution 2",
+        res6_key: "Resolution 6",
+        res10_key: "Resolution 10",
+    }
+    default_res_key = res2_key if res2_key in available_res_keys else available_res_keys[0]
+    selected_res_key = st.selectbox(
+        "Resolution for preferences",
+        options=available_res_keys,
+        format_func=lambda k: res_label_map.get(k, k),
+    )
+
+    # Build options for clickable "chip" selection from communities
+    # at selected resolution (ID: Centroid (size))
+    inv_res_map: dict[str, float] = {}
+    for res, comms in clusterings.items():
+        key = (
+            f"res_{int(res)}"
+            if float(res).is_integer()
+            else f"res_{res}"
+        )
+        inv_res_map[key] = float(res)
+
+    res_val = inv_res_map.get(selected_res_key)
+    comms_for_res = clusterings.get(res_val, []) if res_val is not None else []
+
+    st.markdown("**Click communities below to mark them as liked.**")
+    num_cols = 4
+    cols = st.columns(num_cols)
+    liked_ids: set[str] = set()
+    for idx, c in enumerate(comms_for_res):
+        cid = str(c.get("id"))
+        name = str(c.get("centroid") or cid)
+        size = int(c.get("size", 0))
+        col = cols[idx % num_cols]
+        key = f"like_{selected_res_key}_{cid}"
+        label = f"{cid}: {name} ({size})"
+        with col:
+            checked = st.checkbox(label, key=key)
+        if checked:
+            liked_ids.add(cid)
+
+    score_threshold = st.slider(
+        "Minimum score (sum of affinities over liked communities)",
+        min_value=0.0,
+        max_value=1.0,
+        value=0.30,
+        step=0.05,
+    )
+
+    if liked_ids:
+        # Compute scores that favour albums connected to many liked communities.
+        # For each album we track:
+        # - k: number of liked communities it touches (score > 0)
+        # - S: sum of affinity scores over liked communities
+        scored: list[tuple[int, float, dict[str, Any]]] = []
+        for obj in affinities:
+            comms = obj.get("communities", {})
+            if not isinstance(comms, dict):
+                continue
+            entries = comms.get(selected_res_key)
+            if not isinstance(entries, list):
+                continue
+            s = 0.0  # sum of scores over liked communities
+            k_hits = 0  # how many liked communities get score > 0
+            for entry in entries:
+                if not isinstance(entry, dict):
+                    continue
+                cid = str(entry.get("id"))
+                if cid in liked_ids:
+                    score_val = entry.get("score")
+                    if isinstance(score_val, (int, float)):
+                        val = float(score_val)
+                        s += val
+                        if val > 0:
+                            k_hits += 1
+            if k_hits > 0 and s >= score_threshold:
+                scored.append((k_hits, s, obj))
+
+        # Sort: first by number of liked communities hit (k), then by total score S
+        scored.sort(key=lambda t: (t[0], t[1]), reverse=True)
+
+        if scored:
+            # Lazy-load reviews to enrich with rating/year
+            @st.cache_data(ttl=3600)
+            def _load_review_index() -> dict[int, Any]:
+                from music_review.io.reviews_jsonl import load_reviews_from_jsonl
+
+                path = resolve_data_path("data/reviews.jsonl")
+                if not path.exists():
+                    return {}
+                index: dict[int, Any] = {}
+                reviews_local = load_reviews_from_jsonl(path)
+                for r in reviews_local:
+                    index[int(r.id)] = r
+                return index
+
+            review_index = _load_review_index()
+
+            st.markdown("**Recommended albums (by community affinity):**")
+            rec_rows: list[dict[str, Any]] = []
+            total_liked = len(liked_ids) if liked_ids else 1
+            for k_hits, score_val, obj in scored:
+                review_id = obj.get("review_id")
+                review = (
+                    review_index.get(int(review_id))
+                    if isinstance(review_id, int)
+                    else None
+                )
+                # Rating and year from review (fallbacks if missing)
+                rating_val: float | None = None
+                year_val: int | None = None
+                if review is not None:
+                    rating_val = review.rating
+                    if review.release_year is not None:
+                        year_val = review.release_year
+                    elif review.release_date is not None:
+                        year_val = review.release_date.year
+
+                genre_hits_pct = 100.0 * k_hits / total_liked
+                rec_rows.append(
+                    {
+                        "Artist": obj.get("artist", ""),
+                        "Album": obj.get("album", ""),
+                        "Score": f"{score_val:.2f}",
+                        "Genre-Hits (%)": f"{genre_hits_pct:.0f}",
+                        "Communities (res 10)": _format_labels_for_res(obj, res10_key),
+                        "Rating": f"{rating_val:.1f}" if isinstance(rating_val, (int, float)) else "",
+                        "Release year": year_val if year_val is not None else "",
+                        "Review": obj.get("url", ""),
+                    }
+                )
+            st.dataframe(rec_rows, use_container_width=True, hide_index=True)
+
+
 def main() -> None:
     st.set_page_config(
         page_title="Music Review Dashboard",
@@ -644,7 +986,15 @@ def main() -> None:
 
     page = st.sidebar.radio(
         "View",
-        options=["Recommendations", "Browse", "Genres", "Artists", "Authors", "Years"],
+        options=[
+            "Recommendations",
+            "Browse",
+            "Communities",
+            "Genres",
+            "Artists",
+            "Authors",
+            "Years",
+        ],
         index=1,
     )
 
@@ -652,6 +1002,8 @@ def main() -> None:
         render_recommendations_page(metadata_map)
     elif page == "Browse":
         render_browse_page(reviews, metadata_map)
+    elif page == "Communities":
+        render_communities_page()
     elif page == "Genres":
         render_genres_page(records)
     elif page == "Artists":

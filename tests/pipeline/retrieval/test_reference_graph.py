@@ -7,8 +7,11 @@ from pathlib import Path
 import pytest
 
 from music_review.domain.models import Review
+from music_review.io.jsonl import write_jsonl
 from music_review.io.reviews_jsonl import save_reviews_to_jsonl
 from music_review.pipeline.retrieval.reference_graph import (
+    attribute_purity_summary,
+    build_artist_attribute_profiles,
     build_artist_graph,
     load_graph,
     position_weight,
@@ -102,3 +105,99 @@ def test_save_and_load_graph_roundtrip(tmp_path: Path) -> None:
     assert H.has_edge("a", "c")
     assert H.edges["a", "c"]["weight"] == pytest.approx(1.0)
     assert H.nodes["a"]["display_name"] == "A"
+
+
+def test_build_artist_attribute_profiles_aggregates_review_and_metadata(
+    tmp_path: Path,
+) -> None:
+    """Artist profiles aggregate authors, labels, year buckets, and metadata genres."""
+    reviews = [
+        Review(
+            id=1,
+            url="u1",
+            artist="A",
+            album="Album1",
+            text="t",
+            author="Alice",
+            release_year=2001,
+            labels=["Matador"],
+        ),
+        Review(
+            id=2,
+            url="u2",
+            artist="A",
+            album="Album2",
+            text="t",
+            author="Alice",
+            release_year=2003,
+            labels=["Domino"],
+        ),
+        Review(
+            id=3,
+            url="u3",
+            artist="B",
+            album="Album3",
+            text="t",
+            author="Bob",
+            release_year=2011,
+            labels=["Warp"],
+        ),
+    ]
+    reviews_path = tmp_path / "reviews.jsonl"
+    save_reviews_to_jsonl(reviews, reviews_path)
+
+    metadata_path = tmp_path / "metadata.jsonl"
+    write_jsonl(
+        metadata_path,
+        [
+            {"review_id": 1, "genres": ["Indie Rock", "Lo-Fi"]},
+            {"review_id": 2, "genres": ["Indie Rock"]},
+            {"review_id": 3, "genres": ["Electronic"]},
+        ],
+    )
+
+    profiles = build_artist_attribute_profiles(
+        reviews_path,
+        metadata_path=metadata_path,
+    )
+    assert profiles["a"]["authors"]["Alice"] == 2
+    assert profiles["a"]["labels"]["Matador"] == 1
+    assert profiles["a"]["labels"]["Domino"] == 1
+    assert profiles["a"]["year_buckets"]["2000-2004"] == 2
+    assert profiles["a"]["genres"]["Indie Rock"] == 2
+    assert profiles["a"]["genres"]["Lo-Fi"] == 1
+    assert profiles["b"]["genres"]["Electronic"] == 1
+
+
+def test_attribute_purity_summary_reports_expected_scores() -> None:
+    """Attribute purity is high when each community has a clear dominant value."""
+    communities = [frozenset({"a", "b"}), frozenset({"c"})]
+    profiles = {
+        "a": {
+            "genres": {"Indie Rock": 2},
+            "authors": {"Alice": 2},
+            "year_buckets": {"2000-2004": 2},
+            "labels": {"Matador": 2},
+        },
+        "b": {
+            "genres": {"Indie Rock": 1, "Post-Punk": 1},
+            "authors": {"Alice": 1},
+            "year_buckets": {"2000-2004": 1},
+            "labels": {"Domino": 1},
+        },
+        "c": {
+            "genres": {"Electronic": 2},
+            "authors": {"Bob": 2},
+            "year_buckets": {"2010-2014": 2},
+            "labels": {"Warp": 2},
+        },
+    }
+
+    summary = attribute_purity_summary(communities, profiles)
+    assert summary["genre_purity"] == pytest.approx(5 / 6)
+    assert summary["author_purity"] == pytest.approx(1.0)
+    assert summary["year_purity"] == pytest.approx(1.0)
+    assert summary["label_purity"] == pytest.approx(4 / 5)
+    assert summary["combined_attribute_purity"] == pytest.approx(
+        ((5 / 6) + 1.0 + 1.0 + (4 / 5)) / 4
+    )
