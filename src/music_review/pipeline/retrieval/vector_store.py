@@ -16,7 +16,7 @@ from openai import OpenAI
 import music_review.config  # noqa: F401 - load .env early
 from music_review.config import get_project_root, resolve_data_path
 from music_review.domain.models import Review
-from music_review.io.jsonl import load_jsonl_as_map, write_jsonl
+from music_review.io.jsonl import iter_jsonl_objects, load_jsonl_as_map, write_jsonl
 from music_review.io.reviews_jsonl import load_reviews_from_jsonl
 
 PROJECT_ROOT = get_project_root()
@@ -26,6 +26,45 @@ DEFAULT_METADATA_FALLBACK_PATH = resolve_data_path("data/metadata.jsonl")
 DEFAULT_CHROMA_PATH = PROJECT_ROOT / "chroma_db"
 COLLECTION_NAME = "music_reviews"
 EMBEDDING_MODEL = "text-embedding-3-small"
+
+
+def _load_top_communities_for_reviews(
+    affinities_path: Path | str | None = None,
+    *,
+    res_key: str = "res_10",
+    top_k: int = 3,
+) -> dict[int, list[tuple[str, float]]]:
+    """Load top-k communities per review for a given resolution key.
+
+    Returns a mapping review_id -> list of (community_id, score), sorted by score
+    descending and truncated to top_k entries. If the affinities file does not
+    exist, returns an empty dict.
+    """
+    if affinities_path is None:
+        affinities_path = resolve_data_path("data/album_community_affinities.jsonl")
+    path = Path(affinities_path)
+    if not path.exists():
+        return {}
+
+    result: dict[int, list[tuple[str, float]]] = {}
+    for obj in iter_jsonl_objects(path, log_errors=False):
+        review_id = obj.get("review_id")
+        comms = (obj.get("communities") or {}).get(res_key)
+        if not isinstance(review_id, int) or not isinstance(comms, list):
+            continue
+        items: list[tuple[str, float]] = []
+        for entry in comms:
+            if not isinstance(entry, dict):
+                continue
+            cid = entry.get("id")
+            score = entry.get("score")
+            if isinstance(cid, str) and isinstance(score, (int, float)):
+                items.append((cid, float(score)))
+        if not items:
+            continue
+        items.sort(key=lambda t: t[1], reverse=True)
+        result[review_id] = items[:top_k]
+    return result
 
 
 def review_to_metadata(review: Review) -> dict[str, Any]:
@@ -450,6 +489,15 @@ def import_batch_results_into_chroma(
     )
     metadata_map = _load_metadata_map(meta_path, DEFAULT_METADATA_FALLBACK_PATH)
 
+    # Optional: top community memberships per review (e.g. from resolution 10).
+    # Stored in metadatas as communities_top_ids / communities_top_scores so that
+    # resolution can be changed later without renaming fields.
+    top_comms_map = _load_top_communities_for_reviews(
+        resolve_data_path("data/album_community_affinities.jsonl"),
+        res_key="res_10",
+        top_k=3,
+    )
+
     ids: list[str] = []
     embeddings: list[list[float]] = []
     metadatas: list[dict[str, Any]] = []
@@ -464,6 +512,10 @@ def import_batch_results_into_chroma(
         genres = meta.get("genres")
         if isinstance(genres, list) and genres:
             rmeta["genres"] = genres
+        top_comms = top_comms_map.get(review.id)
+        if top_comms:
+            rmeta["communities_top_ids"] = [cid for cid, _ in top_comms]
+            rmeta["communities_top_scores"] = [score for _cid, score in top_comms]
         ids.append(custom_id)
         embeddings.append(embedding)
         metadatas.append(rmeta)
@@ -527,6 +579,15 @@ def build_index(
     fallback_path = DEFAULT_METADATA_FALLBACK_PATH
     metadata_map = _load_metadata_map(meta_path, fallback_path)
 
+    # Optional: top community memberships per review (e.g. from resolution 10).
+    # Stored in metadatas as communities_top_ids / communities_top_scores so that
+    # resolution can be changed later without renaming fields.
+    top_comms_map = _load_top_communities_for_reviews(
+        resolve_data_path("data/album_community_affinities.jsonl"),
+        res_key="res_10",
+        top_k=3,
+    )
+
     if recreate:
         collection = get_chroma_collection(recreate=True)
         existing_ids: set[str] = set()
@@ -551,6 +612,10 @@ def build_index(
             genres = metadata_map.get(r.id, {}).get("genres")
             if isinstance(genres, list) and genres:
                 m["genres"] = genres
+            top_comms = top_comms_map.get(r.id)
+            if top_comms:
+                m["communities_top_ids"] = [cid for cid, _ in top_comms]
+                m["communities_top_scores"] = [score for _cid, score in top_comms]
             metadatas.append(m)
         # Enriched document = metadata prefix + review body (for embedding).
         documents = [
@@ -619,6 +684,8 @@ def search_reviews(
                 "references": meta.get("references"),
                 "total_duration": meta.get("total_duration"),
                 "genres": meta.get("genres") or [],
+                "communities_top_ids": meta.get("communities_top_ids") or [],
+                "communities_top_scores": meta.get("communities_top_scores") or [],
             }
         )
 
