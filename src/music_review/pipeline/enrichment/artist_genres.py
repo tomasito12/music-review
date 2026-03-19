@@ -225,10 +225,13 @@ def impute_missing_review_genres(
     imputed_count = 0
     total_entries = 0
 
-    with metadata_path.open("r", encoding="utf-8") as fin, output_path.open(
-        "w",
-        encoding="utf-8",
-    ) as fout:
+    with (
+        metadata_path.open("r", encoding="utf-8") as fin,
+        output_path.open(
+            "w",
+            encoding="utf-8",
+        ) as fout,
+    ):
         for line_number, line in enumerate(fin, start=1):
             line = line.strip()
             if not line:
@@ -306,10 +309,7 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
         "--imputed-metadata-output",
         type=Path,
         default=None,
-        help=(
-            "Optional path to write a new metadata JSONL with "
-            "imputed genres."
-        ),
+        help=("Optional path to write a new metadata JSONL with imputed genres."),
     )
     parser.add_argument(
         "--min-artist-albums",
