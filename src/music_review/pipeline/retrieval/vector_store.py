@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import json
 import os
+import re
 import time
 from pathlib import Path
 from typing import Any
@@ -25,6 +26,135 @@ DEFAULT_METADATA_PATH = resolve_data_path("data/metadata_imputed.jsonl")
 DEFAULT_METADATA_FALLBACK_PATH = resolve_data_path("data/metadata.jsonl")
 DEFAULT_CHROMA_PATH = PROJECT_ROOT / "chroma_db"
 COLLECTION_NAME = "music_reviews"
+CHUNK_COLLECTION_NAME = "music_reviews_chunks_v1"
+
+
+def _split_text_into_paragraphs(text: str) -> list[str]:
+    """Split review text into paragraphs (blank line separated)."""
+    paragraphs = [p.strip() for p in text.split("\n\n")]
+    return [p for p in paragraphs if p]
+
+
+def _split_paragraph_into_sentences(paragraph: str) -> list[str]:
+    """Split paragraph into sentences using punctuation heuristics."""
+    normalized = paragraph.replace("\n", " ").strip()
+    parts = re.split(r"(?<=[.!?])\s+", normalized)
+    return [p.strip() for p in parts if p.strip()]
+
+
+def _hard_split_by_chars(text: str, *, max_chunk_chars: int) -> list[str]:
+    """Hard split text by character count."""
+    text = text.strip()
+    if not text:
+        return []
+    return [text[i : i + max_chunk_chars] for i in range(0, len(text), max_chunk_chars)]
+
+
+def hybrid_chunk_text(
+    review_text: str,
+    *,
+    min_chunk_chars: int = 600,
+    target_chunk_chars: int = 1600,
+    max_chunk_chars: int = 2400,
+) -> list[str]:
+    """Hybrid paragraph chunking (merge short, split long).
+
+    This is a heuristic that works without a tokenizer:
+    - split by paragraph boundaries
+    - merge paragraphs into chunks up to `max_chunk_chars`
+    - if a paragraph is too long, split it by sentence boundaries
+    - if a sentence is still too long, hard split by characters
+    """
+    if not review_text or not review_text.strip():
+        return []
+
+    paragraphs = _split_text_into_paragraphs(review_text)
+    if not paragraphs:
+        return []
+
+    chunks: list[str] = []
+    buffer = ""
+
+    def flush_buffer() -> None:
+        nonlocal buffer
+        if buffer.strip():
+            chunks.append(buffer.strip())
+        buffer = ""
+
+    for p in paragraphs:
+        if not p:
+            continue
+        p = p.strip()
+
+        if len(p) <= max_chunk_chars:
+            proposed = p if not buffer else f"{buffer}\n\n{p}"
+            if len(proposed) <= max_chunk_chars:
+                buffer = proposed
+                if len(buffer) >= target_chunk_chars:
+                    flush_buffer()
+            else:
+                flush_buffer()
+                if len(p) >= target_chunk_chars:
+                    chunks.append(p)
+                else:
+                    buffer = p
+            continue
+
+        # Paragraph too long: flush buffer and split paragraph into sentences.
+        flush_buffer()
+        sentences = _split_paragraph_into_sentences(p)
+        if not sentences:
+            chunks.extend(_hard_split_by_chars(p, max_chunk_chars=max_chunk_chars))
+            continue
+
+        sent_buf = ""
+        for s in sentences:
+            if not s:
+                continue
+            if len(s) > max_chunk_chars:
+                if sent_buf.strip():
+                    chunks.append(sent_buf.strip())
+                    sent_buf = ""
+                chunks.extend(
+                    _hard_split_by_chars(s, max_chunk_chars=max_chunk_chars),
+                )
+                continue
+
+            proposed = s if not sent_buf else f"{sent_buf} {s}"
+            if len(proposed) <= max_chunk_chars:
+                sent_buf = proposed
+                if len(sent_buf) >= target_chunk_chars:
+                    chunks.append(sent_buf.strip())
+                    sent_buf = ""
+            else:
+                if sent_buf.strip():
+                    chunks.append(sent_buf.strip())
+                sent_buf = s
+
+        if sent_buf.strip():
+            chunks.append(sent_buf.strip())
+
+    if buffer.strip():
+        chunks.append(buffer.strip())
+
+    # Merge tiny tail chunk into previous chunk.
+    if len(chunks) >= 2 and len(chunks[-1]) < min_chunk_chars:
+        tail = chunks[-1]
+        prev = chunks[-2]
+        merged = f"{prev}\n\n{tail}"
+        if len(merged) <= max_chunk_chars:
+            chunks[-2] = merged
+            chunks.pop()
+
+    # Safety: ensure all chunks are <= max_chunk_chars.
+    safe_chunks: list[str] = []
+    for c in chunks:
+        if len(c) <= max_chunk_chars:
+            safe_chunks.append(c)
+        else:
+            safe_chunks.extend(_hard_split_by_chars(c, max_chunk_chars=max_chunk_chars))
+
+    return [c.strip() for c in safe_chunks if c.strip()]
 EMBEDDING_MODEL = "text-embedding-3-small"
 
 
@@ -121,6 +251,51 @@ def review_to_metadata(review: Review) -> dict[str, Any]:
     return meta
 
 
+def chunk_to_metadata(
+    review: Review,
+    *,
+    chunk_index: int,
+    chunk_text: str,
+) -> dict[str, Any]:
+    """Convert a Review into chunk-level Chroma metadata.
+
+    Unlike `review_to_metadata`, this stores only the scalar fields needed for
+    filtering and display, and it stores `chunk_text` for snippet rendering.
+    """
+    meta: dict[str, Any] = {"review_id": int(review.id), "chunk_index": chunk_index}
+
+    if review.url:
+        meta["url"] = review.url
+    if review.artist:
+        meta["artist"] = review.artist
+    if review.album:
+        meta["album"] = review.album
+    if review.title:
+        meta["title"] = review.title
+    if review.author:
+        meta["author"] = review.author
+    if review.labels:
+        meta["labels"] = ", ".join(review.labels)
+    if review.release_date:
+        meta["release_date"] = review.release_date.isoformat()
+    if review.release_year is not None:
+        meta["release_year"] = int(review.release_year)
+    if review.rating is not None:
+        meta["rating"] = float(review.rating)
+    if review.user_rating is not None:
+        meta["user_rating"] = float(review.user_rating)
+    if review.highlights:
+        meta["highlights"] = "; ".join(review.highlights)
+    if review.references:
+        meta["references"] = "; ".join(review.references)
+    if review.total_duration:
+        meta["total_duration"] = review.total_duration
+
+    # The text used for display and (optionally) snippet extraction.
+    meta["chunk_text"] = chunk_text
+    return meta
+
+
 def build_enriched_document(review: Review, meta: dict[str, Any]) -> str:
     """Build the text to embed: metadata prefix (artist, album, genres, etc.) + review body.
 
@@ -158,6 +333,7 @@ def get_chroma_collection(
     persist_directory: Path | str | None = None,
     *,
     recreate: bool = False,
+    collection_name: str = COLLECTION_NAME,
 ) -> Collection:
     """Create or load the Chroma collection configured with OpenAI embeddings.
 
@@ -184,13 +360,13 @@ def get_chroma_collection(
     if recreate:
         # Delete the collection entirely if it exists, then recreate it fresh.
         try:
-            client.delete_collection(COLLECTION_NAME)
+            client.delete_collection(collection_name)
         except Exception:
             # If it does not exist yet, that's fine.
             pass
 
     collection = client.get_or_create_collection(
-        name=COLLECTION_NAME,
+        name=collection_name,
         embedding_function=openai_ef,
     )
     return collection
@@ -634,17 +810,143 @@ def build_index(
     return new_count
 
 
+def build_index_chunks_v1(
+    data_path: Path | str = DEFAULT_DATA_PATH,
+    *,
+    metadata_path: Path | str | None = None,
+    batch_size: int = 50,
+    recreate: bool = False,
+    collection_name: str = CHUNK_COLLECTION_NAME,
+    min_chunk_chars: int = 600,
+    target_chunk_chars: int = 1600,
+    max_chunk_chars: int = 2400,
+) -> int:
+    """Index review text into chunk-level Chroma embeddings (v1).
+
+    Creates one Chroma document per text chunk. The embedded document is the
+    chunk text only (no metadata prefix).
+
+    Returns the number of newly added chunks.
+    """
+    file_path = Path(data_path)
+    if not file_path.exists():
+        msg = f"Data file not found: {file_path}"
+        raise FileNotFoundError(msg)
+
+    reviews = load_reviews_from_jsonl(file_path)
+    if not reviews:
+        msg = f"No non-empty reviews found in {file_path}"
+        raise RuntimeError(msg)
+    total_reviews = len(reviews)
+
+    meta_path = (
+        Path(metadata_path) if metadata_path is not None else DEFAULT_METADATA_PATH
+    )
+    fallback_path = DEFAULT_METADATA_FALLBACK_PATH
+    metadata_map = _load_metadata_map(meta_path, fallback_path)
+
+    # Community memberships (top-3) are optional for chunk-level metadata.
+    top_comms_map = _load_top_communities_for_reviews(
+        resolve_data_path("data/album_community_affinities.jsonl"),
+        res_key="res_10",
+        top_k=3,
+    )
+
+    if recreate:
+        collection = get_chroma_collection(
+            recreate=True,
+            collection_name=collection_name,
+        )
+        existing_ids: set[str] = set()
+    else:
+        collection = get_chroma_collection(
+            collection_name=collection_name,
+        )
+        existing = collection.get(limit=100_000_000)
+        existing_ids = set(existing.get("ids", []))
+
+    chunk_count_added = 0
+
+    for start in range(0, len(reviews), batch_size):
+        batch = reviews[start : start + batch_size]
+        if not batch:
+            continue
+
+        chunk_ids: list[str] = []
+        chunk_docs: list[str] = []
+        chunk_metas: list[dict[str, Any]] = []
+
+        for review in batch:
+            review_id = int(review.id)
+            chunks = hybrid_chunk_text(
+                review.text,
+                min_chunk_chars=min_chunk_chars,
+                target_chunk_chars=target_chunk_chars,
+                max_chunk_chars=max_chunk_chars,
+            )
+            if not chunks:
+                continue
+
+            # Skip entire review if chunk_0 already exists.
+            first_chunk_id = f"{review_id}__chunk_0"
+            if first_chunk_id in existing_ids:
+                continue
+
+            for chunk_index, chunk_text in enumerate(chunks):
+                chunk_id = f"{review_id}__chunk_{chunk_index}"
+                if chunk_id in existing_ids:
+                    continue
+                meta = chunk_to_metadata(
+                    review,
+                    chunk_index=chunk_index,
+                    chunk_text=chunk_text,
+                )
+                # Attach top community ids/scores for possible future filtering.
+                top_comms = top_comms_map.get(review_id)
+                if top_comms:
+                    meta["communities_top_ids"] = [cid for cid, _ in top_comms]
+                    meta["communities_top_scores"] = [
+                        score for _cid, score in top_comms
+                    ]
+                # (We keep 'chunk_text' as the only similarity driver.)
+
+                chunk_ids.append(chunk_id)
+                chunk_docs.append(chunk_text)
+                chunk_metas.append(meta)
+                existing_ids.add(chunk_id)
+                chunk_count_added += 1
+
+        if not chunk_ids:
+            continue
+
+        collection.add(
+            ids=chunk_ids,
+            documents=chunk_docs,
+            metadatas=chunk_metas,
+        )
+
+        batch_num = start // batch_size
+        if batch_num % 10 == 0:
+            print(
+                f"[build_index_chunks_v1] reviews_processed={min(start + batch_size, total_reviews)}/{total_reviews}, "
+                f"chunks_added_so_far={chunk_count_added}"
+            )
+
+    return chunk_count_added
+
+
 def search_reviews(
     query_text: str,
     *,
     n_results: int = 5,
     where: dict[str, Any] | None = None,
+    collection_name: str | None = None,
 ) -> list[dict[str, Any]]:
     """Search similar reviews for a free-text query.
 
     Optional `where` allows metadata filtering (e.g. {"release_year": {"$gte": 2010}}).
     """
-    collection = get_chroma_collection()
+    collection = get_chroma_collection(collection_name=collection_name or COLLECTION_NAME)
 
     query_kwargs: dict[str, Any] = {
         "query_texts": [query_text],
@@ -663,13 +965,34 @@ def search_reviews(
     distances = result.get("distances", [[]])[0]
 
     for doc_id, doc, meta, dist in zip(ids, documents, metadatas, distances):
-        # Prefer stored original review text for display; fallback to document.
-        text = (meta or {}).get("review_text") or doc
+        meta = meta or {}
+
+        # Old index: doc_id is the review id.
+        # New chunk index: doc_id is "review_id__chunk_N" but meta["review_id"]
+        # is the stable join key.
+        review_id_val = meta.get("review_id")
+        review_id: int | None
+        if isinstance(review_id_val, int):
+            review_id = review_id_val
+        else:
+            try:
+                review_id = int(review_id_val) if review_id_val is not None else int(doc_id)
+            except (TypeError, ValueError):
+                review_id = None
+
+        chunk_text = meta.get("chunk_text") or meta.get("review_text") or doc
+        chunk_index = meta.get("chunk_index")
+
         hits.append(
             {
-                "id": doc_id,
-                "text": text,
-                "distance": dist,
+                # Keep `id` review-id compatible for legacy callers.
+                "id": str(review_id) if review_id is not None else doc_id,
+                "review_id": review_id,
+                "chunk_index": chunk_index,
+                "chunk_text": chunk_text,
+                # Existing UI uses `text` as snippet; keep it aligned with chunk_text.
+                "text": chunk_text,
+                "distance": float(dist) if isinstance(dist, (int, float)) else dist,
                 "url": meta.get("url"),
                 "artist": meta.get("artist"),
                 "album": meta.get("album"),
@@ -690,6 +1013,179 @@ def search_reviews(
         )
 
     return hits
+
+
+def _normalize_query_text(query_text: str) -> str:
+    """Normalize query for rule-based variant generation."""
+    q = query_text.strip().lower()
+    q = re.sub(r"\s+", " ", q)
+    return q
+
+
+_QUERY_SYNONYMS: dict[str, list[str]] = {
+    "spröde": ["karg", "trocken", "austere"],
+    "sproede": ["karg", "trocken", "austere"],
+    "monoton": ["gleichförmig", "repetitiv", "monotone"],
+    "langsam": ["ruhig", "slow", "slow-burn"],
+    "aufbau": ["steigerung", "build-up", "crescendo"],
+    "höhepunkt": ["climax", "peak", "kulmination"],
+    "gaensehaut": ["gänsehaut", "goosebumps", "goosebump"],
+    "gänsehaut": ["gaensehaut", "goosebumps", "goosebump"],
+}
+
+
+def generate_query_variants(
+    query_text: str,
+    *,
+    strategy: str = "B",
+    max_variants: int = 4,
+) -> list[str]:
+    """Generate query variants for multi-query retrieval.
+
+    Strategies:
+    - A: original query only
+    - B: rule-based DE/EN variants (default)
+    - C: stronger expansion (B + structured intent variant)
+    """
+    original = query_text.strip()
+    if not original:
+        return []
+    if strategy.upper() == "A":
+        return [original]
+
+    normalized = _normalize_query_text(original)
+    tokens = re.findall(r"[a-zA-ZäöüÄÖÜß]+", normalized)
+
+    expansions: list[str] = []
+    for t in tokens:
+        key = t.replace("ß", "ss")
+        syns = _QUERY_SYNONYMS.get(t) or _QUERY_SYNONYMS.get(key) or []
+        expansions.extend(syns)
+
+    # Keep stable unique order.
+    seen: set[str] = set()
+    unique_expansions: list[str] = []
+    for e in expansions:
+        if e not in seen:
+            unique_expansions.append(e)
+            seen.add(e)
+
+    variants: list[str] = [original]
+    if unique_expansions:
+        de_variant = f"{original} {' '.join(unique_expansions[:4])}".strip()
+        en_hint = " ".join(
+            e for e in unique_expansions if re.search(r"[a-zA-Z]", e)
+        )
+        en_variant = f"{original} {en_hint}".strip()
+        mixed_variant = (
+            f"music mood {' '.join(tokens[:6])} {' '.join(unique_expansions[:5])}".strip()
+        )
+        variants.extend([de_variant, en_variant, mixed_variant])
+    else:
+        # Fallback variants when no dictionary expansion is available.
+        variants.extend(
+            [
+                f"{original} music mood",
+                f"{original} song structure atmosphere",
+                f"{original} review passage",
+            ],
+        )
+
+    if strategy.upper() == "C":
+        # C adds one intent-focused variant on top of B.
+        intent_variant = (
+            f"find review passage about: {original}; mood, dynamics, structure, instrumentation"
+        )
+        variants.append(intent_variant)
+
+    # Stable unique while preserving order.
+    out: list[str] = []
+    out_seen: set[str] = set()
+    for v in variants:
+        vv = v.strip()
+        if not vv or vv in out_seen:
+            continue
+        out.append(vv)
+        out_seen.add(vv)
+
+    return out[: max(1, max_variants)]
+
+
+def search_reviews_with_variants(
+    query_text: str,
+    *,
+    strategy: str = "B",
+    n_results: int = 100,
+    top_k_per_variant: int = 30,
+    where: dict[str, Any] | None = None,
+    collection_name: str | None = None,
+) -> list[dict[str, Any]]:
+    """Run multi-variant retrieval and fuse per-review hits.
+
+    Fusion:
+    - Deduplicate by `review_id`.
+    - Keep the best (smallest) distance chunk as representative.
+    - For strategy C, apply a small vote/rank bonus to prioritize reviews found
+      consistently across variants.
+    """
+    variants = generate_query_variants(query_text, strategy=strategy, max_variants=5)
+    if not variants:
+        return []
+
+    # review_id -> aggregate
+    agg: dict[int, dict[str, Any]] = {}
+    # review_id -> number of variants where it appeared
+    votes: dict[int, int] = {}
+    # review_id -> rank bonus accumulator
+    rank_bonus: dict[int, float] = {}
+
+    for v in variants:
+        hits = search_reviews(
+            v,
+            n_results=top_k_per_variant,
+            where=where,
+            collection_name=collection_name,
+        )
+        seen_in_variant: set[int] = set()
+        for rank, h in enumerate(hits, start=1):
+            rid = h.get("review_id")
+            dist = h.get("distance")
+            if not isinstance(rid, int) or not isinstance(dist, (int, float)):
+                continue
+
+            prev = agg.get(rid)
+            if prev is None or float(dist) < float(prev.get("distance", 999.0)):
+                agg[rid] = h
+
+            # Count each review once per variant.
+            if rid not in seen_in_variant:
+                votes[rid] = votes.get(rid, 0) + 1
+                # Reciprocal-rank style bonus (higher is better).
+                rank_bonus[rid] = rank_bonus.get(rid, 0.0) + (1.0 / (50.0 + rank))
+                seen_in_variant.add(rid)
+
+    fused = list(agg.values())
+    if not fused:
+        return []
+
+    strat = strategy.upper()
+    if strat == "C":
+        # Lower score is better: distance minus agreement bonus.
+        def _score(item: dict[str, Any]) -> float:
+            rid = item.get("review_id")
+            dist = float(item.get("distance") or 999.0)
+            if not isinstance(rid, int):
+                return dist
+            vote_bonus = 0.015 * votes.get(rid, 0)
+            rr_bonus = 0.75 * rank_bonus.get(rid, 0.0)
+            return dist - vote_bonus - rr_bonus
+
+        fused.sort(key=_score)
+    else:
+        # A and B: pure semantic distance ordering after dedupe.
+        fused.sort(key=lambda h: float(h.get("distance") or 999.0))
+
+    return fused[:n_results]
 
 
 def main() -> None:

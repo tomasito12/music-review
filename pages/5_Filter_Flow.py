@@ -100,13 +100,23 @@ def main() -> None:
 
     # --- Basis-Filter ---
     st.subheader("Basis-Filter")
+    existing_settings: dict[str, Any] = st.session_state.get("filter_settings") or {}
+
+    year_min_default = int(existing_settings.get("year_min", 1990))
+    year_max_default = int(existing_settings.get("year_max", 2030))
+    rating_min_default = float(existing_settings.get("rating_min", 0.0))
+    rating_max_default = float(existing_settings.get("rating_max", 10.0))
+    score_min_default = float(existing_settings.get("score_min", 0.0))
+    score_max_default = float(existing_settings.get("score_max", 1.0))
+    min_hits_pct_default = int(existing_settings.get("min_hits_pct", 0))
+
     col_year, col_rating = st.columns(2)
     with col_year:
         year_min, year_max = st.slider(
             "Veröffentlichungsjahr",
             min_value=1990,
             max_value=2030,
-            value=(1990, 2030),
+            value=(year_min_default, year_max_default),
             step=1,
         )
     with col_rating:
@@ -114,7 +124,7 @@ def main() -> None:
             "Rating",
             min_value=0.0,
             max_value=10.0,
-            value=(0.0, 10.0),
+            value=(rating_min_default, rating_max_default),
             step=0.5,
         )
 
@@ -124,7 +134,7 @@ def main() -> None:
             "Score-Bereich (vor Normalisierung)",
             min_value=0.0,
             max_value=1.0,
-            value=(0.0, 1.0),
+            value=(score_min_default, score_max_default),
             step=0.05,
         )
     with col_hits:
@@ -132,7 +142,7 @@ def main() -> None:
             "Min. Anteil getroffener Communities (%)",
             min_value=0,
             max_value=100,
-            value=0,
+            value=min_hits_pct_default,
             step=5,
         )
 
@@ -140,20 +150,41 @@ def main() -> None:
     st.subheader("Sortierung")
     col_sort, col_ser = st.columns(2)
     with col_sort:
+        sort_mode_default = str(existing_settings.get("sort_mode", "Deterministisch"))
         sort_mode = st.selectbox(
             "Ranglisten-Modus",
             options=["Deterministisch", "Serendipity"],
-            index=0,
+            index=0 if sort_mode_default == "Deterministisch" else 1,
         )
     with col_ser:
+        serendipity_default = float(existing_settings.get("serendipity", 0.0))
         serendipity = st.slider(
             "Serendipity (0 = stabil, 1 = viel Zufall)",
             min_value=0.0,
             max_value=1.0,
-            value=0.0,
+            value=serendipity_default,
             step=0.1,
             disabled=(sort_mode != "Serendipity"),
         )
+
+    # --- Freitext-Retrieval-Strategie (A/B/C) ---
+    st.subheader("Freitext-Retrieval")
+    rag_strategy_default = str(existing_settings.get("rag_query_strategy", "B"))
+    strategy_options = ["A", "B", "C"]
+    try:
+        strategy_index = strategy_options.index(rag_strategy_default)
+    except ValueError:
+        strategy_index = 1  # default: B
+
+    rag_query_strategy = st.selectbox(
+        "RAG-Variante für Freitext",
+        options=strategy_options,
+        index=strategy_index,
+        help=(
+            "A: Original-Query, B: regelbasierte Query-Varianten (Default), "
+            "C: stärkere Expansion mit zusätzlicher Intent-Variante."
+        ),
+    )
 
     # --- Community-Gewichte ---
     st.subheader("Community-Gewichte")
@@ -224,6 +255,7 @@ def main() -> None:
         "min_hits_pct": min_hits_pct,
         "sort_mode": sort_mode,
         "serendipity": serendipity,
+        "rag_query_strategy": rag_query_strategy,
     }
     st.session_state["community_weights_raw"] = raw_weights
 

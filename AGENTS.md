@@ -50,3 +50,7 @@ Music Review is a Python 3.12+ CLI-based data pipeline that scrapes album review
 - `hatch run lint:all` runs ruff check, ruff format --check, and mypy in sequence — all three run even if earlier ones fail, and the exit code reflects any failure.
 - Pre-existing mypy errors exist in `parser.py` (BeautifulSoup typing) and `vector_store.py` (ChromaDB type signatures). These are not regressions.
 - `update-db` runs, in order: scraper → fetch_metadata → artist_genres → reference_imputation. The last step imputes missing genres from plattentests.de “Referenzen” (first N reference artists with profiles in artist_genres.json) and overwrites `metadata_imputed.jsonl`.
+
+### TODO handling (recommended)
+- If you throw me a TODO idea in chat, I will record it in `TODOs.md` in this repo and keep its status up to date there (e.g. open vs done).
+- I will keep each TODO stable via an explicit `id:` label inside `TODOs.md` so future updates are unambiguous.
