@@ -55,7 +55,7 @@ def is_obvious_non_style(token: str) -> bool:
         return True
     if token in {
         "5+ wochen",
-        "1–4 wochen",
+        "1-4 wochen",
         "2000",
         "2001",
         "2002",
@@ -147,7 +147,7 @@ def is_obvious_non_style(token: str) -> bool:
     }:
         return True
 
-    if token in {
+    return token in {
         "music",
         "genre",
         "vocal",
@@ -159,10 +159,7 @@ def is_obvious_non_style(token: str) -> bool:
         "live",
         "soundtrack",
         "non-music",
-    }:
-        return True
-
-    return False
+    }
 
 
 def match_genres_from_raw_tag(raw_tag: str) -> set[str]:
@@ -328,10 +325,7 @@ def write_metadata_jsonl(
 
     with output_path.open(mode, encoding="utf-8") as f:
         for entry in metadata:
-            if isinstance(entry, AlbumMetadata):
-                obj = asdict(entry)
-            else:
-                obj = entry
+            obj = asdict(entry) if isinstance(entry, AlbumMetadata) else entry
             json_line = json.dumps(obj, ensure_ascii=False)
             f.write(json_line + "\n")
 
@@ -407,7 +401,7 @@ def build_metadata(
         return updated_or_new
 
     existing_ids = load_existing_review_ids(output_path)
-    new_entries: list[AlbumMetadata] = []
+    append_entries: list[AlbumMetadata] = []
     total_processed = 0
     total_skipped = 0
 
@@ -419,22 +413,22 @@ def build_metadata(
             continue
 
         meta = fetch_metadata_for_review(review_id, artist, album)
-        new_entries.append(meta)
+        append_entries.append(meta)
 
-        if len(new_entries) >= 50:
-            write_metadata_jsonl(new_entries, output_path=output_path, append=True)
+        if len(append_entries) >= 50:
+            write_metadata_jsonl(append_entries, output_path=output_path, append=True)
             logger.info(
                 "Flushed %d new metadata entries to %s",
-                len(new_entries),
+                len(append_entries),
                 output_path,
             )
-            new_entries.clear()
+            append_entries.clear()
 
-    if new_entries:
-        write_metadata_jsonl(new_entries, output_path=output_path, append=True)
+    if append_entries:
+        write_metadata_jsonl(append_entries, output_path=output_path, append=True)
         logger.info(
             "Flushed final %d new metadata entries to %s",
-            len(new_entries),
+            len(append_entries),
             output_path,
         )
 
@@ -480,7 +474,8 @@ def main() -> None:
         action="store_true",
         help=(
             "Update existing metadata entries instead of skipping them. "
-            "Existing metadata.jsonl is read, updated in memory and then fully rewritten."
+            "Existing metadata.jsonl is read, updated in memory and then "
+            "fully rewritten."
         ),
     )
 
@@ -497,6 +492,7 @@ def main() -> None:
     #     --input data/reviews.jsonl \
     #     --output data/metadata_2.jsonl \
     #     --overwrite
+
 
 if __name__ == "__main__":
     main()

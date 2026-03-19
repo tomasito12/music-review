@@ -6,8 +6,7 @@ from datetime import date
 
 from music_review.pipeline.scraper.parser import parse_review
 
-
-# Minimal valid HTML structure matching the plattentests.de layout (see parser docstrings).
+# Minimal valid HTML structure matching the current parser expectations.
 MINIMAL_REVIEW_HTML = """
 <div id="rezension">
   <div class="headerbox">
@@ -66,7 +65,7 @@ def test_parse_review_returns_none_when_core_fields_missing() -> None:
     </div>
     """
     # Parser might return None or a review depending on _parse_artist_album handling.
-    # If artist is None, the parser returns None due to "if not artist or not album or not body_text"
+    # If artist is None, parser returns None due to required core fields.
     result = parse_review(1, html)
     # With "Only Album" we get album="Only Album", artist=None -> None
     assert result is None
@@ -74,7 +73,7 @@ def test_parse_review_returns_none_when_core_fields_missing() -> None:
 
 def test_parse_review_with_tracklist_and_highlights() -> None:
     """parse_review extracts tracklist, highlights, and total duration when present."""
-    # Highlight names must match track titles (case-insensitive) for is_highlight to be set.
+    # Highlight names must match track titles (case-insensitive).
     html = """
     <div id="rezension">
       <div class="headerbox">

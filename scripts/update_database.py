@@ -17,7 +17,7 @@ logger = logging.getLogger(__name__)
 
 def run_module(module: str, args: list[str]) -> bool:
     """Run a module with the given args. Return True on success."""
-    cmd = [sys.executable, "-m", module] + args
+    cmd = [sys.executable, "-m", module, *args]
     logger.info("Running: %s", " ".join(cmd))
     result = subprocess.run(cmd)
     if result.returncode != 0:
@@ -36,7 +36,8 @@ def main() -> int:
         default=None,
         metavar="ID",
         help=(
-            "Optional: stop scraper at this ID. If omitted, scraper stops automatically "
+            "Optional: stop scraper at this ID. "
+            "If omitted, scraper stops automatically "
             "after 3 consecutive missing IDs."
         ),
     )
@@ -81,7 +82,7 @@ def main() -> int:
     verbose = ["-v"] if args.verbose else []
 
     if not args.skip_reviews:
-        scraper_args = verbose + ["--output", args.reviews, "resume"]
+        scraper_args = [*verbose, "--output", args.reviews, "resume"]
         if args.max_id is not None:
             scraper_args.extend(["--max-id", str(args.max_id)])
         if not run_module("music_review.pipeline.scraper.cli", scraper_args):

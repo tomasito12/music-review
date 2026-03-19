@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from pathlib import Path
 
-from music_review.domain.models import Review, Track
+from music_review.domain.models import Review
 from music_review.pipeline.scraper.storage import (
     append_review,
     load_corpus,
@@ -13,7 +13,11 @@ from music_review.pipeline.scraper.storage import (
 )
 
 
-def _make_review(review_id: int, artist: str = "Artist", album: str = "Album") -> Review:
+def _make_review(
+    review_id: int,
+    artist: str = "Artist",
+    album: str = "Album",
+) -> Review:
     return Review(
         id=review_id,
         url=f"https://example.com/{review_id}",

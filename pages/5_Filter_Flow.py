@@ -86,9 +86,12 @@ def main() -> None:
 
     st.title("🎛️ Filter & Community-Gewichte")
     st.caption(
-        "Hier kannst du deine Vorauswahl noch feiner einstellen: Veröffentlichungsjahr, "
-        "Rating, Score, Anteil der getroffenen Communities und den Grad an Zufall "
-        "(Serendipity). Außerdem kannst du einzelne Communities unterschiedlich gewichten.",
+        (
+            "Hier kannst du deine Vorauswahl noch feiner einstellen: "
+            "Veröffentlichungsjahr, Rating, Score, Anteil der getroffenen "
+            "Communities und den Grad an Zufall (Serendipity). Außerdem kannst "
+            "du einzelne Communities unterschiedlich gewichten."
+        ),
     )
 
     with st.expander("Zusammenfassung deiner Auswahl", expanded=True):
@@ -191,7 +194,8 @@ def main() -> None:
     if not selected_comms:
         st.info(
             "Noch keine Communities ausgewählt. "
-            "Bitte gehe zurück und wähle im Artist- oder Genre-Flow zunächst Communities aus.",
+            "Bitte gehe zurück und wähle im Artist- oder Genre-Flow zunächst "
+            "Communities aus.",
         )
         raw_weights: dict[str, float] = {}
     else:
@@ -271,4 +275,3 @@ def main() -> None:
 
 if __name__ == "__main__":
     main()
-

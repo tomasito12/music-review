@@ -23,7 +23,12 @@ def _recommendations_css() -> None:
     st.markdown(
         """
         <style>
-        .rec-page-title { font-size: 1.6rem; font-weight: 650; letter-spacing: -0.02em; margin-bottom: 0.25rem; }
+        .rec-page-title {
+            font-size: 1.6rem;
+            font-weight: 650;
+            letter-spacing: -0.02em;
+            margin-bottom: 0.25rem;
+        }
         .rec-page-desc { color: #6b7280; font-size: 0.9rem; margin-bottom: 1.3rem; }
         .rec-card {
             background: #fafafa;
@@ -219,9 +224,7 @@ def _compute_recommendations() -> list[dict[str, Any]]:
         return []
 
     filter_settings: dict[str, Any] = st.session_state.get("filter_settings") or {}
-    weights_raw: dict[str, float] = (
-        st.session_state.get("community_weights_raw") or {}
-    )
+    weights_raw: dict[str, float] = st.session_state.get("community_weights_raw") or {}
 
     year_min = int(filter_settings.get("year_min", 1990))
     year_max = int(filter_settings.get("year_max", 2030))
@@ -302,9 +305,10 @@ def _compute_recommendations() -> list[dict[str, Any]]:
             continue
 
         rating_val = review.rating
-        if rating_val is not None:
-            if rating_val < rating_min or rating_val > rating_max:
-                continue
+        if rating_val is not None and (
+            rating_val < rating_min or rating_val > rating_max
+        ):
+            continue
 
         year_val: int | None = None
         if review.release_year is not None:
@@ -322,7 +326,7 @@ def _compute_recommendations() -> list[dict[str, Any]]:
         label_list = meta.get("labels") or []
         if not isinstance(label_list, list):
             label_list = []
-        label_str = ", ".join(str(l) for l in label_list)
+        label_str = ", ".join(str(label) for label in label_list)
 
         # Aufbereitete Top-Community-Infos für die Darstellung
         top_communities: list[dict[str, Any]] = []
@@ -397,7 +401,7 @@ def main() -> None:
     )
     st.markdown(
         '<p class="rec-page-desc">Basierend auf deinen gewählten Communities, '
-        'Filtereinstellungen und (optional) deiner Stimmungsbeschreibung.</p>',
+        "Filtereinstellungen und (optional) deiner Stimmungsbeschreibung.</p>",
         unsafe_allow_html=True,
     )
 
@@ -420,9 +424,7 @@ def main() -> None:
     # Kurze, nachvollziehbare Erklärung der aktuellen Score-Berechnung
     selected_comms = _get_selected_communities()
     filter_settings: dict[str, Any] = st.session_state.get("filter_settings") or {}
-    weights_raw: dict[str, float] = (
-        st.session_state.get("community_weights_raw") or {}
-    )
+    weights_raw: dict[str, float] = st.session_state.get("community_weights_raw") or {}
 
     year_min = int(filter_settings.get("year_min", 1990))
     year_max = int(filter_settings.get("year_max", 2030))
@@ -437,16 +439,19 @@ def main() -> None:
     with st.expander("Wie werden die Scores berechnet?", expanded=True):
         st.markdown(
             "- **Formel pro Album**:\n"
-            "  `Score = Summe über alle gewählten Communities (Gewicht_c * Affinität_c,Album)`\n"
+            "  `Score = Summe über alle gewählten Communities "
+            "(Gewicht_c * Affinitaet_c,Album)`\n"
             "  mit:\n"
             "  - `C_selected`: aktuell gewählte Communities (Artist-/Genre-Flow)\n"
-            "  - `Gewicht_c`: Community-Gewicht (Slider in „Filter & Community-Gewichte“)\n"
+            "  - `Gewicht_c`: Community-Gewicht "
+            '(Slider in "Filter & Community-Gewichte")\n'
             "  - `Affinität_c,Album`: Score der Album-Community-Affinität "
             "aus `album_community_affinities.jsonl` für `res_10`.",
         )
 
         if selected_comms:
-            # Normierte Gewichte nur zur Anzeige (Score-Berechnung bleibt bei Roh-Gewichten)
+            # Normierte Gewichte nur zur Anzeige.
+            # Score-Berechnung bleibt bei Roh-Gewichten.
             total_w = sum(float(weights_raw.get(cid, 1.0)) for cid in selected_comms)
             if total_w <= 0:
                 n = len(selected_comms)
@@ -475,12 +480,12 @@ def main() -> None:
 
         st.markdown(
             "**Zusätzliche Filter, bevor ein Album angezeigt wird:**\n"
-            f"- Veröffentlichungsjahr: **{year_min}–{year_max}**\n"
-            f"- Rating: **{rating_min:.1f}–{rating_max:.1f}**\n"
-            f"- Score-Range: **{score_min:.2f}–{score_max:.2f}**\n"
+            f"- Veröffentlichungsjahr: **{year_min}-{year_max}**\n"
+            f"- Rating: **{rating_min:.1f}-{rating_max:.1f}**\n"
+            f"- Score-Range: **{score_min:.2f}-{score_max:.2f}**\n"
             f"- Min. Anteil getroffener Communities: **{min_hits_pct:.0f}%**\n"
             f"- Sortierung: **{sort_mode}**"
-            f"{' (Serendipity=' + str(serendipity) + ')' if sort_mode == 'Serendipity' else ''}",
+            + (f" (Serendipity={serendipity})" if sort_mode == "Serendipity" else ""),
         )
 
     st.markdown(f"**{len(recs)} Alben entsprechen aktuell deinen Kriterien.**")
@@ -513,7 +518,8 @@ def main() -> None:
         except RuntimeError as e:
             if "OPENAI_API_KEY" in str(e):
                 st.error(
-                    "OpenAI API key not set. Set `OPENAI_API_KEY` in your environment or .env."
+                    "OpenAI API key not set. "
+                    "Set `OPENAI_API_KEY` in your environment or .env."
                 )
             else:
                 st.error(f"RAG search failed: {e}")
@@ -612,7 +618,7 @@ def main() -> None:
                 )
                 if is_rag and rag_distance is not None:
                     meta_parts.append(f"Freitext-Distanz: {rag_distance:.3f}")
-                meta_html = " – ".join(html.escape(str(p)) for p in meta_parts)
+                meta_html = " - ".join(html.escape(str(p)) for p in meta_parts)
 
                 snippet_html = html.escape(snippet).replace("\n", "<br>")
 
@@ -664,7 +670,9 @@ def main() -> None:
 
                 st.markdown(card, unsafe_allow_html=True)
 
-    filter_review_ids = {int(r["review_id"]) for r in recs if r.get("review_id") is not None}
+    filter_review_ids = {
+        int(r["review_id"]) for r in recs if r.get("review_id") is not None
+    }
 
     if free_text and max_distance is not None:
         intersection_ids = rag_allowed_ids.intersection(filter_review_ids)
@@ -688,9 +696,7 @@ def main() -> None:
             )[:3]
             top3_ids = {int(r["review_id"]) for r in intersection_recs_top3}
 
-            remaining_recs = [
-                r for r in recs if int(r["review_id"]) not in top3_ids
-            ]
+            remaining_recs = [r for r in recs if int(r["review_id"]) not in top3_ids]
             remaining_recs.sort(
                 key=lambda r: float(r.get("score") or 0.0),
                 reverse=True,
@@ -700,11 +706,12 @@ def main() -> None:
 
             if remaining_recs:
                 st.markdown("## Danach: deine Filter-Treffer")
-                # Auch in der zweiten Liste bleiben Freitext-treffende Alben sichtbar (dunkler).
+                # Auch in der zweiten Liste bleiben Freitext-Treffer sichtbar.
                 _render_filter_cards(remaining_recs, rag_match=intersection_ids)
         else:
             st.warning(
-                "Keine Schnittmenge zwischen Freitext-Treffern (Distanz <= Schwellwert) "
+                "Keine Schnittmenge zwischen Freitext-Treffern "
+                "(Distanz <= Schwellwert) "
                 "und deinen Community/Filter-Treffern."
             )
 
@@ -760,9 +767,7 @@ def main() -> None:
                     top_comms: list[dict[str, Any]] = []
                     rid_val = h.get("review_id")
                     rec_match = (
-                        rec_by_id.get(rid_val)
-                        if isinstance(rid_val, int)
-                        else None
+                        rec_by_id.get(rid_val) if isinstance(rid_val, int) else None
                     )
                     if isinstance(rec_match, dict):
                         top_comms = rec_match.get("top_communities") or []
@@ -793,7 +798,10 @@ def main() -> None:
                     else:
                         header_html = f'<span class="rec-title">{header}</span>'
 
-                    release_str = _format_release_date(h.get("release_date"), release_year)
+                    release_str = _format_release_date(
+                        h.get("release_date"),
+                        release_year,
+                    )
                     meta_parts: list[str] = []
                     if release_str:
                         meta_parts.append(release_str)
@@ -803,7 +811,7 @@ def main() -> None:
                         meta_parts.append(f"{int(rating)}/10")
                     if isinstance(dist, (int, float)):
                         meta_parts.append(f"Freitext-Distanz: {float(dist):.3f}")
-                    meta_html = " – ".join(html.escape(str(p)) for p in meta_parts)
+                    meta_html = " - ".join(html.escape(str(p)) for p in meta_parts)
 
                     snippet_html = html.escape(snippet).replace("\n", "<br>")
 
@@ -871,4 +879,3 @@ def main() -> None:
 
 if __name__ == "__main__":
     main()
-

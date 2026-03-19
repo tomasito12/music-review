@@ -2,15 +2,14 @@
 
 from __future__ import annotations
 
+import json
 from collections import Counter, defaultdict
 from pathlib import Path
 from typing import Any
 
-import json
 import networkx as nx
 
-from music_review.io.jsonl import iter_jsonl_objects
-from music_review.io.jsonl import load_jsonl_as_map
+from music_review.io.jsonl import iter_jsonl_objects, load_jsonl_as_map
 from music_review.io.reviews_jsonl import load_reviews_from_jsonl
 
 
@@ -325,8 +324,9 @@ def export_fixed_clusterings(
             # Top artists by weighted degree (in + out)
             top_nodes = sorted(
                 nodes,
-                key=lambda n: G.out_degree(n, weight="weight")
-                + G.in_degree(n, weight="weight"),
+                key=lambda n: (
+                    G.out_degree(n, weight="weight") + G.in_degree(n, weight="weight")
+                ),
                 reverse=True,
             )[:top_k]
 
@@ -428,9 +428,7 @@ def compute_album_affinities(
         if not refs:
             continue
         n = len(refs)
-        res_scores: dict[float, dict[str, float]] = {
-            res: {} for res in resolutions
-        }
+        res_scores: dict[float, dict[str, float]] = {res: {} for res in resolutions}
 
         for idx, ref in enumerate(refs):
             pos = idx + 1
@@ -457,9 +455,7 @@ def compute_album_affinities(
             total = sum(scores.values())
             if total <= 0:
                 continue
-            items = [
-                (cid, score / total) for cid, score in scores.items()
-            ]
+            items = [(cid, score / total) for cid, score in scores.items()]
             # Filter by threshold
             if threshold > 0.0:
                 items = [item for item in items if item[1] >= threshold]
@@ -470,9 +466,7 @@ def compute_album_affinities(
             if top_k_per_res is not None and top_k_per_res > 0:
                 items = items[:top_k_per_res]
             key = res_keys[res]
-            communities_out[key] = [
-                {"id": cid, "score": score} for cid, score in items
-            ]
+            communities_out[key] = [{"id": cid, "score": score} for cid, score in items]
 
         if not communities_out:
             continue
@@ -501,7 +495,7 @@ def load_graph(path: str | Path) -> nx.DiGraph:
     if not isinstance(G, nx.DiGraph):
         G = nx.DiGraph(G)
     # GraphML may read edge weight as string
-    for u, v, data in G.edges(data=True):
+    for _u, _v, data in G.edges(data=True):
         if "weight" in data and isinstance(data["weight"], str):
             data["weight"] = float(data["weight"])
     return G
@@ -675,7 +669,9 @@ def _main() -> int:
     from music_review.config import resolve_data_path
 
     parser = argparse.ArgumentParser(
-        description="Build artist reference graph from reviews.jsonl (weighted by position).",
+        description=(
+            "Build artist reference graph from reviews.jsonl (weighted by position)."
+        ),
     )
     parser.add_argument(
         "--reviews",
@@ -808,8 +804,12 @@ def _main() -> int:
                     "max_size": max(sizes) if sizes else 0,
                     "internal_weight": internal_w,
                     "external_weight": external_w,
-                    "internal_share": internal_w / total_weight if total_weight else 0.0,
-                    "external_share": external_w / total_weight if total_weight else 0.0,
+                    "internal_share": (
+                        internal_w / total_weight if total_weight else 0.0
+                    ),
+                    "external_share": (
+                        external_w / total_weight if total_weight else 0.0
+                    ),
                     **attr_summary,
                 }
             )
@@ -831,7 +831,8 @@ def _main() -> int:
             export_resolutions = sorted({float(s) for s in raw_res})
         except ValueError:
             print(
-                f"Error: invalid --export-communities value {args.export_communities!r}",
+                "Error: invalid --export-communities value "
+                f"{args.export_communities!r}",
                 file=sys.stderr,
             )
             return 1

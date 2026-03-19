@@ -46,7 +46,12 @@ def test_review_from_raw_with_optional_fields() -> None:
         "release_year": 2024,
         "rating": 8.5,
         "tracklist": [
-            {"number": 1, "title": "Track One", "duration": "3:00", "is_highlight": True},
+            {
+                "number": 1,
+                "title": "Track One",
+                "duration": "3:00",
+                "is_highlight": True,
+            },
         ],
     }
     r = review_from_raw(raw)
@@ -60,7 +65,7 @@ def test_review_from_raw_with_optional_fields() -> None:
 
 
 def test_review_to_raw_roundtrip() -> None:
-    """review_to_raw(review_from_raw(raw)) preserves data for required and common optional fields."""
+    """Roundtrip preserves required and common optional fields."""
     raw = {
         "id": 10,
         "url": "https://example.com/10",
@@ -101,7 +106,7 @@ def test_load_reviews_from_jsonl_skips_reviews_with_empty_text(tmp_path: Path) -
 
 
 def test_load_and_save_reviews_roundtrip(tmp_path: Path) -> None:
-    """Saving reviews to JSONL and loading back yields equivalent reviews (by id and main fields)."""
+    """Saving then loading yields equivalent core review fields."""
     path = tmp_path / "reviews.jsonl"
     reviews = [
         Review(
@@ -110,7 +115,9 @@ def test_load_and_save_reviews_roundtrip(tmp_path: Path) -> None:
             artist="A",
             album="B",
             text="First review.",
-            tracklist=[Track(number=1, title="Song", duration=None, is_highlight=False)],
+            tracklist=[
+                Track(number=1, title="Song", duration=None, is_highlight=False),
+            ],
         ),
         Review(
             id=2,
@@ -123,6 +130,10 @@ def test_load_and_save_reviews_roundtrip(tmp_path: Path) -> None:
     save_reviews_to_jsonl(reviews, path)
     loaded = load_reviews_from_jsonl(path)
     assert len(loaded) == 2
-    assert loaded[0].id == 1 and loaded[0].artist == "A" and loaded[0].text == "First review."
+    assert (
+        loaded[0].id == 1
+        and loaded[0].artist == "A"
+        and loaded[0].text == "First review."
+    )
     assert len(loaded[0].tracklist) == 1 and loaded[0].tracklist[0].title == "Song"
     assert loaded[1].id == 2 and loaded[1].artist == "C"

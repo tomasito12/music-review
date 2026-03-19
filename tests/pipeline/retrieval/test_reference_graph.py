@@ -45,7 +45,8 @@ def test_position_weight_zero_refs_returns_w_min() -> None:
 
 def test_build_artist_graph_position_averaging(tmp_path: Path) -> None:
     """Edge weight is average over albums: ref only in one of two albums -> 0.5."""
-    # Artist A: Album1 references X first (1.0), Album2 does not reference X (0.0) -> avg 0.5
+    # Artist A:
+    # Album1 references X first (1.0), Album2 does not reference X (0.0) -> avg 0.5
     reviews = [
         Review(id=1, url="u1", artist="A", album="Album1", text="t", references=["X"]),
         Review(id=2, url="u2", artist="A", album="Album2", text="t", references=[]),
@@ -60,7 +61,14 @@ def test_build_artist_graph_position_averaging(tmp_path: Path) -> None:
 def test_build_artist_graph_normalized_nodes(tmp_path: Path) -> None:
     """Nodes are normalized (lowercase); display_name keeps first occurrence."""
     reviews = [
-        Review(id=1, url="u1", artist="Tweedy", album="A", text="t", references=["Wilco"]),
+        Review(
+            id=1,
+            url="u1",
+            artist="Tweedy",
+            album="A",
+            text="t",
+            references=["Wilco"],
+        ),
     ]
     path = tmp_path / "reviews.jsonl"
     save_reviews_to_jsonl(reviews, path)

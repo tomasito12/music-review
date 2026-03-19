@@ -35,7 +35,7 @@ GENRE_REGEX: dict[str, list[str]] = {
         r"\bindie\s+rock\b",
         r"\balt\s+rock\b",
         r"\balternative/indie\s+rock\b",
-        r"\bindie\b",          # vorsichtig: sehr breit – zur Not rausnehmen
+        r"\bindie\b",  # vorsichtig: sehr breit - zur Not rausnehmen
         r"\brock\s+and\s+indie\b",
         r"\bindietronica\b",
         r"\bgarage\s+rock\s+revival\b",
@@ -88,7 +88,6 @@ GENRE_REGEX: dict[str, list[str]] = {
         r"\bchristian\s+metal\b",
         r"\bneo[-\s]?classical\s+metal\b",
     ],
-
     # --- Pop & Verwandte ---
     "pop": [
         r"\bpop\b",
@@ -123,7 +122,6 @@ GENRE_REGEX: dict[str, list[str]] = {
         r"\bbaroque\s+pop\b",
         r"\bchamber\s+folk\b",  # je nach Geschmack eher "folk"
     ],
-
     # --- Electronic / Dance ---
     "electronic": [
         r"\belectronic\b",
@@ -147,7 +145,7 @@ GENRE_REGEX: dict[str, list[str]] = {
     "techno": [
         r"\btechno\b",
         r"\bacid\s+house\b",
-        r"\bacid\s+jazz\b",  # eher jazz/funk – optional
+        r"\bacid\s+jazz\b",  # eher jazz/funk - optional
     ],
     "trance": [
         r"\btrance\b",
@@ -176,7 +174,6 @@ GENRE_REGEX: dict[str, list[str]] = {
         r"\bdowntempo\b",
         r"\blounge\b",
     ],
-
     # --- Hip-Hop / R&B ---
     "hip_hop": [
         r"\bhip[-\s]?hop\b",
@@ -214,7 +211,6 @@ GENRE_REGEX: dict[str, list[str]] = {
         r"\bfunk\s+rock\b",
         r"\bfunky\s+house\b",
     ],
-
     # --- Folk / Country ---
     "folk": [
         r"\bfolk\b",
@@ -241,7 +237,6 @@ GENRE_REGEX: dict[str, list[str]] = {
     "americana": [
         r"\bamericana\b",
     ],
-
     # --- Singer-Songwriter / Acoustic ---
     "singer_songwriter": [
         r"\bsinger[-\s]?songwriter\b",
@@ -254,7 +249,6 @@ GENRE_REGEX: dict[str, list[str]] = {
         r"\bacoustic\s+rock\b",
         r"\bemo[-\s]?folk\b",
     ],
-
     # --- Emo / Hardcore / Post-XXX ---
     "emo": [
         r"\bemo\b",
@@ -276,7 +270,6 @@ GENRE_REGEX: dict[str, list[str]] = {
         r"\bpost[-\s]?metal\b",
         r"\bpost[-\s]?industrial\b",
     ],
-
     # --- Shoegaze / Dreampop / Neo-psychedelia ---
     "shoegaze": [
         r"\bshoegaze\b",
@@ -287,7 +280,6 @@ GENRE_REGEX: dict[str, list[str]] = {
         r"\bpsychedelic\s+pop\b",
         r"\bpsychedelic\b",
     ],
-
     # --- Jazz / Classical / World ---
     "jazz": [
         r"\bjazz\b",

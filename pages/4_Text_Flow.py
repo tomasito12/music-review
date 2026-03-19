@@ -21,7 +21,7 @@ def main() -> None:
 
     st.title("✏️ Stimmung / Freitext-Eingabe")
     st.markdown(
-        "Beschreibe hier, wonach du suchst – Stimmung, Klangbilder, Nuancen.\n\n"
+        "Beschreibe hier, wonach du suchst - Stimmung, Klangbilder, Nuancen.\n\n"
         "Beispiele:\n"
         "- „melancholisch, herbstlich“\n"
         "- „Gitarren-Gewitter“\n"
@@ -31,7 +31,7 @@ def main() -> None:
     text = st.text_area(
         "Freitext",
         value=st.session_state.get("free_text_query", ""),
-        placeholder="z. B. „melancholisch, herbstlich“",
+        placeholder='z. B. "melancholisch, herbstlich"',
         height=140,
     )
     st.session_state["free_text_query"] = text
@@ -53,4 +53,3 @@ def main() -> None:
 
 if __name__ == "__main__":
     main()
-

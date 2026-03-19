@@ -38,11 +38,10 @@ def _top_hit_str(h: dict[str, Any]) -> str:
     album = h.get("album") or ""
     rid = h.get("review_id")
     dist = h.get("distance")
-    if rid is None:
-        rid_part = ""
-    else:
-        rid_part = f" (id={rid})"
-    return f"{artist} — {album}{rid_part} dist={dist:.4f}" if isinstance(dist, (int, float)) else f"{artist} — {album}{rid_part} dist=?"
+    rid_part = "" if rid is None else f" (id={rid})"
+    if isinstance(dist, (int, float)):
+        return f"{artist} - {album}{rid_part} dist={dist:.4f}"
+    return f"{artist} - {album}{rid_part} dist=?"
 
 
 def _find_target_ranks(
@@ -50,13 +49,16 @@ def _find_target_ranks(
     target_review_ids: list[int],
 ) -> dict[int, list[tuple[int, float | None]]]:
     """Return ranking positions for targets within the provided hit list."""
-    ranks: dict[int, list[tuple[int, float | None]]] = {tid: [] for tid in target_review_ids}
+    ranks: dict[int, list[tuple[int, float | None]]] = {
+        tid: [] for tid in target_review_ids
+    }
     for idx, h in enumerate(hits, start=1):
         rid = h.get("review_id")
         if not isinstance(rid, int) or rid not in ranks:
             continue
         dist = h.get("distance")
-        ranks[rid].append((idx, float(dist) if isinstance(dist, (int, float)) else None))
+        parsed_dist = float(dist) if isinstance(dist, (int, float)) else None
+        ranks[rid].append((idx, parsed_dist))
     return ranks
 
 
@@ -74,7 +76,11 @@ def _print_target_ranks(
             print(f"  target review {target_id}: not in {top_label}")
             continue
         rank_str = ", ".join(
-            f"rank={rank} dist={dist:.4f}" if isinstance(dist, float) else f"rank={rank} dist=?"
+            (
+                f"rank={rank} dist={dist:.4f}"
+                if isinstance(dist, float)
+                else f"rank={rank} dist=?"
+            )
             for rank, dist in ranks
         )
         best_hit = next(h for h in hits if h.get("review_id") == target_id)
@@ -119,10 +125,15 @@ def run_ab_test() -> None:
                 print(f"Search failed: {e}")
                 continue
 
-            distances: list[float] = [
-                float(h["distance"]) for h in hits if isinstance(h.get("distance"), (int, float))
+            distances_old: list[float] = [
+                float(h["distance"])
+                for h in hits
+                if isinstance(h.get("distance"), (int, float))
             ]
-            print(f"Returned hits: {len(hits)}; distance stats: {_distance_stats(distances)}")
+            print(
+                f"Returned hits: {len(hits)}; "
+                f"distance stats: {_distance_stats(distances_old)}"
+            )
 
             # Top-3 preview.
             top3 = hits[:3]
@@ -165,14 +176,14 @@ def run_ab_test() -> None:
                 print(f"  strategy {strategy}: search failed: {e}")
                 continue
 
-            distances: list[float] = [
+            distances_chunk: list[float] = [
                 float(h["distance"])
                 for h in hits
                 if isinstance(h.get("distance"), (int, float))
             ]
             print(
                 f"  strategy {strategy}: variants={len(variants)} "
-                f"hits={len(hits)} distance_stats={_distance_stats(distances)}"
+                f"hits={len(hits)} distance_stats={_distance_stats(distances_chunk)}"
             )
             print(f"    variants: {variants}")
 
@@ -209,4 +220,3 @@ def main() -> None:
 
 if __name__ == "__main__":
     main()
-

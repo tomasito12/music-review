@@ -6,7 +6,7 @@ import argparse
 import logging
 import sys
 from collections.abc import Iterable
-from enum import Enum
+from enum import StrEnum
 from pathlib import Path
 
 from music_review.config import resolve_data_path
@@ -27,7 +27,7 @@ from music_review.pipeline.scraper.storage import (
 logger = logging.getLogger(__name__)
 
 
-class ExistingMode(str, Enum):
+class ExistingMode(StrEnum):
     ADD = "add"
     UPDATE = "update"
 
@@ -162,7 +162,10 @@ def _build_arg_parser() -> argparse.ArgumentParser:
         type=int,
         default=3,
         metavar="N",
-        help="When --max-id is not set, stop after N consecutive missing IDs (default: %(default)s).",
+        help=(
+            "When --max-id is not set, stop after N consecutive missing IDs "
+            "(default: %(default)s)."
+        ),
     )
 
     return parser
@@ -285,7 +288,8 @@ def _cmd_resume(
     if not output_path.exists():
         if max_id is None:
             logger.info(
-                "Output file %s does not exist. Starting from ID 1; will stop after %s consecutive missing IDs.",
+                "Output file %s does not exist. Starting from ID 1; "
+                "will stop after %s consecutive missing IDs.",
                 output_path,
                 stop_after_n_empty,
             )
@@ -314,7 +318,8 @@ def _cmd_resume(
     if not existing_ids:
         if max_id is None:
             logger.info(
-                "Output file %s exists but contains no reviews. Starting from ID 1; will stop after %s consecutive missing IDs.",
+                "Output file %s exists but contains no reviews. "
+                "Starting from ID 1; will stop after %s consecutive missing IDs.",
                 output_path,
                 stop_after_n_empty,
             )
@@ -327,7 +332,8 @@ def _cmd_resume(
             )
             return
         logger.info(
-            "Output file %s exists but contains no reviews. Falling back to full scrape.",
+            "Output file %s exists but contains no reviews. "
+            "Falling back to full scrape.",
             output_path,
         )
         _cmd_run(
@@ -343,7 +349,8 @@ def _cmd_resume(
 
     if max_id is None:
         logger.info(
-            "Resuming from ID %s (existing: %s entries). Will stop after %s consecutive missing IDs (mode=%s).",
+            "Resuming from ID %s (existing: %s entries). "
+            "Will stop after %s consecutive missing IDs (mode=%s).",
             start_id,
             len(existing_ids),
             stop_after_n_empty,

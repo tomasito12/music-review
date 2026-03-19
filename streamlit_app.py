@@ -18,7 +18,8 @@ def main() -> None:
     st.title("🎵 Music Review Recommender")
     st.markdown(
         "**Wie möchtest du zu deinen Empfehlungen kommen?** "
-        "Wähle einen Einstieg – du kannst später jederzeit zurück zur Startseite wechseln.",
+        "Wähle einen Einstieg - du kannst später jederzeit zurück zur "
+        "Startseite wechseln.",
     )
 
     st.markdown("---")
@@ -68,4 +69,3 @@ def main() -> None:
 
 if __name__ == "__main__":
     main()
-

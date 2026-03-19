@@ -3,12 +3,18 @@ from __future__ import annotations
 import logging
 import re
 from datetime import date
+from typing import Any
 
 from bs4 import BeautifulSoup, Tag
 
 from music_review.pipeline.scraper.models import Review, Track
 
 logger = logging.getLogger(__name__)
+
+
+def _as_tag(node: Any) -> Tag | None:
+    """Return node as Tag if possible, else None."""
+    return node if isinstance(node, Tag) else None
 
 
 def parse_review(review_id: int, html: str) -> Review | None:
@@ -19,7 +25,7 @@ def parse_review(review_id: int, html: str) -> Review | None:
     """
     soup = BeautifulSoup(html, "lxml")
 
-    container = soup.find("div", id="rezension")
+    container = _as_tag(soup.find("div", id="rezension"))
     if container is None:
         logger.warning("No rezension container found for id=%s", review_id)
         return None
@@ -79,8 +85,16 @@ def parse_review(review_id: int, html: str) -> Review | None:
 
 
 def _parse_header(
-        container: Tag,
-) -> tuple[str | None, str | None, list[str], date | None, int | None, float | None, float | None]:
+    container: Tag,
+) -> tuple[
+    str | None,
+    str | None,
+    list[str],
+    date | None,
+    int | None,
+    float | None,
+    float | None,
+]:
     """Parse the header box with artist/album, label, release and ratings."""
     header_box = _find_header_box(container)
 
@@ -96,16 +110,19 @@ def _parse_header(
 
 def _find_header_box(container: Tag) -> Tag | None:
     """Find the headerbox that contains the main <h1>."""
-    for div in container.find_all("div", class_="headerbox"):
-        if div.find("h1"):
+    for div_raw in container.find_all("div", class_="headerbox"):
+        div = _as_tag(div_raw)
+        if div is None:
+            continue
+        if _as_tag(div.find("h1")):
             return div
     return None
 
 
 def _parse_artist_album(header_box: Tag) -> tuple[str | None, str | None]:
     """Parse artist and album from the <h1> 'Artist - Album'."""
-    heading = header_box.find("h1")
-    if not heading:
+    heading = _as_tag(header_box.find("h1"))
+    if heading is None:
         return None, None
 
     text = heading.get_text(strip=True)
@@ -131,12 +148,15 @@ def _parse_references(container: Tag) -> list[str]:
             </p>
         </div>
     """
-    ref_div = container.find("div", id="reziref")
+    ref_div = _as_tag(container.find("div", id="reziref"))
     if ref_div is None:
         return []
 
     names: list[str] = []
-    for link in ref_div.find_all("a"):
+    for link_raw in ref_div.find_all("a"):
+        link = _as_tag(link_raw)
+        if link is None:
+            continue
         text = link.get_text(strip=True)
         if text:
             names.append(text)
@@ -155,12 +175,15 @@ def _parse_references(container: Tag) -> list[str]:
 
 
 def _parse_label_and_release(
-        header_box: Tag,
+    header_box: Tag,
 ) -> tuple[list[str], date | None, int | None]:
     """Parse label(s) and release date/year from the first non-rating <p>."""
     info_p: Tag | None = None
 
-    for p in header_box.find_all("p"):
+    for p_raw in header_box.find_all("p"):
+        p = _as_tag(p_raw)
+        if p is None:
+            continue
         classes = p.get("class") or []
         if "bewertung" not in classes:
             info_p = p
@@ -215,10 +238,13 @@ def _parse_ratings(header_box: Tag) -> tuple[float | None, float | None]:
             return False
         return "bewertung" in classes
 
-    for p in header_box.find_all("p", class_=has_bewertung):
+    for p_raw in header_box.find_all("p", class_=has_bewertung):
+        p = _as_tag(p_raw)
+        if p is None:
+            continue
         text = p.get_text(" ", strip=True)
-        strong = p.find("strong")
-        if not strong:
+        strong = _as_tag(p.find("strong"))
+        if strong is None:
             continue
 
         value = _parse_rating_value(strong.get_text(strip=True))
@@ -239,27 +265,30 @@ def _parse_ratings(header_box: Tag) -> tuple[float | None, float | None]:
 
 
 def _parse_text_block(
-        container: Tag,
+    container: Tag,
 ) -> tuple[str | None, str | None, str | None]:
     """Parse review title (h2), author and main body text from #rezitext."""
-    text_div = container.find("div", id="rezitext")
+    text_div = _as_tag(container.find("div", id="rezitext"))
     if text_div is None:
         return None, None, None
 
     # Review title is the <h2> in rezitext, e.g. "American Abgrund"
-    title_tag = text_div.find("h2")
+    title_tag = _as_tag(text_div.find("h2"))
     title = title_tag.get_text(strip=True) if title_tag else None
 
     # Author is in <p class="autor">(<a>Author Name</a>)</p>
     author: str | None = None
-    author_p = text_div.find("p", class_="autor")
+    author_p = _as_tag(text_div.find("p", class_="autor"))
     if author_p:
         author_text = author_p.get_text(strip=True)
         author = author_text.strip("() ").strip() if author_text else None
 
     # Body: all <p> in rezitext except the author paragraph
     paragraphs: list[str] = []
-    for p in text_div.find_all("p"):
+    for p_raw in text_div.find_all("p"):
+        p = _as_tag(p_raw)
+        if p is None:
+            continue
         classes = p.get("class") or []
         if "autor" in classes:
             continue
@@ -277,7 +306,7 @@ def _parse_text_block(
 
 
 def _parse_track_and_highlights(
-        container: Tag,
+    container: Tag,
 ) -> tuple[list[Track], list[str], str | None]:
     """Parse tracklist, highlight tracks and total duration."""
     tracks: list[Track] = []
@@ -285,32 +314,41 @@ def _parse_track_and_highlights(
     total_duration: str | None = None
 
     # Highlights: <div id="rezihighlights"><ul><li>...</li>...</ul></div>
-    highlights_div = container.find("div", id="rezihighlights")
+    highlights_div = _as_tag(container.find("div", id="rezihighlights"))
     if highlights_div:
-        for li in highlights_div.find_all("li"):
+        for li_raw in highlights_div.find_all("li"):
+            li = _as_tag(li_raw)
+            if li is None:
+                continue
             name = li.get_text(strip=True)
             if name:
                 highlights.append(name)
 
     # Tracklist + total duration: <div id="rezitracklist">
-    tracklist_div = container.find("div", id="rezitracklist")
+    tracklist_div = _as_tag(container.find("div", id="rezitracklist"))
     if tracklist_div:
         # Gesamtspielzeit: 111:35 min.
-        duration_p = tracklist_div.find("p")
+        duration_p = _as_tag(tracklist_div.find("p"))
         if duration_p:
             m = re.search(r"(\d{1,3}:\d{2})", duration_p.get_text(" ", strip=True))
             if m:
                 total_duration = m.group(1)
 
-        ul = tracklist_div.find("ul")
+        ul = _as_tag(tracklist_div.find("ul"))
         track_no = 1
         if ul:
             # Each top-level <li> is a CD ("CD 1") containing an <ol> with tracks
-            for li_disc in ul.find_all("li", recursive=False):
-                ol = li_disc.find("ol")
-                if not ol:
+            for li_disc_raw in ul.find_all("li", recursive=False):
+                li_disc = _as_tag(li_disc_raw)
+                if li_disc is None:
                     continue
-                for li_track in ol.find_all("li"):
+                ol = _as_tag(li_disc.find("ol"))
+                if ol is None:
+                    continue
+                for li_track_raw in ol.find_all("li"):
+                    li_track = _as_tag(li_track_raw)
+                    if li_track is None:
+                        continue
                     text = li_track.get_text(" ", strip=True)
                     if not text:
                         continue
@@ -326,9 +364,12 @@ def _parse_track_and_highlights(
                     track_no += 1
 
         else:
-            ol = tracklist_div.find("ol")
+            ol = _as_tag(tracklist_div.find("ol"))
             if ol:
-                for li_track in ol.find_all("li"):
+                for li_track_raw in ol.find_all("li"):
+                    li_track = _as_tag(li_track_raw)
+                    if li_track is None:
+                        continue
                     text = li_track.get_text(" ", strip=True)
                     if not text:
                         continue
@@ -364,7 +405,7 @@ def _split_labels(raw: str) -> list[str]:
 
 
 def _extract_date_and_year_from_text(
-        text: str,
+    text: str,
 ) -> tuple[date | None, int | None]:
     """Extract a date and/or year from a text like 'VÖ: 26.09.2025'."""
     text = text.strip()

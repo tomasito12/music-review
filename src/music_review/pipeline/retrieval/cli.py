@@ -221,21 +221,29 @@ def _build_parser() -> argparse.ArgumentParser:
     p_run.add_argument(
         "--recreate",
         action="store_true",
-        help="Recreate Chroma collection before importing (replaces all existing content).",
+        help=(
+            "Recreate Chroma collection before importing "
+            "(replaces all existing content)."
+        ),
     )
     p_run.add_argument(
         "--max-requests-per-batch",
         type=int,
         default=2500,
         metavar="N",
-        help="Split into batches of at most N requests (default: 2500, avoids token limit).",
+        help=(
+            "Split into batches of at most N requests "
+            "(default: 2500, avoids token limit)."
+        ),
     )
     p_run.add_argument(
         "--retry-wait",
         type=int,
         default=300,
         metavar="SECONDS",
-        help="On token limit error, wait this many seconds before retry (default: 300).",
+        help=(
+            "On token limit error, wait this many seconds before retry (default: 300)."
+        ),
     )
     p_run.add_argument(
         "--max-retries",
@@ -342,7 +350,10 @@ def _cmd_run(args: argparse.Namespace) -> int:
             if attempt == 0:
                 print(f"[{i + 1}/{len(input_paths)}] Submitted batch: {batch_id}")
             else:
-                print(f"[{i + 1}/{len(input_paths)}] Retry {attempt}/{max_retries}: {batch_id}")
+                print(
+                    f"[{i + 1}/{len(input_paths)}] "
+                    f"Retry {attempt}/{max_retries}: {batch_id}"
+                )
 
             status = poll_batch_until_complete(
                 batch_id, poll_interval_seconds=args.poll_interval

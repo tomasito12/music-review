@@ -16,19 +16,25 @@ def test_resolve_data_path_absolute_returns_unchanged() -> None:
     assert resolve_data_path(str(absolute)) == absolute
 
 
-def test_resolve_data_path_relative_joins_project_root(monkeypatch: pytest.MonkeyPatch) -> None:
+def test_resolve_data_path_relative_joins_project_root(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
     """A relative path is resolved against the project root."""
     fake_root = Path("/fake/project/root")
     monkeypatch.setenv("MUSIC_REVIEW_PROJECT_ROOT", str(fake_root))
     # Clear any cached cwd-based result by re-importing or testing that env is used
     root = get_project_root()
     assert root == fake_root
-    assert resolve_data_path("data/reviews.jsonl") == fake_root / "data" / "reviews.jsonl"
+    assert (
+        resolve_data_path("data/reviews.jsonl") == fake_root / "data" / "reviews.jsonl"
+    )
     assert resolve_data_path(Path("metadata.jsonl")) == fake_root / "metadata.jsonl"
 
 
-def test_get_project_root_returns_cwd_when_env_unset(monkeypatch: pytest.MonkeyPatch) -> None:
-    """When MUSIC_REVIEW_PROJECT_ROOT is not set, get_project_root returns current working directory."""
+def test_get_project_root_returns_cwd_when_env_unset(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """When env var is unset, cwd is used as project root."""
     monkeypatch.delenv("MUSIC_REVIEW_PROJECT_ROOT", raising=False)
     root = get_project_root()
     assert root == Path.cwd()

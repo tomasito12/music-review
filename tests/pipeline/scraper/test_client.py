@@ -16,7 +16,7 @@ from music_review.pipeline.scraper.client import (
 
 
 def _mock_response(status_code: int, text: str = "") -> MagicMock:
-    """Build a mock HTTP response that does not require a request (avoids raise_for_status RuntimeError)."""
+    """Build a mock HTTP response without a real request object."""
     resp = MagicMock()
     resp.status_code = status_code
     resp.text = text
@@ -80,7 +80,7 @@ def test_fetch_html_returns_none_on_404() -> None:
 
 
 def test_fetch_html_returns_none_on_array_is_empty() -> None:
-    """fetch_html returns None when the page returns 200 but body contains 'Array is empty'."""
+    """Return None for 200 responses that contain 'Array is empty'."""
     client = ScraperClient(max_retries=0)
     client._client = MagicMock()
     client._client.get.return_value = _mock_response(

@@ -6,11 +6,11 @@ import json
 import os
 import re
 import time
+from contextlib import suppress
 from pathlib import Path
-from typing import Any
+from typing import Any, Literal, cast
 
 import chromadb
-from chromadb.api.models import Collection
 from chromadb.utils import embedding_functions
 from openai import OpenAI
 
@@ -155,6 +155,8 @@ def hybrid_chunk_text(
             safe_chunks.extend(_hard_split_by_chars(c, max_chunk_chars=max_chunk_chars))
 
     return [c.strip() for c in safe_chunks if c.strip()]
+
+
 EMBEDDING_MODEL = "text-embedding-3-small"
 
 
@@ -297,7 +299,7 @@ def chunk_to_metadata(
 
 
 def build_enriched_document(review: Review, meta: dict[str, Any]) -> str:
-    """Build the text to embed: metadata prefix (artist, album, genres, etc.) + review body.
+    """Build text for embedding.
 
     Including metadata in the embedded text lets semantic search match on artist,
     album, and genre context as well as review content.
@@ -334,7 +336,7 @@ def get_chroma_collection(
     *,
     recreate: bool = False,
     collection_name: str = COLLECTION_NAME,
-) -> Collection:
+) -> Any:
     """Create or load the Chroma collection configured with OpenAI embeddings.
 
     If `recreate` is True, the existing collection (if any) is deleted first.
@@ -359,15 +361,12 @@ def get_chroma_collection(
 
     if recreate:
         # Delete the collection entirely if it exists, then recreate it fresh.
-        try:
+        with suppress(Exception):
             client.delete_collection(collection_name)
-        except Exception:
-            # If it does not exist yet, that's fine.
-            pass
 
     collection = client.get_or_create_collection(
         name=collection_name,
-        embedding_function=openai_ef,
+        embedding_function=cast(Any, openai_ef),
     )
     return collection
 
@@ -389,7 +388,7 @@ def _load_metadata_map(
 # ---------------------------------------------------------------------------
 
 DEFAULT_BATCH_INPUT_PATH = PROJECT_ROOT / "data" / "batch_embedding_input.jsonl"
-BATCH_COMPLETION_WINDOW = "24h"
+BATCH_COMPLETION_WINDOW: Literal["24h"] = "24h"
 
 
 def _get_openai_client() -> OpenAI:
@@ -558,7 +557,11 @@ def get_batch_error_details(batch_id: str) -> str:
     if efile:
         lines.append(f"Error file id (per-request errors): {efile}")
         lines.append("Download via OpenAI API or dashboard to inspect failed requests.")
-    if _get_attr_or_key(batch, "status") == "failed" and "Batch-level errors:" not in "\n".join(lines) and not efile:
+    if (
+        _get_attr_or_key(batch, "status") == "failed"
+        and "Batch-level errors:" not in "\n".join(lines)
+        and not efile
+    ):
         lines.append(
             "No error details in response. Check https://platform.openai.com/batches "
             "for validation/input errors or account limits."
@@ -567,7 +570,7 @@ def get_batch_error_details(batch_id: str) -> str:
 
 
 def is_token_limit_error(batch_id: str) -> bool:
-    """Return True if the batch failed due to enqueued token limit (retry after wait)."""
+    """Return True on enqueued token-limit failure."""
     details = get_batch_error_details(batch_id)
     return "token_limit_exceeded" in details or "Enqueued token limit" in details
 
@@ -843,7 +846,7 @@ def build_index_chunks_v1(
         Path(metadata_path) if metadata_path is not None else DEFAULT_METADATA_PATH
     )
     fallback_path = DEFAULT_METADATA_FALLBACK_PATH
-    metadata_map = _load_metadata_map(meta_path, fallback_path)
+    _metadata_map = _load_metadata_map(meta_path, fallback_path)
 
     # Community memberships (top-3) are optional for chunk-level metadata.
     top_comms_map = _load_top_communities_for_reviews(
@@ -928,7 +931,8 @@ def build_index_chunks_v1(
         batch_num = start // batch_size
         if batch_num % 10 == 0:
             print(
-                f"[build_index_chunks_v1] reviews_processed={min(start + batch_size, total_reviews)}/{total_reviews}, "
+                "[build_index_chunks_v1] reviews_processed="
+                f"{min(start + batch_size, total_reviews)}/{total_reviews}, "
                 f"chunks_added_so_far={chunk_count_added}"
             )
 
@@ -946,7 +950,9 @@ def search_reviews(
 
     Optional `where` allows metadata filtering (e.g. {"release_year": {"$gte": 2010}}).
     """
-    collection = get_chroma_collection(collection_name=collection_name or COLLECTION_NAME)
+    collection = get_chroma_collection(
+        collection_name=collection_name or COLLECTION_NAME,
+    )
 
     query_kwargs: dict[str, Any] = {
         "query_texts": [query_text],
@@ -964,7 +970,9 @@ def search_reviews(
     metadatas = result.get("metadatas", [[]])[0]
     distances = result.get("distances", [[]])[0]
 
-    for doc_id, doc, meta, dist in zip(ids, documents, metadatas, distances):
+    for doc_id, doc, meta, dist in zip(
+        ids, documents, metadatas, distances, strict=False
+    ):
         meta = meta or {}
 
         # Old index: doc_id is the review id.
@@ -976,7 +984,10 @@ def search_reviews(
             review_id = review_id_val
         else:
             try:
-                review_id = int(review_id_val) if review_id_val is not None else int(doc_id)
+                if review_id_val is not None:
+                    review_id = int(review_id_val)
+                else:
+                    review_id = int(doc_id)
             except (TypeError, ValueError):
                 review_id = None
 
@@ -1073,13 +1084,11 @@ def generate_query_variants(
     variants: list[str] = [original]
     if unique_expansions:
         de_variant = f"{original} {' '.join(unique_expansions[:4])}".strip()
-        en_hint = " ".join(
-            e for e in unique_expansions if re.search(r"[a-zA-Z]", e)
-        )
+        en_hint = " ".join(e for e in unique_expansions if re.search(r"[a-zA-Z]", e))
         en_variant = f"{original} {en_hint}".strip()
         mixed_variant = (
-            f"music mood {' '.join(tokens[:6])} {' '.join(unique_expansions[:5])}".strip()
-        )
+            f"music mood {' '.join(tokens[:6])} {' '.join(unique_expansions[:5])}"
+        ).strip()
         variants.extend([de_variant, en_variant, mixed_variant])
     else:
         # Fallback variants when no dictionary expansion is available.
@@ -1094,7 +1103,8 @@ def generate_query_variants(
     if strategy.upper() == "C":
         # C adds one intent-focused variant on top of B.
         intent_variant = (
-            f"find review passage about: {original}; mood, dynamics, structure, instrumentation"
+            f"find review passage about: {original}; "
+            "mood, dynamics, structure, instrumentation"
         )
         variants.append(intent_variant)
 

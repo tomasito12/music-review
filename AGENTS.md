@@ -8,6 +8,13 @@
 - Provide readable, understandable, concise, non-technical (if possible) docstrings.
 - **Logging**: Write adequate logs so that progress can be evaluated when running pipelines or CLI tools. Use appropriate levels: **INFO** for normal progress (start, steps, completion), **WARN** for recoverable issues (e.g. fallbacks, retries), **DEBUG** for detailed diagnostics. In CLI tools, support a verbose/DEBUG option (e.g. `-v` / `--verbose`) where useful.
 - **Testing**: Use one test module per source module (e.g. `config.py` → `tests/test_config.py`; `io/jsonl.py` → `tests/io/test_jsonl.py`; `pipeline/scraper/client.py` → `tests/pipeline/scraper/test_client.py`). Prefer tests that are readable and serve as documentation; use mocks only when necessary (e.g. network or external APIs).
+- **Lint workflow**:
+  - Run `hatch run lint:fix` regularly while implementing changes.
+  - After each coding step, run `hatch run lint:all`.
+  - After auto-fixes, continue manually until lint errors are resolved for touched code.
+  - Use `#noqa` only in rare, justified cases where the lint finding is not meaningful for the code and there is a strong reason to keep the code unchanged.
+  - Prioritize refactoring any "too many local variables per function" findings first.
+  - Prefer small, single-responsibility functions that are easy to test.
 
 ### Project overview
 

@@ -55,7 +55,7 @@ def main() -> None:
         st.warning(
             "Keine Communities für Auflösung 10 gefunden. Bitte zuerst den "
             "Graph-Build-Pipeline-Lauf ausführen "
-            "(z. B. `hatch run graph-build -- --export-communities \"10\"`).",
+            '(z. B. `hatch run graph-build -- --export-communities "10"`).',
         )
     else:
         st.subheader("Communities nach Top-Artists (klickbar)")
@@ -114,5 +114,3 @@ def main() -> None:
 
 if __name__ == "__main__":
     main()
-
-

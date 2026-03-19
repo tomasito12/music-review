@@ -5,8 +5,6 @@ from __future__ import annotations
 import json
 from pathlib import Path
 
-import pytest
-
 from music_review.io.jsonl import (
     append_jsonl_line,
     iter_jsonl_objects,
@@ -36,7 +34,10 @@ def test_iter_jsonl_objects_skips_empty_lines_and_invalid_json(tmp_path: Path) -
 
 
 def test_iter_jsonl_objects_only_dicts_yielded(tmp_path: Path) -> None:
-    """Only lines that decode to a dict are yielded; arrays or primitives are skipped."""
+    """Only dict JSON lines are yielded.
+
+    Arrays or primitive JSON values are skipped.
+    """
     path = tmp_path / "types.jsonl"
     path.write_text('[1, 2]\n"string"\n42\n{"id": 1}\n', encoding="utf-8")
     result = list(iter_jsonl_objects(path))
@@ -92,7 +93,7 @@ def test_write_jsonl_creates_parent_directory(tmp_path: Path) -> None:
 
 
 def test_load_ids_from_jsonl_skips_non_integer_id(tmp_path: Path) -> None:
-    """Lines whose id_key value is not an int are skipped; only integer IDs are collected."""
+    """Non-integer IDs are skipped when collecting IDs."""
     path = tmp_path / "ids.jsonl"
     path.write_text(
         '{"id": 1}\n{"id": "two"}\n{"id": 2.5}\n{"other": 3}\n',

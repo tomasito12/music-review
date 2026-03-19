@@ -15,7 +15,7 @@ import warnings
 from collections.abc import Iterable
 from dataclasses import dataclass
 from os import getenv
-from typing import Any
+from typing import Any, cast
 
 import requests
 from urllib3.exceptions import InsecureRequestWarning
@@ -94,7 +94,8 @@ def fetch_artist_info(name: str) -> ArtistInfo | None:
         members = _extract_band_members(detailed)
 
     logger.debug(
-        "Fetched artist info for %s (mbid=%s, country=%s, type=%s, tags=%d, members=%d)",
+        "Fetched artist info for %s "
+        "(mbid=%s, country=%s, type=%s, tags=%d, members=%d)",
         artist_name,
         mbid,
         country,
@@ -124,7 +125,7 @@ def _search_artists(name: str, limit: int = 5) -> list[dict[str, Any]]:
 
     try:
         data = _get("/artist", params)
-    except Exception as exc:  # requests.RequestException o.ä. je nach _get-Implementierung
+    except Exception as exc:  # requests.RequestException or similar from _get
         logger.warning("MusicBrainz artist search failed for %s: %s", name, exc)
         return []
 
@@ -210,13 +211,13 @@ def _get(path: str, params: dict[str, Any]) -> dict[str, Any]:
     )
     _last_call_ts = time.time()
     response.raise_for_status()
-    return response.json()
+    return cast(dict[str, Any], response.json())
 
 
 def search_release_groups(
-        artist: str,
-        album: str,
-        limit: int = 5,
+    artist: str,
+    album: str,
+    limit: int = 5,
 ) -> list[dict[str, Any]]:
     """Search MusicBrainz release-groups by artist + album name."""
     params = {
@@ -257,16 +258,14 @@ def _lookup_release_group_with_tags(mbid: str) -> dict[str, Any] | None:
 
 
 def _select_best_release_group(
-        release_groups: Iterable[dict[str, Any]],
+    release_groups: Iterable[dict[str, Any]],
 ) -> dict[str, Any] | None:
     """Pick the most likely album candidate (prefer primary-type Album)."""
     groups = list(release_groups)
     if not groups:
         return None
 
-    albums = [
-        rg for rg in groups if rg.get("primary-type", "").lower() == "album"
-    ]
+    albums = [rg for rg in groups if rg.get("primary-type", "").lower() == "album"]
     if albums:
         return albums[0]
 
@@ -375,8 +374,8 @@ RAW_TAG_TO_GENRE: dict[str, str] = {
 
 
 def map_tags_to_genres(
-        tags: Iterable[str],
-        mapping: dict[str, str] | None = None,
+    tags: Iterable[str],
+    mapping: dict[str, str] | None = None,
 ) -> list[str]:
     """Map raw MusicBrainz tags to internal canonical genre names."""
     if mapping is None:
