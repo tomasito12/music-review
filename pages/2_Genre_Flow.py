@@ -138,9 +138,7 @@ def main() -> None:
             st.switch_page("streamlit_app.py")
     with col_next:
         if st.button("Weiter"):
-            # Im kombinierten Flow kommt jetzt die Freitext-Seite,
-            # im reinen Genre-Flow ebenfalls.
-            st.switch_page("pages/4_Text_Flow.py")
+            st.switch_page("pages/5_Filter_Flow.py")
 
 
 if __name__ == "__main__":

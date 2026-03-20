@@ -109,7 +109,7 @@ def main() -> None:
             if mode == "combined":
                 st.switch_page("pages/2_Genre_Flow.py")
             else:
-                st.switch_page("pages/4_Text_Flow.py")
+                st.switch_page("pages/5_Filter_Flow.py")
 
 
 if __name__ == "__main__":

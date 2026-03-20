@@ -18,6 +18,14 @@ from music_review.pipeline.retrieval.vector_store import (
     search_reviews_with_variants,
 )
 
+# Streamlit widget keys: keep centralized to avoid accidental duplicates.
+KEY_CHAT_RESET_BUTTON = "rec_chat_reset_button"
+KEY_CHAT_INPUT = "rec_chat_input"
+KEY_RAG_MAX_DISTANCE = "rec_rag_max_distance"
+KEY_FILTER_ADJUST_BUTTON = "rec_filter_adjust_button"
+KEY_START_WORKFLOW_BUTTON = "rec_start_workflow_button"
+KEY_CHAT_MESSAGES = "rec_chat_messages"
+
 
 def _recommendations_css() -> None:
     st.markdown(
@@ -84,6 +92,81 @@ def _recommendations_css() -> None:
             color: #9ca3af;
             font-size: 0.85rem;
             margin-right: 0.75rem;
+        }
+        /* Two-pane layout: filter vs. semantic / chat */
+        .rec-pane-header {
+            margin: -0.15rem 0 0.85rem 0;
+            padding: 0.2rem 0 0.85rem 0.85rem;
+            border-bottom: 1px solid rgba(148, 163, 184, 0.4);
+        }
+        .rec-pane-header-filter {
+            border-left: 3px solid #64748b;
+        }
+        .rec-pane-header-semantic {
+            border-left: 3px solid #6366f1;
+            border-bottom-color: rgba(129, 140, 248, 0.35);
+        }
+        .rec-eyebrow {
+            font-size: 0.65rem;
+            font-weight: 650;
+            letter-spacing: 0.12em;
+            text-transform: uppercase;
+            color: #94a3b8;
+            margin-bottom: 0.28rem;
+        }
+        .rec-pane-header-semantic .rec-eyebrow { color: #818cf8; }
+        .rec-pane-title {
+            font-size: 1.02rem;
+            font-weight: 600;
+            letter-spacing: -0.02em;
+            color: #0f172a;
+            line-height: 1.3;
+        }
+        .rec-pane-sub {
+            font-size: 0.8rem;
+            color: #64748b;
+            margin-top: 0.45rem;
+            line-height: 1.45;
+            max-width: 36rem;
+        }
+        .rec-results-divider {
+            margin: 1rem 0 0.65rem 0;
+            padding-top: 0.85rem;
+            border-top: 1px dashed rgba(100, 116, 139, 0.35);
+        }
+        .rec-results-label {
+            font-size: 0.68rem;
+            font-weight: 650;
+            letter-spacing: 0.1em;
+            text-transform: uppercase;
+            color: #818cf8;
+            margin-bottom: 0.35rem;
+        }
+        .rec-results-title {
+            font-size: 0.92rem;
+            font-weight: 600;
+            color: #312e81;
+            letter-spacing: -0.01em;
+        }
+        .rec-callout {
+            font-size: 0.84rem;
+            color: #475569;
+            background: #f8fafc;
+            border: 1px solid #e2e8f0;
+            border-radius: 10px;
+            padding: 0.75rem 1rem;
+            line-height: 1.5;
+            margin: 0.35rem 0 0.5rem 0;
+        }
+        .rec-callout-warn {
+            background: #fffbeb;
+            border-color: #fde68a;
+            color: #92400e;
+        }
+        .rec-callout-info {
+            background: #eff6ff;
+            border-color: #bfdbfe;
+            color: #1e40af;
         }
         </style>
         """,
@@ -406,8 +489,6 @@ def main() -> None:
     )
 
     free_text = (st.session_state.get("free_text_query") or "").strip()
-    if free_text:
-        st.markdown(f"**Stimmung / Freitext:** `{free_text}`")
 
     recs = _compute_recommendations()
 
@@ -490,8 +571,83 @@ def main() -> None:
 
     st.markdown(f"**{len(recs)} Alben entsprechen aktuell deinen Kriterien.**")
 
+    col_left, col_right = st.columns([2, 1], gap="large")
+
+    # Right: single panel (chat + RAG tuning + results slot). Placeholder keeps
+    # results in this column after the left pane and RAG computation run.
+    with col_right, st.container(border=True):
+        st.markdown(
+            '<div class="rec-pane-header rec-pane-header-semantic">'
+            '<div class="rec-eyebrow">Semantische Suche</div>'
+            '<div class="rec-pane-title">Feintuning im Dialog</div>'
+            '<div class="rec-pane-sub">Beschreibe Stimmung, Klang oder '
+            "Inhalte. Unten siehst du die Alben, die semantisch am besten "
+            "passen - unabhaengig von der linken Rangliste.</div>"
+            "</div>",
+            unsafe_allow_html=True,
+        )
+        chat_reset = st.button("Chat zurücksetzen", key=KEY_CHAT_RESET_BUTTON)
+        if chat_reset:
+            st.session_state["free_text_query"] = ""
+            st.session_state[KEY_CHAT_MESSAGES] = []
+            free_text = ""
+
+        chat_messages = st.session_state.get(KEY_CHAT_MESSAGES)
+        if not isinstance(chat_messages, list):
+            chat_messages = []
+        if not chat_messages:
+            chat_messages = [
+                {
+                    "role": "assistant",
+                    "content": (
+                        "Kannst du mir beschreiben, nach welcher Musik du "
+                        "gerade suchst?"
+                    ),
+                }
+            ]
+        st.session_state[KEY_CHAT_MESSAGES] = chat_messages
+
+        for msg in chat_messages:
+            role = msg.get("role")
+            content = msg.get("content")
+            if role not in {"assistant", "user"}:
+                continue
+            if not isinstance(content, str):
+                continue
+            with st.chat_message(role):
+                st.markdown(content)
+
+        chat_input = st.chat_input(
+            "Stimmung oder Inhalte beschreiben …",
+            key=KEY_CHAT_INPUT,
+        )
+        if chat_input is not None:
+            chat_input_clean = chat_input.strip()
+            st.session_state["free_text_query"] = chat_input_clean
+            free_text = chat_input_clean
+            if chat_input_clean:
+                chat_messages.append({"role": "user", "content": chat_input_clean})
+                assistant_reply = (
+                    "Alles klar - ich passe die Trefferliste an deine Beschreibung an."
+                )
+                chat_messages.append(
+                    {"role": "assistant", "content": assistant_reply},
+                )
+                st.session_state[KEY_CHAT_MESSAGES] = chat_messages
+
+        rag_max_distance_ui = st.slider(
+            "Max. Distanz (Freitext-Ähnlichkeit, niedriger = ähnlicher)",
+            min_value=0.0,
+            max_value=2.0,
+            value=1.0,
+            step=0.05,
+            disabled=not bool(free_text),
+            key=KEY_RAG_MAX_DISTANCE,
+        )
+        results_placeholder = st.empty()
+
     # --- RAG-Abgleich (Freitext) ---
-    max_distance: float | None = None
+    max_distance = float(rag_max_distance_ui) if free_text else None
     rag_hits_by_id: dict[int, dict[str, Any]] = {}
     rag_allowed_ids: set[int] = set()
     rag_strategy = str(
@@ -501,14 +657,6 @@ def main() -> None:
         rag_strategy = "B"
 
     if free_text:
-        max_distance = st.slider(
-            "Max. Distanz (Freitext-Ähnlichkeit, niedriger = ähnlicher)",
-            min_value=0.0,
-            max_value=2.0,
-            value=1.0,
-            step=0.05,
-        )
-
         try:
             rag_hits = _search_rag_hits(
                 free_text,
@@ -527,8 +675,6 @@ def main() -> None:
         except Exception as e:
             st.error(f"RAG search failed: {e}")
             rag_hits = []
-
-        st.caption(f"Aktive Freitext-Variante: **{rag_strategy}**")
 
         # Speichern: id -> hit, und allowed set via distance threshold
         for h in rag_hits:
@@ -564,7 +710,7 @@ def main() -> None:
         *,
         rag_match: set[int],
     ) -> None:
-        num_cols = 3
+        num_cols = 1
         cols = st.columns(num_cols)
         for idx, rec in enumerate(rec_list):
             col = cols[idx % num_cols]
@@ -674,206 +820,210 @@ def main() -> None:
         int(r["review_id"]) for r in recs if r.get("review_id") is not None
     }
 
+    intersection_ids: set[int] = set()
     if free_text and max_distance is not None:
         intersection_ids = rag_allowed_ids.intersection(filter_review_ids)
 
-        if intersection_ids:
+    chat_top_n = 10
+
+    # Left: full ranking list (filters / profile), visually separate panel.
+    with col_left, st.container(border=True):
+        st.markdown(
+            '<div class="rec-pane-header rec-pane-header-filter">'
+            '<div class="rec-eyebrow">Profil &amp; Filter</div>'
+            '<div class="rec-pane-title">Rangliste</div>'
+            '<div class="rec-pane-sub">Sortierte Empfehlungen aus deinen '
+            "Communities und Filtern. Passt auch der Freitext, wirken die "
+            "Karten etwas hervorgehoben.</div>"
+            "</div>",
+            unsafe_allow_html=True,
+        )
+        _render_filter_cards(recs, rag_match=intersection_ids)
+
+    # Right column: semantic hits below chat (same bordered panel).
+    with results_placeholder.container():
+        st.markdown(
+            '<div class="rec-results-divider">'
+            '<div class="rec-results-label">Semantische Treffer</div>'
+            '<div class="rec-results-title">Zur aktuellen Beschreibung</div>'
+            "</div>",
+            unsafe_allow_html=True,
+        )
+
+        if not free_text or max_distance is None:
             st.markdown(
-                "## Freitext trifft auf deine Filter-Treffer zu (Top 3 nach Score)"
+                '<div class="rec-callout rec-callout-info">Schreib eine kurze '
+                "Beschreibung im Chat darueber - dann erscheinen hier die Alben, "
+                "die inhaltlich am besten passen.</div>",
+                unsafe_allow_html=True,
             )
-            st.caption(
-                "Diese Alben sind gleichzeitig in deinen Community/Filter-Treffern "
-                "und liegen innerhalb der maximalen Distanz zum Freitext."
-            )
-
-            intersection_recs_all = [
-                r for r in recs if int(r["review_id"]) in intersection_ids
-            ]
-            intersection_recs_top3 = sorted(
-                intersection_recs_all,
-                key=lambda r: float(r.get("score") or 0.0),
-                reverse=True,
-            )[:3]
-            top3_ids = {int(r["review_id"]) for r in intersection_recs_top3}
-
-            remaining_recs = [r for r in recs if int(r["review_id"]) not in top3_ids]
-            remaining_recs.sort(
-                key=lambda r: float(r.get("score") or 0.0),
-                reverse=True,
-            )
-
-            _render_filter_cards(intersection_recs_top3, rag_match=intersection_ids)
-
-            if remaining_recs:
-                st.markdown("## Danach: deine Filter-Treffer")
-                # Auch in der zweiten Liste bleiben Freitext-Treffer sichtbar.
-                _render_filter_cards(remaining_recs, rag_match=intersection_ids)
         else:
-            st.warning(
-                "Keine Schnittmenge zwischen Freitext-Treffern "
-                "(Distanz <= Schwellwert) "
-                "und deinen Community/Filter-Treffern."
-            )
+            st.caption(f"Aktive Freitext-Variante: **{rag_strategy}**")
+            if intersection_ids:
+                st.markdown(
+                    '<div class="rec-pane-sub" style="margin:0 0 0.75rem 0;">'
+                    "Schnittmenge mit deiner linken Rangliste - sortiert nach "
+                    "nahe am Freitext.</div>",
+                    unsafe_allow_html=True,
+                )
+                intersection_recs_all = [
+                    r for r in recs if int(r["review_id"]) in intersection_ids
+                ]
+                intersection_recs_sorted = sorted(
+                    intersection_recs_all,
+                    key=lambda r: float(
+                        rag_hits_by_id.get(int(r["review_id"]), {}).get("distance")
+                        or 999.0,
+                    ),
+                )[:chat_top_n]
+                rag_match_set = {int(r["review_id"]) for r in intersection_recs_sorted}
+                _render_filter_cards(
+                    intersection_recs_sorted,
+                    rag_match=rag_match_set,
+                )
+            else:
+                st.markdown(
+                    '<div class="rec-callout rec-callout-warn">Keine Ueberschneidung '
+                    "mit der linken Rangliste bei aktuellem Distanz-Limit. "
+                    "Darunter: die besten rein semantischen Treffer (ggf. ausserhalb "
+                    "deiner Filter).</div>",
+                    unsafe_allow_html=True,
+                )
 
-            rag_allowed_hits = [
-                h for rid, h in rag_hits_by_id.items() if rid in rag_allowed_ids
-            ]
-            if rag_allowed_hits:
-                top3 = sorted(
+                rag_allowed_hits = [
+                    h for rid, h in rag_hits_by_id.items() if rid in rag_allowed_ids
+                ]
+                top_hits = sorted(
                     rag_allowed_hits,
                     key=lambda h: float(h.get("distance") or 999.0),
-                )[:3]
-            else:
-                # Fallback: nimm die 3 kleinsten Distanzen aus allen Hits
-                top3 = sorted(
-                    rag_hits_by_id.values(),
-                    key=lambda h: float(h.get("distance") or 999.0),
-                )[:3]
+                )[:chat_top_n]
 
-            st.markdown("## Freitext trifft am stärksten zu (Top 3)")
-            st.caption(
-                "Diese Alben haben die geringste Distanz zum Freitext "
-                "(selbst wenn sie nicht in deinen Filtern liegen)."
-            )
+                if not top_hits:
+                    st.markdown(
+                        '<div class="rec-callout">Kein Treffer innerhalb der '
+                        "gewaehlten Maximal-Distanz. Regler lockern oder Text "
+                        "anpassen.</div>",
+                        unsafe_allow_html=True,
+                    )
+                else:
+                    # RAG-only hits: Score & Genre-Abdeckung wie bei normalen Karten.
+                    genre_labels = _load_genre_labels_res_10()
+                    communities = _load_communities_res_10()
+                    comm_by_id: dict[str, dict[str, Any]] = {
+                        str(c.get("id")): c for c in communities if c.get("id")
+                    }
+                    affinities = _load_affinities()
+                    affinities_by_review_id: dict[int, dict[str, Any]] = {
+                        obj["review_id"]: obj
+                        for obj in affinities
+                        if isinstance(obj.get("review_id"), int)
+                    }
 
-            # Für die RAG-Top-3: Community-Tags möglichst wie in den normalen
-            # Empfehlungskarten darstellen.
-            rec_by_id: dict[int, dict[str, Any]] = {
-                int(r["review_id"]): r
-                for r in recs
-                if isinstance(r.get("review_id"), int)
-            }
-            genre_labels = _load_genre_labels_res_10()
-
-            num_cols = 3
-            cols = st.columns(num_cols)
-            for idx, h in enumerate(top3):
-                col = cols[idx % num_cols]
-                with col:
-                    artist = h.get("artist") or ""
-                    album = h.get("album") or ""
-                    url = h.get("url") or ""
-                    rating = h.get("rating")
-                    release_year = h.get("release_year")
-                    labels = h.get("labels") or ""
-                    dist = h.get("distance")
-                    snippet_source = h.get("chunk_text") or h.get("text") or ""
-                    snippet = snippet_source[:260] + (
-                        "…" if len(snippet_source) > 260 else ""
+                    total_liked_for_scoring = (
+                        len(selected_comms) if selected_comms else 1
                     )
 
-                    # Community-Tags: bevorzugt aus bereits berechneten
-                    # Filter-Recommendations; sonst aus RAG-Metadaten.
-                    top_comms: list[dict[str, Any]] = []
-                    rid_val = h.get("review_id")
-                    rec_match = (
-                        rec_by_id.get(rid_val) if isinstance(rid_val, int) else None
-                    )
-                    if isinstance(rec_match, dict):
-                        top_comms = rec_match.get("top_communities") or []
-                    else:
-                        ids = h.get("communities_top_ids") or []
-                        scores = h.get("communities_top_scores") or []
-                        if isinstance(ids, list):
-                            for i2, cid_any in enumerate(ids[:3]):
-                                cid = str(cid_any)
-                                score_val = 0.0
-                                if (
-                                    isinstance(scores, list)
-                                    and i2 < len(scores)
-                                    and isinstance(scores[i2], (int, float))
-                                ):
-                                    score_val = float(scores[i2])
-                                label = genre_labels.get(cid) or f"Community {cid}"
-                                top_comms.append(
-                                    {"id": cid, "label": label, "affinity": score_val},
-                                )
+                    def _score_for_review_id(
+                        rid: int,
+                    ) -> tuple[float, float, list[dict[str, Any]]]:
+                        """Compute Score + Genre-Abdeckung + top tags for review."""
+                        obj = affinities_by_review_id.get(rid)
+                        if not obj:
+                            return 0.0, 0.0, []
+                        comms_any = obj.get("communities", {})
+                        if not isinstance(comms_any, dict):
+                            return 0.0, 0.0, []
+                        entries_any = comms_any.get("res_10")
+                        if not isinstance(entries_any, list):
+                            return 0.0, 0.0, []
 
-                    header = f"{html.escape(str(artist))} — {html.escape(str(album))}"
-                    if url:
-                        link_attrs = (
-                            f'href="{html.escape(url)}" target="_blank" rel="noopener"'
+                        s = 0.0
+                        k_hits = 0
+                        for entry in entries_any:
+                            if not isinstance(entry, dict):
+                                continue
+                            cid = str(entry.get("id"))
+                            if cid not in selected_comms:
+                                continue
+                            score_val = entry.get("score")
+                            if not isinstance(score_val, (int, float)):
+                                continue
+                            val = float(score_val)
+                            w = float(weights_raw.get(cid, 1.0))
+                            s += w * val
+                            if val > 0:
+                                k_hits += 1
+
+                        hits_pct = 100.0 * k_hits / total_liked_for_scoring
+
+                        sorted_entries = sorted(
+                            [
+                                e
+                                for e in entries_any
+                                if isinstance(e, dict)
+                                and isinstance(e.get("score"), (int, float))
+                            ],
+                            key=lambda e: float(e.get("score", 0.0)),
+                            reverse=True,
                         )
-                        header_html = f'<a {link_attrs} class="rec-title">{header}</a>'
-                    else:
-                        header_html = f'<span class="rec-title">{header}</span>'
+                        top_entries = sorted_entries[:3]
 
-                    release_str = _format_release_date(
-                        h.get("release_date"),
-                        release_year,
-                    )
-                    meta_parts: list[str] = []
-                    if release_str:
-                        meta_parts.append(release_str)
-                    if labels:
-                        meta_parts.append(labels)
-                    if rating is not None:
-                        meta_parts.append(f"{int(rating)}/10")
-                    if isinstance(dist, (int, float)):
-                        meta_parts.append(f"Freitext-Distanz: {float(dist):.3f}")
-                    meta_html = " - ".join(html.escape(str(p)) for p in meta_parts)
-
-                    snippet_html = html.escape(snippet).replace("\n", "<br>")
-
-                    card = '<div class="rec-card rec-card-rag">'
-                    card += f'<div class="rec-header">{header_html}</div>'
-                    if meta_html:
-                        card += f'<div class="rec-meta">{meta_html}</div>'
-                    if top_comms:
-                        card += '<div class="rec-communities">'
-                        for tc in top_comms:
-                            label = str(tc.get("label") or "")
-                            aff = float(tc.get("affinity") or 0.0)
-                            if aff >= 0.6:
-                                bg = "#0f766e"
-                                border = "#0f766e"
-                                fg = "#ecfeff"
-                                bars = "▮▮▮"
-                            elif aff >= 0.3:
-                                bg = "#22c55e"
-                                border = "#16a34a"
-                                fg = "#ecfdf3"
-                                bars = "▮▮"
-                            elif aff >= 0.1:
-                                bg = "#e0f2fe"
-                                border = "#93c5fd"
-                                fg = "#0f172a"
-                                bars = "▮"
-                            else:
-                                bg = "#f3f4f6"
-                                border = "#e5e7eb"
-                                fg = "#4b5563"
-                                bars = ""
-
-                            tag_text = f"{label}"
-                            if bars:
-                                tag_text += f" {bars}"
-                            card += (
-                                f'<span class="rec-comm-tag" '
-                                f'style="background-color:{bg};border-color:{border};'
-                                f'color:{fg};">'
-                                f"{html.escape(tag_text)}"
-                                "</span>"
+                        top_comms: list[dict[str, Any]] = []
+                        for e in top_entries:
+                            cid = str(e.get("id"))
+                            aff = float(e.get("score", 0.0))
+                            label = genre_labels.get(cid)
+                            c_obj = comm_by_id.get(cid)
+                            if not label and isinstance(c_obj, dict):
+                                centroid = c_obj.get("centroid")
+                                if centroid:
+                                    label = str(centroid)
+                            if not label:
+                                label = f"Community {cid}"
+                            top_comms.append(
+                                {"id": cid, "label": label, "affinity": aff},
                             )
-                        card += "</div>"
-                    if snippet_html:
-                        card += f'<div class="rec-excerpt">{snippet_html}</div>'
-                    card += "</div>"
-                    st.markdown(card, unsafe_allow_html=True)
 
-            st.markdown("## Danach: deine Community/Filter-Treffer")
-            _render_filter_cards(recs, rag_match=set())
-    else:
-        # Kein Freitext (oder kein Schwellwert): wie bisher
-        _render_filter_cards(recs, rag_match=set())
+                        return s, hits_pct, top_comms
+
+                    pseudo_recs: list[dict[str, Any]] = []
+                    rag_match_set: set[int] = set()
+                    for h in top_hits:
+                        rid_val = h.get("review_id")
+                        if not isinstance(rid_val, int):
+                            continue
+                        rid = rid_val
+                        score_val, hits_pct_val, top_comms = _score_for_review_id(rid)
+                        pseudo_recs.append(
+                            {
+                                "review_id": rid,
+                                "artist": h.get("artist") or "",
+                                "album": h.get("album") or "",
+                                "url": h.get("url") or "",
+                                "rating": h.get("rating"),
+                                "year": h.get("release_year"),
+                                "release_date": h.get("release_date"),
+                                "labels": h.get("labels") or "",
+                                "score": score_val,
+                                "hits_pct": hits_pct_val,
+                                "top_communities": top_comms,
+                                "text": h.get("chunk_text") or h.get("text") or "",
+                            }
+                        )
+                        rag_match_set.add(rid)
+
+                    _render_filter_cards(pseudo_recs, rag_match=rag_match_set)
 
     st.markdown("---")
     col_back, col_start = st.columns([1, 1])
     with col_back:
-        if st.button("Filter anpassen"):
+        if st.button("Filter anpassen", key=KEY_FILTER_ADJUST_BUTTON):
             st.switch_page("pages/5_Filter_Flow.py")
     with col_start:
-        if st.button("Neuer Flow starten"):
+        if st.button("Start new workflow", key=KEY_START_WORKFLOW_BUTTON):
+            st.cache_data.clear()
+            st.cache_resource.clear()
+            st.session_state.clear()
             st.switch_page("streamlit_app.py")
 
 

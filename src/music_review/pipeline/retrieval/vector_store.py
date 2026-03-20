@@ -388,7 +388,13 @@ def _load_metadata_map(
 # ---------------------------------------------------------------------------
 
 DEFAULT_BATCH_INPUT_PATH = PROJECT_ROOT / "data" / "batch_embedding_input.jsonl"
+DEFAULT_CHUNK_BATCH_INPUT_PATH = (
+    PROJECT_ROOT / "data" / "batch_embedding_input_chunks_v1.jsonl"
+)
 BATCH_COMPLETION_WINDOW: Literal["24h"] = "24h"
+DEFAULT_CHUNK_BATCH_RESULTS_PATH = (
+    PROJECT_ROOT / "data" / "batch_embedding_results_chunks_v1.jsonl"
+)
 
 
 def _get_openai_client() -> OpenAI:
@@ -470,6 +476,230 @@ def write_batch_embedding_input(
         write_jsonl(part_path, chunk)
         paths.append(part_path)
     return (len(requests), paths)
+
+
+def _parse_chunk_custom_id(custom_id: str) -> tuple[int, int]:
+    """Parse chunk custom_id formatted as '{review_id}__chunk_{chunk_index}'."""
+    review_part, chunk_part = custom_id.rsplit("__chunk_", 1)
+    return int(review_part), int(chunk_part)
+
+
+def write_batch_embedding_input_chunks_v1(
+    output_path: Path | str = DEFAULT_CHUNK_BATCH_INPUT_PATH,
+    *,
+    data_path: Path | str = DEFAULT_DATA_PATH,
+    _metadata_path: Path | str | None = None,
+    skip_existing: bool = True,
+    max_requests_per_file: int | None = None,
+    persist_directory: Path | str | None = None,
+    recreate: bool = False,
+    collection_name: str = CHUNK_COLLECTION_NAME,
+    min_chunk_chars: int = 600,
+    target_chunk_chars: int = 1600,
+    max_chunk_chars: int = 2400,
+    batch_size: int = 50,
+) -> tuple[int, list[Path]]:
+    """Write OpenAI Batch API input JSONL for chunk-level embeddings (v1).
+
+    Each batch request encodes exactly one chunk:
+      - custom_id: '{review_id}__chunk_{chunk_index}'
+      - input: chunk text only
+    """
+    out = Path(output_path)
+    file_path = Path(data_path)
+    if not file_path.exists():
+        msg = f"Data file not found: {file_path}"
+        raise FileNotFoundError(msg)
+
+    reviews = load_reviews_from_jsonl(file_path)
+    if not reviews:
+        msg = f"No non-empty reviews found in {file_path}"
+        raise RuntimeError(msg)
+
+    directory = (
+        Path(persist_directory)
+        if persist_directory is not None
+        else DEFAULT_CHROMA_PATH
+    )
+
+    # Use collection only for existing id checks.
+    collection = get_chroma_collection(
+        persist_directory=directory,
+        recreate=recreate,
+        collection_name=collection_name,
+    )
+    existing_ids: set[str] = set()
+    if skip_existing and not recreate:
+        existing = collection.get(limit=100_000_000)
+        existing_ids = set(existing.get("ids", []))
+
+    requests: list[dict[str, Any]] = []
+
+    total_new_chunks = 0
+    for start in range(0, len(reviews), batch_size):
+        batch = reviews[start : start + batch_size]
+        if not batch:
+            continue
+
+        for review in batch:
+            review_id = int(review.id)
+            chunks = hybrid_chunk_text(
+                review.text,
+                min_chunk_chars=min_chunk_chars,
+                target_chunk_chars=target_chunk_chars,
+                max_chunk_chars=max_chunk_chars,
+            )
+            if not chunks:
+                continue
+
+            # Skip entire review if chunk_0 already exists.
+            first_chunk_id = f"{review_id}__chunk_0"
+            if first_chunk_id in existing_ids:
+                continue
+
+            for chunk_index, chunk_text in enumerate(chunks):
+                chunk_id = f"{review_id}__chunk_{chunk_index}"
+                if skip_existing and chunk_id in existing_ids:
+                    continue
+
+                requests.append(
+                    {
+                        "custom_id": chunk_id,
+                        "method": "POST",
+                        "url": "/v1/embeddings",
+                        "body": {"model": EMBEDDING_MODEL, "input": chunk_text},
+                    }
+                )
+                total_new_chunks += 1
+
+    out.parent.mkdir(parents=True, exist_ok=True)
+    if max_requests_per_file is None:
+        write_jsonl(out, requests)
+        return (total_new_chunks, [out])
+
+    paths: list[Path] = []
+    for idx in range(0, len(requests), max_requests_per_file):
+        chunk = requests[idx : idx + max_requests_per_file]
+        part_path = out.parent / f"{out.stem}_{len(paths):05d}{out.suffix}"
+        write_jsonl(part_path, chunk)
+        paths.append(part_path)
+    return (total_new_chunks, paths)
+
+
+def import_batch_results_into_chroma_chunks_v1(
+    results_path: Path | str,
+    *,
+    data_path: Path | str = DEFAULT_DATA_PATH,
+    _metadata_path: Path | str | None = None,
+    persist_directory: Path | str | None = None,
+    recreate: bool = False,
+    collection_name: str = CHUNK_COLLECTION_NAME,
+    min_chunk_chars: int = 600,
+    target_chunk_chars: int = 1600,
+    max_chunk_chars: int = 2400,
+    add_batch_size: int = 500,
+) -> int:
+    """Import chunk-level batch embedding results into Chroma (v1)."""
+    parsed = parse_batch_output_jsonl(Path(results_path))
+    if not parsed:
+        return 0
+
+    directory = (
+        Path(persist_directory)
+        if persist_directory is not None
+        else DEFAULT_CHROMA_PATH
+    )
+    collection = get_chroma_collection(
+        persist_directory=directory,
+        recreate=recreate,
+        collection_name=collection_name,
+    )
+
+    existing_ids: set[str] = set()
+    if not recreate:
+        existing = collection.get(limit=100_000_000)
+        existing_ids = set(existing.get("ids", []))
+
+    needed_chunks: dict[int, set[int]] = {}
+    for custom_id, _embedding in parsed:
+        rid, chunk_index = _parse_chunk_custom_id(custom_id)
+        needed_chunks.setdefault(rid, set()).add(chunk_index)
+
+    file_path = Path(data_path)
+    reviews = load_reviews_from_jsonl(file_path)
+    review_by_id: dict[int, Review] = {int(r.id): r for r in reviews}
+
+    top_comms_map = _load_top_communities_for_reviews(
+        resolve_data_path("data/album_community_affinities.jsonl"),
+        res_key="res_10",
+        top_k=3,
+    )
+
+    # Precompute chunk texts only for reviews that appear in this result file.
+    chunks_by_review: dict[int, list[str]] = {}
+    for rid in needed_chunks:
+        review = review_by_id.get(rid)
+        if not review:
+            continue
+        chunks = hybrid_chunk_text(
+            review.text,
+            min_chunk_chars=min_chunk_chars,
+            target_chunk_chars=target_chunk_chars,
+            max_chunk_chars=max_chunk_chars,
+        )
+        chunks_by_review[rid] = chunks
+
+    chunk_ids: list[str] = []
+    embeddings: list[list[float]] = []
+    metadatas: list[dict[str, Any]] = []
+    documents: list[str] = []
+
+    for custom_id, embedding in parsed:
+        rid, chunk_index = _parse_chunk_custom_id(custom_id)
+        if custom_id in existing_ids:
+            continue
+
+        chunks_for_review = chunks_by_review.get(rid)
+        if chunks_for_review is None:
+            continue
+        if chunk_index >= len(chunks_for_review):
+            continue
+        chunk_text = chunks_for_review[chunk_index]
+
+        review = review_by_id.get(rid)
+        if review is None:
+            continue
+
+        meta = chunk_to_metadata(
+            review,
+            chunk_index=chunk_index,
+            chunk_text=chunk_text,
+        )
+        top_comms = top_comms_map.get(rid)
+        if top_comms:
+            meta["communities_top_ids"] = [cid for cid, _ in top_comms]
+            meta["communities_top_scores"] = [score for _cid, score in top_comms]
+
+        chunk_ids.append(custom_id)
+        embeddings.append(embedding)
+        metadatas.append(meta)
+        documents.append(chunk_text)
+
+    if not chunk_ids:
+        return 0
+
+    added = 0
+    for start in range(0, len(chunk_ids), add_batch_size):
+        end = start + add_batch_size
+        collection.add(
+            ids=chunk_ids[start:end],
+            embeddings=embeddings[start:end],
+            metadatas=metadatas[start:end],
+            documents=documents[start:end],
+        )
+        added += end - start
+
+    return added
 
 
 def submit_batch_embedding_job(
@@ -831,112 +1061,49 @@ def build_index_chunks_v1(
 
     Returns the number of newly added chunks.
     """
-    file_path = Path(data_path)
-    if not file_path.exists():
-        msg = f"Data file not found: {file_path}"
-        raise FileNotFoundError(msg)
+    max_requests_per_file = 2500
 
-    reviews = load_reviews_from_jsonl(file_path)
-    if not reviews:
-        msg = f"No non-empty reviews found in {file_path}"
-        raise RuntimeError(msg)
-    total_reviews = len(reviews)
-
-    meta_path = (
-        Path(metadata_path) if metadata_path is not None else DEFAULT_METADATA_PATH
-    )
-    fallback_path = DEFAULT_METADATA_FALLBACK_PATH
-    _metadata_map = _load_metadata_map(meta_path, fallback_path)
-
-    # Community memberships (top-3) are optional for chunk-level metadata.
-    top_comms_map = _load_top_communities_for_reviews(
-        resolve_data_path("data/album_community_affinities.jsonl"),
-        res_key="res_10",
-        top_k=3,
+    total_new_chunks, input_paths = write_batch_embedding_input_chunks_v1(
+        output_path=DEFAULT_CHUNK_BATCH_INPUT_PATH,
+        data_path=data_path,
+        _metadata_path=metadata_path,
+        skip_existing=True,
+        max_requests_per_file=max_requests_per_file,
+        persist_directory=DEFAULT_CHROMA_PATH,
+        recreate=recreate,
+        collection_name=collection_name,
+        min_chunk_chars=min_chunk_chars,
+        target_chunk_chars=target_chunk_chars,
+        max_chunk_chars=max_chunk_chars,
+        batch_size=batch_size,
     )
 
-    if recreate:
-        collection = get_chroma_collection(
-            recreate=True,
+    if total_new_chunks == 0:
+        return 0
+
+    added_total = 0
+    for idx, inp in enumerate(input_paths):
+        batch_id = submit_batch_embedding_job(inp)
+        _ = poll_batch_until_complete(batch_id)
+
+        results_part_path = resolve_data_path(
+            f"data/batch_embedding_results_chunks_v1_part_{idx:05d}.jsonl"
+        )
+        download_batch_results(batch_id, results_part_path)
+
+        added_total += import_batch_results_into_chroma_chunks_v1(
+            results_part_path,
+            data_path=data_path,
+            _metadata_path=metadata_path,
+            persist_directory=DEFAULT_CHROMA_PATH,
+            recreate=False,
             collection_name=collection_name,
-        )
-        existing_ids: set[str] = set()
-    else:
-        collection = get_chroma_collection(
-            collection_name=collection_name,
-        )
-        existing = collection.get(limit=100_000_000)
-        existing_ids = set(existing.get("ids", []))
-
-    chunk_count_added = 0
-
-    for start in range(0, len(reviews), batch_size):
-        batch = reviews[start : start + batch_size]
-        if not batch:
-            continue
-
-        chunk_ids: list[str] = []
-        chunk_docs: list[str] = []
-        chunk_metas: list[dict[str, Any]] = []
-
-        for review in batch:
-            review_id = int(review.id)
-            chunks = hybrid_chunk_text(
-                review.text,
-                min_chunk_chars=min_chunk_chars,
-                target_chunk_chars=target_chunk_chars,
-                max_chunk_chars=max_chunk_chars,
-            )
-            if not chunks:
-                continue
-
-            # Skip entire review if chunk_0 already exists.
-            first_chunk_id = f"{review_id}__chunk_0"
-            if first_chunk_id in existing_ids:
-                continue
-
-            for chunk_index, chunk_text in enumerate(chunks):
-                chunk_id = f"{review_id}__chunk_{chunk_index}"
-                if chunk_id in existing_ids:
-                    continue
-                meta = chunk_to_metadata(
-                    review,
-                    chunk_index=chunk_index,
-                    chunk_text=chunk_text,
-                )
-                # Attach top community ids/scores for possible future filtering.
-                top_comms = top_comms_map.get(review_id)
-                if top_comms:
-                    meta["communities_top_ids"] = [cid for cid, _ in top_comms]
-                    meta["communities_top_scores"] = [
-                        score for _cid, score in top_comms
-                    ]
-                # (We keep 'chunk_text' as the only similarity driver.)
-
-                chunk_ids.append(chunk_id)
-                chunk_docs.append(chunk_text)
-                chunk_metas.append(meta)
-                existing_ids.add(chunk_id)
-                chunk_count_added += 1
-
-        if not chunk_ids:
-            continue
-
-        collection.add(
-            ids=chunk_ids,
-            documents=chunk_docs,
-            metadatas=chunk_metas,
+            min_chunk_chars=min_chunk_chars,
+            target_chunk_chars=target_chunk_chars,
+            max_chunk_chars=max_chunk_chars,
         )
 
-        batch_num = start // batch_size
-        if batch_num % 10 == 0:
-            print(
-                "[build_index_chunks_v1] reviews_processed="
-                f"{min(start + batch_size, total_reviews)}/{total_reviews}, "
-                f"chunks_added_so_far={chunk_count_added}"
-            )
-
-    return chunk_count_added
+    return added_total
 
 
 def search_reviews(

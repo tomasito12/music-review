@@ -80,7 +80,7 @@ def update_chroma_communities(
     updates_ids: list[str] = []
     updates_metas: list[dict[str, Any]] = []
 
-    for doc_id, meta in zip(ids, metadatas):
+    for doc_id, meta in zip(ids, metadatas, strict=False):
         # Chroma always stores ids as str; our review_ids sind ints.
         try:
             review_id = int(doc_id)
