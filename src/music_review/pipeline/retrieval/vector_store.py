@@ -3,9 +3,11 @@
 from __future__ import annotations
 
 import json
+import math
 import os
 import re
 import time
+from collections import defaultdict
 from contextlib import suppress
 from pathlib import Path
 from typing import Any, Literal, cast
@@ -1191,6 +1193,129 @@ def search_reviews(
         )
 
     return hits
+
+
+def _l2_distance_vec(a: list[float], b: list[float]) -> float:
+    """Euclidean distance between two embedding vectors (Chroma default ``l2``)."""
+    if len(a) != len(b):
+        msg = f"Embedding dimension mismatch: {len(a)} vs {len(b)}"
+        raise ValueError(msg)
+    s = 0.0
+    for x, y in zip(a, b, strict=True):
+        d = float(x) - float(y)
+        s += d * d
+    return math.sqrt(s)
+
+
+def embed_query_vector(query_text: str) -> list[float]:
+    """Embed ``query_text`` with the same OpenAI model as the Chroma collections."""
+    client = _get_openai_client()
+    q = query_text.strip()
+    if not q:
+        msg = "Empty query text for embedding."
+        raise ValueError(msg)
+    resp = client.embeddings.create(model=EMBEDDING_MODEL, input=q)
+    data0 = resp.data[0]
+    emb = getattr(data0, "embedding", None) if data0 is not None else None
+    if emb is None:
+        msg = "OpenAI embeddings response missing embedding."
+        raise RuntimeError(msg)
+    return [float(x) for x in emb]
+
+
+def semantic_distance_map_for_review_ids(
+    query_text: str,
+    review_ids: list[int],
+    *,
+    collection_name: str | None = None,
+    batch_size: int = 40,
+) -> dict[int, float | None]:
+    """Minimum L2 distance from one query embedding to stored vectors per review.
+
+    - **Chunk index** (``CHUNK_COLLECTION_NAME``): minimum over all chunks of that
+      review (same idea as fusion dedupe).
+    - **Legacy index** (``COLLECTION_NAME``): single vector per review id.
+
+    Missing reviews (not in Chroma) map to ``None``.
+
+    Uses one OpenAI embedding call for ``query_text``, then batched
+    ``collection.get``. Distances are comparable to Chroma ``query`` distances when
+    the collection uses the default ``l2`` space (project default).
+
+    Note: Multi-variant fusion can yield **different** per-review distances than
+    this single-query embedding because variants are not applied here.
+    """
+    name = collection_name or COLLECTION_NAME
+    if not review_ids:
+        return {}
+
+    qvec = embed_query_vector(query_text)
+    collection = get_chroma_collection(collection_name=name)
+
+    unique_ids = list(dict.fromkeys(review_ids))
+    out: dict[int, float | None] = dict.fromkeys(unique_ids)
+
+    is_chunks = name == CHUNK_COLLECTION_NAME
+
+    for i in range(0, len(unique_ids), batch_size):
+        batch = unique_ids[i : i + batch_size]
+        if is_chunks:
+            got = collection.get(
+                where={"review_id": {"$in": batch}},
+                include=["embeddings", "metadatas"],
+            )
+        else:
+            got = collection.get(
+                ids=[str(rid) for rid in batch],
+                include=["embeddings", "metadatas"],
+            )
+
+        embs = got.get("embeddings")
+        metas = got.get("metadatas") or []
+
+        if embs is None:
+            continue
+        # Chroma may return ndarray; bool(ndarray) is ambiguous (avoid `if not embs`).
+        try:
+            if len(embs) == 0:
+                continue
+        except TypeError:
+            continue
+
+        ids_out = got.get("ids") or []
+
+        if is_chunks:
+            by_rid: dict[int, list[list[float]]] = defaultdict(list)
+            for emb, meta in zip(embs, metas, strict=False):
+                if emb is None:
+                    continue
+                meta = meta or {}
+                rv = meta.get("review_id")
+                if not isinstance(rv, int):
+                    try:
+                        rv = int(rv) if rv is not None else None
+                    except (TypeError, ValueError):
+                        rv = None
+                if rv is None:
+                    continue
+                by_rid[rv].append([float(x) for x in emb])
+
+            for rid in batch:
+                chunks = by_rid.get(rid)
+                if not chunks:
+                    continue
+                out[rid] = min(_l2_distance_vec(qvec, c) for c in chunks)
+        else:
+            for doc_id, emb in zip(ids_out, embs, strict=False):
+                if emb is None:
+                    continue
+                try:
+                    rid = int(doc_id)
+                except (TypeError, ValueError):
+                    continue
+                out[rid] = _l2_distance_vec(qvec, [float(x) for x in emb])
+
+    return out
 
 
 def _normalize_query_text(query_text: str) -> str:

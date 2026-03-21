@@ -11,6 +11,7 @@ import streamlit as st
 
 import music_review.config  # noqa: F401 - load .env and set up paths
 from music_review.config import resolve_data_path
+from music_review.dashboard.user_profile_store import ACTIVE_PROFILE_SESSION_KEY
 from music_review.io.jsonl import iter_jsonl_objects, load_jsonl_as_map
 from music_review.io.reviews_jsonl import load_reviews_from_jsonl
 from music_review.pipeline.retrieval.vector_store import (
@@ -25,6 +26,11 @@ KEY_RAG_MAX_DISTANCE = "rec_rag_max_distance"
 KEY_FILTER_ADJUST_BUTTON = "rec_filter_adjust_button"
 KEY_START_WORKFLOW_BUTTON = "rec_start_workflow_button"
 KEY_CHAT_MESSAGES = "rec_chat_messages"
+
+# Freitext-RAG: max. reviews after fusion (N). Top-k per variant must be large
+# enough that fusion can reach N (chunk overlap + strategy A = single variant).
+RAG_FUSION_N_RESULTS = 2500
+RAG_TOP_K_PER_VARIANT = 2500
 
 
 def _recommendations_css() -> None:
@@ -236,14 +242,15 @@ def _search_rag_hits(
     query_text: str,
     *,
     strategy: str = "B",
-    n_results: int = 100,
+    n_results: int = RAG_FUSION_N_RESULTS,
+    top_k_per_variant: int = RAG_TOP_K_PER_VARIANT,
 ) -> list[dict[str, Any]]:
     """Run Chroma semantic search for the free-text query."""
     return search_reviews_with_variants(
         query_text,
         strategy=strategy,
         n_results=n_results,
-        top_k_per_variant=30,
+        top_k_per_variant=top_k_per_variant,
         where=None,
         collection_name=CHUNK_COLLECTION_NAME,
     )
@@ -488,8 +495,6 @@ def main() -> None:
         unsafe_allow_html=True,
     )
 
-    free_text = (st.session_state.get("free_text_query") or "").strip()
-
     recs = _compute_recommendations()
 
     if not recs:
@@ -590,7 +595,6 @@ def main() -> None:
         if chat_reset:
             st.session_state["free_text_query"] = ""
             st.session_state[KEY_CHAT_MESSAGES] = []
-            free_text = ""
 
         chat_messages = st.session_state.get(KEY_CHAT_MESSAGES)
         if not isinstance(chat_messages, list):
@@ -605,6 +609,25 @@ def main() -> None:
                     ),
                 }
             ]
+
+        # Process chat_input *before* rendering messages: Streamlit runs the script
+        # only once per send; rendering first would skip the new user bubble until
+        # another interaction. (chat_input stays visually at the bottom of the app.)
+        chat_input = st.chat_input(
+            "Stimmung oder Inhalte beschreiben …",
+            key=KEY_CHAT_INPUT,
+        )
+        if chat_input is not None:
+            chat_input_clean = chat_input.strip()
+            st.session_state["free_text_query"] = chat_input_clean
+            if chat_input_clean:
+                chat_messages.append({"role": "user", "content": chat_input_clean})
+                assistant_reply = (
+                    "Alles klar - ich passe die Trefferliste an deine Beschreibung an."
+                )
+                chat_messages.append(
+                    {"role": "assistant", "content": assistant_reply},
+                )
         st.session_state[KEY_CHAT_MESSAGES] = chat_messages
 
         for msg in chat_messages:
@@ -617,23 +640,11 @@ def main() -> None:
             with st.chat_message(role):
                 st.markdown(content)
 
-        chat_input = st.chat_input(
-            "Stimmung oder Inhalte beschreiben …",
-            key=KEY_CHAT_INPUT,
-        )
-        if chat_input is not None:
-            chat_input_clean = chat_input.strip()
-            st.session_state["free_text_query"] = chat_input_clean
-            free_text = chat_input_clean
-            if chat_input_clean:
-                chat_messages.append({"role": "user", "content": chat_input_clean})
-                assistant_reply = (
-                    "Alles klar - ich passe die Trefferliste an deine Beschreibung an."
-                )
-                chat_messages.append(
-                    {"role": "assistant", "content": assistant_reply},
-                )
-                st.session_state[KEY_CHAT_MESSAGES] = chat_messages
+        q_show = (st.session_state.get("free_text_query") or "").strip()
+        if q_show:
+            st.caption(f"**Aktuelle Freitext-Suche:** {q_show}")
+
+        free_text = (st.session_state.get("free_text_query") or "").strip()
 
         rag_max_distance_ui = st.slider(
             "Max. Distanz (Freitext-Ähnlichkeit, niedriger = ähnlicher)",
@@ -647,6 +658,7 @@ def main() -> None:
         results_placeholder = st.empty()
 
     # --- RAG-Abgleich (Freitext) ---
+    free_text = (st.session_state.get("free_text_query") or "").strip()
     max_distance = float(rag_max_distance_ui) if free_text else None
     rag_hits_by_id: dict[int, dict[str, Any]] = {}
     rag_allowed_ids: set[int] = set()
@@ -661,7 +673,6 @@ def main() -> None:
             rag_hits = _search_rag_hits(
                 free_text,
                 strategy=rag_strategy,
-                n_results=120,
             )
         except RuntimeError as e:
             if "OPENAI_API_KEY" in str(e):
@@ -1021,9 +1032,12 @@ def main() -> None:
             st.switch_page("pages/5_Filter_Flow.py")
     with col_start:
         if st.button("Start new workflow", key=KEY_START_WORKFLOW_BUTTON):
+            saved_slug = st.session_state.get(ACTIVE_PROFILE_SESSION_KEY)
             st.cache_data.clear()
             st.cache_resource.clear()
             st.session_state.clear()
+            if saved_slug is not None:
+                st.session_state[ACTIVE_PROFILE_SESSION_KEY] = saved_slug
             st.switch_page("streamlit_app.py")
 
 
