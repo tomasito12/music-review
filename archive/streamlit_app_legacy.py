@@ -750,8 +750,8 @@ def render_communities_page() -> None:
     if not clusterings:
         st.warning(
             "No fixed clusterings found. Run\n\n"
-            '`hatch run graph-build -- --export-communities "2,6,10"`\n\n'
-            "to generate communities_res_{10}.json and community_memberships.jsonl."
+            '`hatch run graph-build -- --export-communities "10"`\n\n'
+            "to generate communities_res_10.json and community_memberships.jsonl."
         )
         return
 
@@ -765,7 +765,7 @@ def render_communities_page() -> None:
         "Select resolution",
         options=available_res,
         format_func=lambda r: res_labels[r],
-        index=available_res.index(2.0) if 2.0 in available_res else 0,
+        index=available_res.index(10.0) if 10.0 in available_res else 0,
     )
 
     communities = clusterings.get(selected_res, [])
@@ -826,7 +826,7 @@ def render_communities_page() -> None:
     if not affinities:
         st.info(
             "No album community affinities found. Run\n\n"
-            '`hatch run graph-build -- --export-communities "2,6,10" '
+            '`hatch run graph-build -- --export-communities "10" '
             "--export-album-affinities`\n\n"
             "to generate data/album_community_affinities.jsonl."
         )
@@ -865,8 +865,6 @@ def render_communities_page() -> None:
             parts.append(f"{name} ({score:.2f})")
         return ", ".join(parts)
 
-    res2_key = "res_2"
-    res6_key = "res_6"
     res10_key = "res_10"
 
     table_rows: list[dict[str, Any]] = []
@@ -875,8 +873,6 @@ def render_communities_page() -> None:
             {
                 "Artist": obj.get("artist", ""),
                 "Album": obj.get("album", ""),
-                "Resolution 2": _format_labels_for_res(obj, res2_key),
-                "Resolution 6": _format_labels_for_res(obj, res6_key),
                 "Resolution 10": _format_labels_for_res(obj, res10_key),
             }
         )

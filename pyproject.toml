@@ -61,6 +61,7 @@ features = ["dev"]
 
 [tool.hatch.envs.default.scripts]
 update-db = "python scripts/update_database.py {args:}"
+full-data-update = "python scripts/full_data_update.py {args:}"
 dashboard = "streamlit run streamlit_app.py {args:}"
 batch-embed = "python -m music_review.pipeline.retrieval.cli {args:}"
 graph-build = "python -m music_review.pipeline.retrieval.reference_graph {args:}"

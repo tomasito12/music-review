@@ -335,10 +335,19 @@ def build_metadata(
     output_path: Path,
     overwrite: bool = False,
     update: bool = False,
+    min_review_id: int | None = None,
 ) -> int:
     """Main batch function: iterate reviews, fetch metadata, write JSONL."""
     if overwrite and update:
         raise ValueError("Options 'overwrite' and 'update' cannot be used together.")
+    if min_review_id is not None and min_review_id < 0:
+        msg = "min_review_id must be >= 0"
+        raise ValueError(msg)
+    if min_review_id is not None and (overwrite or update):
+        raise ValueError(
+            "--min-review-id only applies to default incremental mode "
+            "(do not combine with --overwrite or --update).",
+        )
 
     if overwrite:
         if output_path.exists():
@@ -401,12 +410,30 @@ def build_metadata(
         return updated_or_new
 
     existing_ids = load_existing_review_ids(output_path)
+    logger.info(
+        "Incremental mode: %d review_id(s) already in %s — MusicBrainz runs only "
+        "for reviews missing there. To re-fetch everything use --update (slow). "
+        "To ignore missing low IDs after a scrape, use --min-review-id ID.",
+        len(existing_ids),
+        output_path,
+    )
     append_entries: list[AlbumMetadata] = []
     total_processed = 0
     total_skipped = 0
+    skipped_below_min = 0
+
+    if min_review_id is not None:
+        logger.info(
+            "Only fetching metadata for reviews with id >= %d (--min-review-id).",
+            min_review_id,
+        )
 
     for review_id, artist, album in iter_reviews(input_path):
         total_processed += 1
+
+        if min_review_id is not None and review_id < min_review_id:
+            skipped_below_min += 1
+            continue
 
         if review_id in existing_ids:
             total_skipped += 1
@@ -433,12 +460,14 @@ def build_metadata(
         )
 
     logger.info(
-        "Metadata build (append+skip) done. Processed=%d, skipped(existing)=%d, new=%d",
+        "Metadata build (append+skip) done. Processed=%d, skipped(existing)=%d, "
+        "skipped(below_min)=%d, new_fetched=%d",
         total_processed,
         total_skipped,
-        total_processed - total_skipped,
+        skipped_below_min,
+        total_processed - total_skipped - skipped_below_min,
     )
-    return total_processed - total_skipped
+    return total_processed - total_skipped - skipped_below_min
 
 
 def main() -> None:
@@ -478,6 +507,18 @@ def main() -> None:
             "fully rewritten."
         ),
     )
+    parser.add_argument(
+        "--min-review-id",
+        type=int,
+        default=None,
+        metavar="ID",
+        help=(
+            "Incremental mode only: do not call MusicBrainz for reviews with "
+            "id < ID (still skips ids already in the output file). "
+            "Use after `scraper resume` when you only care about newly scraped "
+            "high ids and accept leaving older gaps unfilled."
+        ),
+    )
 
     args = parser.parse_args()
 
@@ -486,6 +527,7 @@ def main() -> None:
         output_path=resolve_data_path(args.output),
         overwrite=args.overwrite,
         update=args.update,
+        min_review_id=args.min_review_id,
     )
 
     # Example: python -m music_review.pipeline.enrichment.fetch_metadata \

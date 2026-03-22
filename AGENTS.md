@@ -38,9 +38,11 @@ Music Review is a Python 3.12+ CLI-based data pipeline that scrapes album review
 | Run tests with coverage | `hatch run test:cov` |
 | Run individual tools | `hatch run lint:check`, `hatch run lint:format`, `hatch run lint:typing` |
 | Run scraper | `hatch run python -m music_review.pipeline.scraper.cli -v run --start-id 1 --end-id 10` |
-| Update full DB | `hatch run update-db` (or `-- --max-id MAX_ID` to set an upper bound) |
+| Update full DB + graph + affinities + chunk Chroma (default) | `hatch run update-db` — rebuilds reference graph; **incremental** community IDs from `community_memberships.jsonl` (stable `C00x` + genre labels); `-- --recluster-communities` for full Louvain (then rerun `community-genre-labels`); `album_community_affinities.jsonl` (res 10); Chroma chunks if `OPENAI_API_KEY` set; `-- --skip-graph-affinities` / `-- --skip-chroma`; `-- --chroma-legacy` for legacy collection |
+| Same as update-db | `hatch run full-data-update` (alias; forwards `--skip-chroma` / `--chroma-legacy`) |
 | Batch embeddings (OpenAI Batch API → Chroma) | `hatch run batch-embed prepare` then `batch-embed submit <batch_id>` etc., or `hatch run batch-embed run` for full pipeline |
-| Artist reference graph | `hatch run graph-build` (builds from `data/reviews.jsonl`, writes `data/artist_reference_graph.graphml`) |
+| Artist reference graph | `hatch run graph-build` — GraphML from `data/reviews.jsonl`; add `--export-communities 10` (+ `--export-album-affinities`) for communities; default `--communities-mode incremental` (stable IDs), `--communities-mode louvain` to recluster |
+| Community LLM labels | `hatch run community-genre-labels` — `--only-missing` merges with existing JSON and only labels new `community_id` values |
 | Streamlit dashboard | `hatch run dashboard` (browse reviews by artist/album) |
 | Install pre-commit hooks | `hatch run pre-commit install` |
 

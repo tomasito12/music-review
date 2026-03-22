@@ -373,6 +373,26 @@ def get_chroma_collection(
     return collection
 
 
+def _all_collection_document_ids(collection: Any, *, page_size: int = 2000) -> set[str]:
+    """Collect all document ids via paginated ``get`` calls.
+
+    A single ``collection.get(limit=...)`` with a very large limit can make
+    Chroma/SQLite fail with ``too many SQL variables``.
+    """
+    out: set[str] = set()
+    offset = 0
+    while True:
+        batch = collection.get(limit=page_size, offset=offset, include=[])
+        ids = batch.get("ids") or []
+        if not ids:
+            break
+        out.update(str(i) for i in ids)
+        offset += len(ids)
+        if len(ids) < page_size:
+            break
+    return out
+
+
 def _load_metadata_map(
     metadata_path: Path | None,
     fallback_path: Path | None,
@@ -444,8 +464,7 @@ def write_batch_embedding_input(
     if skip_existing:
         try:
             collection = get_chroma_collection()
-            existing = collection.get(limit=100_000_000)
-            existing_ids = set(existing.get("ids", []))
+            existing_ids = _all_collection_document_ids(collection)
         except Exception:
             pass
 
@@ -532,8 +551,7 @@ def write_batch_embedding_input_chunks_v1(
     )
     existing_ids: set[str] = set()
     if skip_existing and not recreate:
-        existing = collection.get(limit=100_000_000)
-        existing_ids = set(existing.get("ids", []))
+        existing_ids = _all_collection_document_ids(collection)
 
     requests: list[dict[str, Any]] = []
 
@@ -619,8 +637,7 @@ def import_batch_results_into_chroma_chunks_v1(
 
     existing_ids: set[str] = set()
     if not recreate:
-        existing = collection.get(limit=100_000_000)
-        existing_ids = set(existing.get("ids", []))
+        existing_ids = _all_collection_document_ids(collection)
 
     needed_chunks: dict[int, set[int]] = {}
     for custom_id, _embedding in parsed:
@@ -1004,8 +1021,7 @@ def build_index(
         existing_ids: set[str] = set()
     else:
         collection = get_chroma_collection()
-        existing = collection.get(limit=100_000_000)
-        existing_ids = set(existing.get("ids", []))
+        existing_ids = _all_collection_document_ids(collection)
 
     new_count = 0
 

@@ -293,7 +293,7 @@ def export_fixed_clusterings(
         }
 
     Additionally writes community_memberships.jsonl mapping each artist to
-    its community IDs per resolution (keys like "res_2", "res_6", ...).
+    its community IDs per resolution (keys like "res_10", ...).
     """
     output_dir.mkdir(parents=True, exist_ok=True)
 
@@ -369,6 +369,200 @@ def export_fixed_clusterings(
             f.write(json.dumps(obj, ensure_ascii=False) + "\n")
 
 
+def resolution_to_res_key(resolution: float) -> str:
+    """JSON key for a Louvain resolution (e.g. 10.0 -> res_10)."""
+    if float(resolution).is_integer():
+        return f"res_{int(resolution)}"
+    return f"res_{resolution}"
+
+
+def load_artist_communities(path: str | Path) -> dict[str, dict[str, str]]:
+    """Load artist_id -> communities from ``community_memberships.jsonl``.
+
+    Returns an empty dict if the file is missing.
+    """
+    mp = Path(path)
+    result: dict[str, dict[str, str]] = {}
+    if not mp.exists():
+        return result
+    for obj in iter_jsonl_objects(mp, log_errors=False):
+        artist_id = obj.get("artist_id")
+        comms = obj.get("communities")
+        if isinstance(artist_id, str) and isinstance(comms, dict):
+            result[artist_id] = {
+                str(k): str(v) for k, v in comms.items() if isinstance(v, str)
+            }
+    return result
+
+
+def merge_memberships_incremental(
+    G: nx.DiGraph,
+    previous: dict[str, dict[str, str]],
+    res_key: str,
+) -> dict[str, str]:
+    """Stable community ID per artist for one resolution.
+
+    Keeps the previous community for every node still in the graph. New nodes
+    pick a community via weighted votes on out-edges (artist -> reference), using
+    edge weights from the graph. Votes propagate in rounds until no new
+    assignments (multi-hop). Nodes that never connect to an assigned artist are
+    omitted (no ``res_key`` in the exported memberships).
+    """
+    assignment: dict[str, str] = {}
+    for n in G.nodes:
+        prev_row = previous.get(n, {})
+        cid = prev_row.get(res_key)
+        if isinstance(cid, str) and cid.strip():
+            assignment[n] = cid.strip()
+
+    max_rounds = len(G.nodes) + 2
+    for _ in range(max_rounds):
+        changed = False
+        for n in G.nodes:
+            if n in assignment:
+                continue
+            votes: dict[str, float] = defaultdict(float)
+            for _u, t, data in G.out_edges(n, data=True):
+                w = data.get("weight", 1.0)
+                if isinstance(w, str):
+                    w = float(w)
+                if t in assignment:
+                    votes[assignment[t]] += float(w)
+            if votes:
+                best_cid, _w = max(votes.items(), key=lambda item: (item[1], item[0]))
+                assignment[n] = best_cid
+                changed = True
+        if not changed:
+            break
+
+    return assignment
+
+
+def _write_communities_res_json(
+    G: nx.DiGraph,
+    resolution: float,
+    assignment: dict[str, str],
+    output_dir: Path,
+    top_k: int,
+) -> None:
+    """Write ``communities_res_<res>.json`` from stable community IDs (sorted by id)."""
+
+    def display_name(node: str) -> str:
+        value = G.nodes[node].get("display_name") if node in G.nodes else None
+        return str(value).strip() if value else node
+
+    by_cid: dict[str, list[str]] = defaultdict(list)
+    for artist_id, cid in assignment.items():
+        by_cid[cid].append(artist_id)
+
+    clusters: list[dict[str, Any]] = []
+    for cid in sorted(by_cid.keys()):
+        nodes = by_cid[cid]
+        node_set = frozenset(nodes)
+        centroid_id = community_centroid(G, node_set, weight="weight")
+        centroid_name = display_name(centroid_id) if centroid_id else ""
+        top_nodes = sorted(
+            nodes,
+            key=lambda n: (
+                G.out_degree(n, weight="weight") + G.in_degree(n, weight="weight")
+            ),
+            reverse=True,
+        )[:top_k]
+        clusters.append(
+            {
+                "id": cid,
+                "size": len(nodes),
+                "centroid_id": centroid_id,
+                "centroid": centroid_name,
+                "top_artists": [display_name(n) for n in top_nodes],
+                "artists": sorted(display_name(n) for n in nodes),
+            }
+        )
+
+    res_name = (
+        str(int(resolution))
+        if float(resolution).is_integer()
+        else str(resolution).replace(".", "_")
+    )
+    communities_path = output_dir / f"communities_res_{res_name}.json"
+    with communities_path.open("w", encoding="utf-8") as f:
+        json.dump(
+            {"resolution": float(resolution), "communities": clusters},
+            f,
+            ensure_ascii=False,
+            indent=2,
+        )
+
+
+def _write_memberships_jsonl_from_rows(
+    G: nx.DiGraph,
+    membership_by_artist: dict[str, dict[str, str]],
+    output_dir: Path,
+) -> None:
+    """Write ``community_memberships.jsonl`` for all nodes in ``G``."""
+
+    def display_name(node: str) -> str:
+        value = G.nodes[node].get("display_name") if node in G.nodes else None
+        return str(value).strip() if value else node
+
+    output_dir.mkdir(parents=True, exist_ok=True)
+    path = output_dir / "community_memberships.jsonl"
+    with path.open("w", encoding="utf-8") as f:
+        for artist_id in sorted(membership_by_artist.keys()):
+            if artist_id not in G.nodes:
+                continue
+            obj = {
+                "artist_id": artist_id,
+                "artist": display_name(artist_id),
+                "communities": membership_by_artist[artist_id],
+            }
+            f.write(json.dumps(obj, ensure_ascii=False) + "\n")
+
+
+def export_communities_incremental(
+    G: nx.DiGraph,
+    resolutions: list[float],
+    output_dir: Path,
+    previous_path: Path,
+    top_k: int = 10,
+) -> None:
+    """Export communities and memberships without re-running Louvain.
+
+    Merges ``previous_path`` memberships with the current graph: existing
+    artists keep their community IDs; new artists are assigned via graph-based
+    propagation. Writes one ``communities_res_*.json`` per resolution and a
+    single ``community_memberships.jsonl``.
+    """
+    previous = load_artist_communities(previous_path)
+    merged_rows: dict[str, dict[str, str]] = {}
+    for n in G.nodes:
+        merged_rows[n] = dict(previous.get(n, {}))
+
+    for resolution in resolutions:
+        res_key = resolution_to_res_key(resolution)
+        assignment = merge_memberships_incremental(G, previous, res_key)
+        for n in G.nodes:
+            merged_rows[n].pop(res_key, None)
+        for n, cid in assignment.items():
+            merged_rows[n][res_key] = cid
+        _write_communities_res_json(G, resolution, assignment, output_dir, top_k)
+
+    _write_memberships_jsonl_from_rows(G, merged_rows, output_dir)
+
+
+def previous_memberships_usable(
+    previous: dict[str, dict[str, str]],
+    res_keys: list[str],
+) -> bool:
+    """True if at least one stored row has a non-empty community for a res key."""
+    for row in previous.values():
+        for rk in res_keys:
+            v = row.get(rk)
+            if isinstance(v, str) and v.strip():
+                return True
+    return False
+
+
 def compute_album_affinities(
     reviews_path: str | Path,
     memberships_path: str | Path,
@@ -394,9 +588,7 @@ def compute_album_affinities(
         "album": str,
         "url": str,
         "communities": {
-          "res_2": [{"id": "C001", "score": 0.62}, ...],
-          "res_6": [...],
-          "res_10": [...]
+          "res_10": [{"id": "C001", "score": 0.62}, ...]
         }
       }
     """
@@ -715,8 +907,27 @@ def _main() -> int:
         default="",
         help=(
             "Optional: comma-separated Louvain resolutions to export fixed "
-            "clusterings for (e.g. '2,6,10'). Writes communities_res_{res}.json "
+            "clusterings for (e.g. '10'). Writes communities_res_{res}.json "
             "and community_memberships.jsonl in the data directory."
+        ),
+    )
+    parser.add_argument(
+        "--communities-mode",
+        choices=("incremental", "louvain"),
+        default="incremental",
+        help=(
+            "incremental: keep existing community IDs from --previous-memberships "
+            "and assign new artists via the graph (default). "
+            "louvain: full re-cluster (new C00x IDs; rerun community_genre_labels)."
+        ),
+    )
+    parser.add_argument(
+        "--previous-memberships",
+        type=Path,
+        default=None,
+        help=(
+            "For incremental mode: path to community_memberships.jsonl "
+            "(default: data/community_memberships.jsonl)."
         ),
     )
     parser.add_argument(
@@ -725,7 +936,7 @@ def _main() -> int:
         help=(
             "If set, compute soft album→community affinities based on references "
             "and write them to data/album_community_affinities.jsonl. "
-            "Uses resolutions from --export-communities or defaults to 2,6,10."
+            "Uses resolutions from --export-communities or defaults to 10."
         ),
     )
     args = parser.parse_args()
@@ -843,17 +1054,54 @@ def _main() -> int:
             )
             return 1
         data_dir = resolve_data_path("data")
-        print(
-            f"Exporting fixed clusterings for resolutions {export_resolutions} "
-            f"into {data_dir}"
+        prev_path = (
+            args.previous_memberships
+            if args.previous_memberships is not None
+            else data_dir / "community_memberships.jsonl"
         )
-        export_fixed_clusterings(G, export_resolutions, data_dir)
+        res_keys = [resolution_to_res_key(r) for r in export_resolutions]
+        previous = load_artist_communities(prev_path)
+        use_incremental = (
+            args.communities_mode == "incremental"
+            and prev_path.exists()
+            and previous_memberships_usable(previous, res_keys)
+        )
+        if args.communities_mode == "louvain":
+            print(
+                "WARNING: Louvain recluster — community C00x IDs will change. "
+                "Regenerate data/community_genre_labels_res_*.json after this.",
+                file=sys.stderr,
+            )
+        elif args.communities_mode == "incremental" and not use_incremental:
+            print(
+                "WARNING: No usable previous memberships at "
+                f"{prev_path}; falling back to Louvain once. "
+                "Next run will use incremental mode.",
+                file=sys.stderr,
+            )
+        if use_incremental:
+            print(
+                f"Exporting incremental clusterings for {export_resolutions} "
+                f"into {data_dir} (stable IDs from {prev_path})"
+            )
+            export_communities_incremental(
+                G,
+                export_resolutions,
+                data_dir,
+                prev_path,
+            )
+        else:
+            print(
+                f"Exporting Louvain clusterings for resolutions {export_resolutions} "
+                f"into {data_dir}"
+            )
+            export_fixed_clusterings(G, export_resolutions, data_dir)
 
     if args.export_album_affinities:
         data_dir = resolve_data_path("data")
         memberships_path = data_dir / "community_memberships.jsonl"
         if not export_resolutions:
-            export_resolutions = [2.0, 6.0, 10.0]
+            export_resolutions = [10.0]
         print(
             "Computing album→community affinities for resolutions "
             f"{export_resolutions} using {memberships_path}"

@@ -86,6 +86,27 @@ def load_communities(path: Path | str) -> tuple[list[dict[str, Any]], float]:
     return communities, resolution
 
 
+def load_existing_genre_labels(path: Path | str) -> dict[str, str]:
+    """Load ``community_id`` -> ``genre_label`` from an existing output JSON."""
+    p = Path(path)
+    if not p.exists():
+        return {}
+    with p.open("r", encoding="utf-8") as f:
+        data = json.load(f)
+    labels = data.get("labels")
+    if not isinstance(labels, list):
+        return {}
+    out: dict[str, str] = {}
+    for item in labels:
+        if not isinstance(item, dict):
+            continue
+        cid = item.get("community_id")
+        gl = item.get("genre_label")
+        if isinstance(cid, str) and isinstance(gl, str):
+            out[cid] = gl
+    return out
+
+
 def _artist_list_for_prompt(
     community: dict[str, Any], max_artists: int = 15
 ) -> list[str]:
@@ -170,14 +191,27 @@ def run_pipeline(
     *,
     model: str = DEFAULT_MODEL,
     delay_seconds: float = DEFAULT_DELAY_SECONDS,
+    existing_labels: dict[str, str] | None = None,
 ) -> int:
-    """Fetch one genre label per community via LLM and write output. Returns count."""
+    """Fetch one genre label per community via LLM and write output. Returns count.
+
+    If ``existing_labels`` is set, communities whose id is already present reuse
+    that label (no API call); others are fetched and merged into the output.
+    """
     communities, resolution = load_communities(communities_path)
     total = len(communities)
     source_basename = Path(communities_path).name
+    reuse = existing_labels or {}
+    n_reuse = sum(
+        1
+        for i, c in enumerate(communities)
+        if str(c.get("id") or f"C{i + 1:03d}") in reuse
+    )
     logger.info(
-        "Starting community genre labels: %d communities, model=%s, output=%s",
+        "Starting community genre labels: %d communities (%d reused), "
+        "model=%s, output=%s",
         total,
+        n_reuse,
         model,
         output_path,
     )
@@ -185,10 +219,10 @@ def run_pipeline(
 
     labels: list[dict[str, Any]] = []
     assigned_so_far: list[str] = []
+    llm_calls = 0
     for i, comm in enumerate(communities):
-        cid = comm.get("id") or f"C{i + 1:03d}"
-        if delay_seconds > 0 and i > 0:
-            time.sleep(delay_seconds)
+        cid_raw = comm.get("id") or f"C{i + 1:03d}"
+        cid = str(cid_raw)
         logger.debug(
             "Community %s (%d/%d), already_assigned=%d",
             cid,
@@ -196,19 +230,27 @@ def run_pipeline(
             total,
             len(assigned_so_far),
         )
-        try:
-            label = fetch_label_for_community(
-                client,
-                comm,
-                model=model,
-                already_assigned_labels=assigned_so_far if assigned_so_far else None,
-            )
-        except Exception as e:
-            label = "Unbekannt"
-            logger.warning("LLM call failed for %s: %s", cid, e, exc_info=False)
-        labels.append({"community_id": str(cid), "genre_label": label})
+        if cid in reuse:
+            label = reuse[cid]
+            logger.info("%s (%d/%d) -> %s (reused)", cid, i + 1, total, label)
+        else:
+            if delay_seconds > 0 and llm_calls > 0:
+                time.sleep(delay_seconds)
+            llm_calls += 1
+            try:
+                prior = assigned_so_far if assigned_so_far else None
+                label = fetch_label_for_community(
+                    client,
+                    comm,
+                    model=model,
+                    already_assigned_labels=prior,
+                )
+            except Exception as e:
+                label = "Unbekannt"
+                logger.warning("LLM call failed for %s: %s", cid, e, exc_info=False)
+            logger.info("%s (%d/%d) -> %s", cid, i + 1, total, label)
+        labels.append({"community_id": cid, "genre_label": label})
         assigned_so_far.append(label)
-        logger.info("%s (%d/%d) -> %s", cid, i + 1, total, label)
 
     out = Path(output_path)
     out.parent.mkdir(parents=True, exist_ok=True)
@@ -257,6 +299,15 @@ def _parse_args(argv: list[str] | None = None) -> argparse.Namespace:
         action="store_true",
         help="Enable DEBUG logging.",
     )
+    parser.add_argument(
+        "--only-missing",
+        action="store_true",
+        help=(
+            "Reuse labels from the output JSON for known community_id values; "
+            "call the API only for new ids. Implies the output path already exists "
+            "or starts empty (full run)."
+        ),
+    )
     return parser.parse_args(argv)
 
 
@@ -295,11 +346,28 @@ def main(argv: list[str] | None = None) -> int:
         else (data_dir / f"community_genre_labels_res_{res_name}.json")
     )
 
+    existing: dict[str, str] | None = None
+    if args.only_missing:
+        existing = load_existing_genre_labels(output_path)
+        if existing:
+            logger.info(
+                "Only-missing mode: reusing %d labels from %s",
+                len(existing),
+                output_path,
+            )
+        else:
+            logger.info(
+                "Only-missing mode: no existing labels at %s; "
+                "labeling all communities.",
+                output_path,
+            )
+
     n = run_pipeline(
         communities_path,
         output_path,
         model=args.model,
         delay_seconds=args.delay,
+        existing_labels=existing,
     )
     logger.info("Done. %d labels written.", n)
     return 0
