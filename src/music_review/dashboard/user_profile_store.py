@@ -99,14 +99,23 @@ def build_profile_payload(
     *,
     profile_slug: str,
     flow_mode: Any,
-    artist_communities: set[str] | list[str] | None,
-    genre_communities: set[str] | list[str] | None,
+    selected_communities: set[str] | list[str] | None = None,
+    artist_communities: set[str] | list[str] | None = None,
+    genre_communities: set[str] | list[str] | None = None,
     filter_settings: Mapping[str, Any] | None,
     community_weights_raw: Mapping[str, float] | None,
 ) -> dict[str, Any]:
-    """Build versioned document for persistence."""
+    """Build versioned document for persistence.
+
+    Uses the unified ``selected_communities`` key if provided; falls back
+    to the legacy ``artist_communities`` / ``genre_communities`` pair.
+    Both legacy fields are still written for backward compatibility.
+    """
+    sel_list = _sorted_community_list(selected_communities)
     artist_list = _sorted_community_list(artist_communities)
     genre_list = _sorted_community_list(genre_communities)
+    if sel_list and not artist_list and not genre_list:
+        artist_list = sel_list
 
     weights = community_weights_raw or {}
     w_out: dict[str, float] = {
@@ -128,6 +137,7 @@ def build_profile_payload(
         "flow_mode": (
             flow_mode if flow_mode is None or isinstance(flow_mode, str) else None
         ),
+        "selected_communities": sel_list,
         "artist_flow_selected_communities": artist_list,
         "genre_flow_selected_communities": genre_list,
         "filter_settings": fs,
@@ -139,14 +149,24 @@ def apply_profile_to_session(
     session: MutableMapping[str, Any],
     data: Mapping[str, Any],
 ) -> None:
-    """Apply loaded profile dict to a session-like mapping (e.g. st.session_state)."""
-    artist = data.get("artist_flow_selected_communities")
-    if isinstance(artist, list):
-        session["artist_flow_selected_communities"] = {str(x) for x in artist}
+    """Apply loaded profile dict to a session-like mapping.
 
-    genre = data.get("genre_flow_selected_communities")
-    if isinstance(genre, list):
-        session["genre_flow_selected_communities"] = {str(x) for x in genre}
+    Reads the unified ``selected_communities`` field if present;
+    falls back to the legacy artist + genre pair for old profiles.
+    """
+    sel = data.get("selected_communities")
+    if isinstance(sel, list) and sel:
+        merged = {str(x) for x in sel}
+    else:
+        artist = data.get("artist_flow_selected_communities")
+        genre = data.get("genre_flow_selected_communities")
+        artist_set = {str(x) for x in artist} if isinstance(artist, list) else set()
+        genre_set = {str(x) for x in genre} if isinstance(genre, list) else set()
+        merged = artist_set | genre_set
+
+    session["selected_communities"] = merged
+    session["artist_flow_selected_communities"] = merged
+    session["genre_flow_selected_communities"] = set()
 
     fs = data.get("filter_settings")
     if isinstance(fs, dict):

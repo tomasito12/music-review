@@ -1,9 +1,9 @@
-"""Flow-Auswahl: Genre, Artist oder kombiniert."""
+"""Grobkategorie-Auswahl als erster Schritt der Community-Selektion."""
 
 from __future__ import annotations
 
 import streamlit as st
-from pages.page_helpers import render_toolbar
+from pages.page_helpers import load_broad_categories_res_10, render_toolbar
 
 
 def _einstieg_css() -> None:
@@ -16,12 +16,15 @@ def _einstieg_css() -> None:
             letter-spacing: -0.02em;
             margin-bottom: 0.15rem;
             color: #111827;
+            text-align: center;
         }
         .einstieg-desc {
+            max-width: 38rem;
+            margin: 0 auto 1.3rem auto;
             color: #6b7280;
             font-size: 0.92rem;
-            margin-bottom: 1.3rem;
             line-height: 1.55;
+            text-align: center;
         }
         </style>
         """,
@@ -29,79 +32,73 @@ def _einstieg_css() -> None:
     )
 
 
+def _ensure_session_state() -> None:
+    if "selected_broad_categories" not in st.session_state:
+        st.session_state["selected_broad_categories"] = set()
+
+
 def main() -> None:
     st.set_page_config(
         page_title="Plattenradar -- Einstieg",
         page_icon=None,
-        layout="wide",
+        layout="centered",
     )
 
-    if "flow_mode" not in st.session_state:
-        st.session_state["flow_mode"] = None
-
+    _ensure_session_state()
     render_toolbar("einstieg")
     _einstieg_css()
 
     st.markdown(
-        '<p class="einstieg-title">Wie möchtest du starten?</p>',
+        '<p class="einstieg-title">Welche Musikrichtungen interessieren dich?</p>',
         unsafe_allow_html=True,
     )
     st.markdown(
         '<p class="einstieg-desc">'
-        "Wähle einen Einstieg &mdash; du kannst später jederzeit "
-        "zurück zu dieser Seite wechseln."
+        "Wähle eine oder mehrere Grobkategorien aus. "
+        "Im nächsten Schritt siehst du die darin enthaltenen "
+        "Communities und kannst gezielt auswählen."
         "</p>",
         unsafe_allow_html=True,
     )
 
-    col1, col2, col3 = st.columns(3)
+    broad_categories, category_mappings = load_broad_categories_res_10()
 
-    with col1, st.container(border=True):
-        st.subheader("Genres / Moods")
-        st.caption(
-            "Starte mit Communities, Genres und Moods. "
-            "Ideal, wenn du eher eine Stimmung als konkrete "
-            "Künstler im Kopf hast.",
+    if not broad_categories:
+        st.warning(
+            "Keine Grobkategorien gefunden. Bitte zuerst "
+            "`hatch run community-broad-categories` ausführen.",
         )
-        if st.button(
-            "Diesen Weg wählen",
-            key="start_genre_flow",
-            use_container_width=True,
-        ):
-            st.session_state["flow_mode"] = "genres"
-            st.switch_page("pages/2_Genre_Flow.py")
-
-    with col2, st.container(border=True):
-        st.subheader("Artists")
-        st.caption(
-            "Starte mit Künstlern, die du magst, und entdecke "
-            "ähnliche Alben über das Community- und RAG-System.",
+    else:
+        selected: set[str] = set(
+            st.session_state["selected_broad_categories"],
         )
-        if st.button(
-            "Diesen Weg wählen",
-            key="start_artist_flow",
-            use_container_width=True,
-        ):
-            st.session_state["flow_mode"] = "artists"
-            st.switch_page("pages/1_Artist_Flow.py")
 
-    with col3, st.container(border=True):
-        st.subheader("Beides kombinieren")
-        st.caption(
-            "Kombiniere Artist- und Genre/Mood-Signale zu einem "
-            "mehrstufigen Recommender-Prozess.",
-        )
-        if st.button(
-            "Diesen Weg wählen",
-            key="start_combined_flow",
-            use_container_width=True,
-        ):
-            st.session_state["flow_mode"] = "combined"
-            st.switch_page("pages/1_Artist_Flow.py")
+        for cat in broad_categories:
+            n_communities = sum(
+                1 for bc_list in category_mappings.values() if cat in bc_list
+            )
+            label = f"{cat}  ({n_communities} Communities)"
+            key = f"broad_cat_{cat}"
+            checked = st.checkbox(
+                label,
+                key=key,
+                value=(cat in selected),
+            )
+            if checked:
+                selected.add(cat)
+            else:
+                selected.discard(cat)
 
-    st.markdown("---")
-    if st.button("Zurück zum Profil"):
-        st.switch_page("pages/0_Profil.py")
+        st.session_state["selected_broad_categories"] = selected
+
+        if selected:
+            st.caption(
+                f"**{len(selected)}** Kategorien ausgewählt: "
+                + ", ".join(sorted(selected)),
+            )
+
+    if st.button("Weiter", type="primary", use_container_width=True):
+        st.switch_page("pages/1_Community_Auswahl.py")
 
 
 if __name__ == "__main__":

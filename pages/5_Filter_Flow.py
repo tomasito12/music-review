@@ -298,11 +298,7 @@ def main() -> None:
     col_back, col_next = st.columns([1, 1])
     with col_back:
         if st.button("Zurück zu den Communities"):
-            mode = st.session_state.get("flow_mode")
-            if mode == "combined" or mode == "genres":
-                st.switch_page("pages/2_Genre_Flow.py")
-            else:
-                st.switch_page("pages/1_Artist_Flow.py")
+            st.switch_page("pages/1_Community_Auswahl.py")
     with col_next:
         if st.button("Empfehlungen anzeigen"):
             st.switch_page("pages/6_Recommendations_Flow.py")

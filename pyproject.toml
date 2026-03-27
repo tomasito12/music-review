@@ -66,6 +66,7 @@ dashboard = "streamlit run streamlit_app.py {args:}"
 batch-embed = "python -m music_review.pipeline.retrieval.cli {args:}"
 graph-build = "python -m music_review.pipeline.retrieval.reference_graph_cli {args:}"
 community-genre-labels = "python -m music_review.pipeline.retrieval.community_genre_labels {args:}"
+community-broad-categories = "python -m music_review.pipeline.retrieval.community_broad_categories {args:}"
 dq-report = "python -m music_review.pipeline.data_quality.cli {args:}"
 
 # --- Lint environment -------------------------------------------------------

@@ -110,8 +110,7 @@ def _create_new(profiles_dir: Any, name_raw: str) -> None:
     payload = build_profile_payload(
         profile_slug=slug,
         flow_mode=None,
-        artist_communities=set(),
-        genre_communities=set(),
+        selected_communities=set(),
         filter_settings={},
         community_weights_raw={},
     )

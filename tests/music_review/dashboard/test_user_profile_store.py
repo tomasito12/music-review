@@ -40,8 +40,7 @@ def test_save_load_roundtrip(tmp_path: Path) -> None:
     payload = build_profile_payload(
         profile_slug="test-user",
         flow_mode="combined",
-        artist_communities={"1", "2"},
-        genre_communities={"3"},
+        selected_communities={"1", "2", "3"},
         filter_settings={"year_min": 1990},
         community_weights_raw={"1": 0.5, "2": 1.0},
     )
@@ -52,8 +51,7 @@ def test_save_load_roundtrip(tmp_path: Path) -> None:
     assert loaded is not None
     assert loaded["schema_version"] == SCHEMA_VERSION
     assert loaded["profile_name"] == "test-user"
-    assert set(loaded["artist_flow_selected_communities"]) == {"1", "2"}
-    assert loaded["genre_flow_selected_communities"] == ["3"]
+    assert set(loaded["selected_communities"]) == {"1", "2", "3"}
     assert loaded["filter_settings"]["year_min"] == 1990
     assert loaded["community_weights_raw"]["1"] == 0.5
 
@@ -68,23 +66,36 @@ def test_load_profile_invalid_json_returns_none(tmp_path: Path) -> None:
     assert load_profile(tmp_path, "bad") is None
 
 
-def test_apply_profile_to_session_sets_sets_and_dicts() -> None:
+def test_apply_profile_to_session_with_selected_communities() -> None:
+    session: dict[str, object] = {}
+    apply_profile_to_session(
+        session,
+        {
+            "selected_communities": ["10", "20", "30"],
+            "filter_settings": {"sort_mode": "Deterministisch"},
+            "community_weights_raw": {"10": 1.0},
+            "flow_mode": "artists",
+        },
+    )
+    assert session["selected_communities"] == {"10", "20", "30"}
+    assert session["filter_settings"] == {"sort_mode": "Deterministisch"}
+    assert session["community_weights_raw"] == {"10": 1.0}
+    assert session["flow_mode"] == "artists"
+
+
+def test_apply_profile_to_session_legacy_fallback() -> None:
     session: dict[str, object] = {}
     apply_profile_to_session(
         session,
         {
             "artist_flow_selected_communities": ["10", "20"],
             "genre_flow_selected_communities": ["30"],
-            "filter_settings": {"sort_mode": "Deterministisch"},
-            "community_weights_raw": {"10": 1.0},
-            "flow_mode": "artists",
+            "filter_settings": {},
+            "flow_mode": None,
         },
     )
-    assert session["artist_flow_selected_communities"] == {"10", "20"}
-    assert session["genre_flow_selected_communities"] == {"30"}
-    assert session["filter_settings"] == {"sort_mode": "Deterministisch"}
-    assert session["community_weights_raw"] == {"10": 1.0}
-    assert session["flow_mode"] == "artists"
+    assert session["selected_communities"] == {"10", "20", "30"}
+    assert session["artist_flow_selected_communities"] == {"10", "20", "30"}
 
 
 def test_list_profile_slugs_empty_dir(tmp_path: Path) -> None:
@@ -111,8 +122,7 @@ def test_save_atomic_replace(tmp_path: Path) -> None:
         build_profile_payload(
             profile_slug="u",
             flow_mode=None,
-            artist_communities=set(),
-            genre_communities=set(),
+            selected_communities=set(),
             filter_settings={},
             community_weights_raw={},
         ),

@@ -258,6 +258,19 @@ def main() -> int:
         ):
             return 1
 
+    if not args.skip_graph_affinities and os.environ.get("OPENAI_API_KEY"):
+        logger.info("Labeling communities (genre labels + broad categories)...")
+        if not run_module(
+            "music_review.pipeline.retrieval.community_genre_labels",
+            ["--only-missing"],
+        ):
+            logger.warning("community-genre-labels failed; continuing.")
+        if not run_module(
+            "music_review.pipeline.retrieval.community_broad_categories",
+            ["--only-missing"],
+        ):
+            logger.warning("community-broad-categories failed; continuing.")
+
     if args.skip_graph_affinities:
         logger.info(
             "Database update complete (reviews + metadata + imputation; "

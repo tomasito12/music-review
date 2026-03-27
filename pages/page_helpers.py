@@ -64,13 +64,52 @@ def load_genre_labels_res_10() -> dict[str, str]:
     return mapping
 
 
+@st.cache_data(ttl=3600)
+def load_broad_categories_res_10() -> tuple[list[str], dict[str, list[str]]]:
+    """Load broad categories and per-community mappings.
+
+    Returns (category names, community_id -> [broad_category, ...]).
+    """
+    data_dir = resolve_data_path("data")
+    path = Path(data_dir) / "community_broad_categories_res_10.json"
+    if not path.exists():
+        return [], {}
+    try:
+        with path.open("r", encoding="utf-8") as f:
+            data = json.load(f)
+    except (OSError, json.JSONDecodeError):
+        return [], {}
+    cats = data.get("broad_categories")
+    if not isinstance(cats, list):
+        cats = []
+    cats = [str(c) for c in cats if isinstance(c, str)]
+    raw_mappings = data.get("mappings")
+    if not isinstance(raw_mappings, list):
+        return cats, {}
+    mapping: dict[str, list[str]] = {}
+    for item in raw_mappings:
+        if not isinstance(item, dict):
+            continue
+        cid = item.get("community_id")
+        bc = item.get("broad_categories")
+        if isinstance(cid, str) and isinstance(bc, list):
+            mapping[cid] = [str(c) for c in bc]
+    return cats, mapping
+
+
 def get_selected_communities() -> set[str]:
-    """Union of communities selected in Artist and Genre flows."""
+    """Return the set of selected community IDs.
+
+    Reads the canonical ``selected_communities`` key first; falls back
+    to the legacy union of artist + genre flow keys for backward
+    compatibility with old profiles.
+    """
+    primary = st.session_state.get("selected_communities")
+    if isinstance(primary, set) and primary:
+        return {str(c) for c in primary}
     artist_comms = st.session_state.get("artist_flow_selected_communities") or set()
     genre_comms = st.session_state.get("genre_flow_selected_communities") or set()
-    artist_set = {str(c) for c in artist_comms}
-    genre_set = {str(c) for c in genre_comms}
-    return artist_set.union(genre_set)
+    return {str(c) for c in artist_comms} | {str(c) for c in genre_comms}
 
 
 def format_release_date(value: Any, release_year: Any) -> str:
@@ -111,12 +150,7 @@ def save_current_profile_to_disk() -> None:
         st.warning("Kein Profil aktiv -- bitte zuerst anmelden.")
         return
     profiles_dir = default_profiles_dir()
-    artist = st.session_state.get("artist_flow_selected_communities")
-    if not isinstance(artist, set):
-        artist = set()
-    genre = st.session_state.get("genre_flow_selected_communities")
-    if not isinstance(genre, set):
-        genre = set()
+    selected = get_selected_communities()
     fs = st.session_state.get("filter_settings")
     if not isinstance(fs, dict):
         fs = {}
@@ -126,8 +160,7 @@ def save_current_profile_to_disk() -> None:
     payload = build_profile_payload(
         profile_slug=active,
         flow_mode=st.session_state.get("flow_mode"),
-        artist_communities=artist,
-        genre_communities=genre,
+        selected_communities=selected,
         filter_settings=fs,
         community_weights_raw=weights,
     )
@@ -137,6 +170,8 @@ def save_current_profile_to_disk() -> None:
 
 def _reset_filters() -> None:
     """Clear all filter/community selections back to defaults."""
+    st.session_state["selected_communities"] = set()
+    st.session_state["selected_broad_categories"] = set()
     st.session_state["artist_flow_selected_communities"] = set()
     st.session_state["genre_flow_selected_communities"] = set()
     st.session_state["filter_settings"] = {}
@@ -149,30 +184,18 @@ def render_toolbar(page_key: str) -> None:
     active = st.session_state.get(ACTIVE_PROFILE_SESSION_KEY)
 
     if active:
-        col_status, col_save, col_reset, col_out = st.columns([3, 1, 1, 1])
-        with col_status:
+        cols = st.columns([2, 1, 1, 1])
+        with cols[0]:
             st.caption(f"Angemeldet als **{active}**")
-        with col_save:
-            if st.button(
-                "Speichern",
-                key=f"tb_{page_key}_save",
-                use_container_width=True,
-            ):
+        with cols[1]:
+            if st.button("Speichern", key=f"tb_{page_key}_save"):
                 save_current_profile_to_disk()
-        with col_reset:
-            if st.button(
-                "Filter zurücksetzen",
-                key=f"tb_{page_key}_reset",
-                use_container_width=True,
-            ):
+        with cols[2]:
+            if st.button("Reset", key=f"tb_{page_key}_reset"):
                 _reset_filters()
                 st.rerun()
-        with col_out:
-            if st.button(
-                "Abmelden",
-                key=f"tb_{page_key}_logout",
-                use_container_width=True,
-            ):
+        with cols[3]:
+            if st.button("Abmelden", key=f"tb_{page_key}_logout"):
                 st.session_state.pop(ACTIVE_PROFILE_SESSION_KEY, None)
                 st.rerun()
     else:
