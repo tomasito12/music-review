@@ -170,9 +170,7 @@ def _preference_score_rows_sorted(
     else:
         purity_norms = normalize_coverage_batch(purity_list)
         gmap = global_breadth_norm_by_review_id
-        breadth_norms = [
-            float(gmap.get(int(item["review"].id), 1.0)) for item in rows
-        ]
+        breadth_norms = [float(gmap.get(int(item["review"].id), 1.0)) for item in rows]
         lam = max(0.0, min(1.0, crossover_w))
         spec_norm_list = [
             blend_purity_breadth(p, b, crossover_weight=lam)
@@ -220,11 +218,7 @@ def _preference_score_rows_sorted(
         key=lambda x: (-float(x["overall_score"]), -int(x["review"].id)),
     )
 
-    if (
-        apply_serendipity
-        and sort_mode == "Serendipity"
-        and serendipity > 0.0
-    ):
+    if apply_serendipity and sort_mode == "Serendipity" and serendipity > 0.0:
         n_items = len(rows)
         ser_rng = rng if rng is not None else random.Random()
         for i, item in enumerate(rows):

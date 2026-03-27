@@ -1,28 +1,18 @@
 # music_review/pipeline/scraper/cli.py
 
+"""Thin CLI wrapper for the scraper service."""
+
 from __future__ import annotations
 
 import argparse
 import logging
 import sys
-from collections.abc import Iterable
 from enum import StrEnum
 from pathlib import Path
 
 from music_review.config import resolve_data_path
-from music_review.io.reviews_jsonl import review_to_raw
-from music_review.pipeline.scraper.client import (
-    RateLimiter,
-    ScraperClient,
-    iter_review_html,
-)
-from music_review.pipeline.scraper.parser import parse_review
-from music_review.pipeline.scraper.storage import (
-    append_review,
-    load_corpus,
-    load_existing_ids,
-    write_corpus,
-)
+from music_review.pipeline.scraper.service import scrape_ids, scrape_until_gap
+from music_review.pipeline.scraper.storage import load_existing_ids
 
 logger = logging.getLogger(__name__)
 
@@ -113,7 +103,6 @@ def _build_arg_parser() -> argparse.ArgumentParser:
         help="Sub-command to run.",
     )
 
-    # run: explicit start/end
     run_parser = subparsers.add_parser(
         "run",
         help="Scrape a specific ID range.",
@@ -131,7 +120,6 @@ def _build_arg_parser() -> argparse.ArgumentParser:
         help="Last review ID (inclusive) to scrape.",
     )
 
-    # full: from 1..max_id
     full_parser = subparsers.add_parser(
         "full",
         help="Scrape from ID 1 up to max-id.",
@@ -143,7 +131,6 @@ def _build_arg_parser() -> argparse.ArgumentParser:
         help="Maximum review ID currently existing on the site.",
     )
 
-    # resume: continue after highest existing ID in the output file
     resume_parser = subparsers.add_parser(
         "resume",
         help="Resume scraping after the highest ID in the output file.",
@@ -195,13 +182,12 @@ def _cmd_run(
         raise ValueError(msg)
 
     all_ids: list[int] = list(range(start_id, end_id + 1))
+    update_mode = existing_mode is ExistingMode.UPDATE
 
-    # Handle existing IDs according to mode
     if existing_mode is ExistingMode.ADD and output_path.exists():
         existing_ids = load_existing_ids(output_path)
-        id_set = set(all_ids)
-        skip = id_set & existing_ids
-        ids: Iterable[int] = [i for i in all_ids if i not in existing_ids]
+        skip = set(all_ids) & existing_ids
+        ids = [i for i in all_ids if i not in existing_ids]
         if skip:
             logger.info(
                 "Mode 'add': skipping %s IDs that already exist in %s.",
@@ -219,58 +205,12 @@ def _cmd_run(
         existing_mode.value,
     )
 
-    rate_limiter = RateLimiter(max_per_second=max_rps)
-
-    corpus: dict[int, dict] | None = None
-    if existing_mode is ExistingMode.UPDATE and output_path.exists():
-        corpus = load_corpus(output_path)
-        logger.info(
-            "Loaded existing corpus from %s with %s reviews.",
-            output_path,
-            len(corpus),
-        )
-
-    processed = 0
-    scraped_ids: list[int] = []
-
-    with ScraperClient() as client:
-        for review_id, html in iter_review_html(
-            client,
-            ids,
-            rate_limiter=rate_limiter,
-        ):
-            if html is None:
-                continue
-
-            review = parse_review(review_id, html)
-            if review is None:
-                continue
-
-            if existing_mode is ExistingMode.ADD:
-                append_review(output_path, review)
-            else:
-                assert corpus is not None
-                corpus[review.id] = review_to_raw(review)
-
-            scraped_ids.append(review.id)
-            processed += 1
-
-            if processed % 50 == 0:
-                logger.info("Processed %s reviews so far.", processed)
-
-    if existing_mode is ExistingMode.UPDATE:
-        assert corpus is not None
-        # Stable, deterministic ordering by ID
-        ordered = [corpus[i] for i in sorted(corpus.keys())]
-        write_corpus(output_path, ordered)
-        logger.info(
-            "Mode 'update': wrote %s reviews (including %s updated IDs) to %s.",
-            len(ordered),
-            len(scraped_ids),
-            output_path,
-        )
-    else:
-        logger.info("Done. Processed %s reviews.", processed)
+    scrape_ids(
+        ids,
+        output_path=output_path,
+        max_rps=max_rps,
+        update_mode=update_mode,
+    )
 
 
 def _cmd_resume(
@@ -285,82 +225,51 @@ def _cmd_resume(
         msg = "max_id must be >= 1 when provided."
         raise ValueError(msg)
 
-    if not output_path.exists():
+    update_mode = existing_mode is ExistingMode.UPDATE
+
+    start_id = _resolve_resume_start_id(output_path)
+
+    if start_id is None:
         if max_id is None:
             logger.info(
-                "Output file %s does not exist. Starting from ID 1; "
+                "Output file %s does not exist or is empty. Starting from ID 1; "
                 "will stop after %s consecutive missing IDs.",
                 output_path,
                 stop_after_n_empty,
             )
-            _cmd_resume_auto(
-                start_id=1,
+            scrape_until_gap(
+                1,
                 output_path=output_path,
                 max_rps=max_rps,
-                existing_mode=existing_mode,
+                update_mode=update_mode,
                 stop_after_n_empty=stop_after_n_empty,
             )
-            return
-        logger.info(
-            "Output file %s does not exist yet. Falling back to full scrape.",
-            output_path,
-        )
-        _cmd_run(
-            start_id=1,
-            end_id=max_id,
-            output_path=output_path,
-            max_rps=max_rps,
-            existing_mode=existing_mode,
-        )
-        return
-
-    existing_ids = load_existing_ids(output_path)
-    if not existing_ids:
-        if max_id is None:
+        else:
             logger.info(
-                "Output file %s exists but contains no reviews. "
-                "Starting from ID 1; will stop after %s consecutive missing IDs.",
+                "Output file %s does not exist or is empty. "
+                "Falling back to full scrape.",
                 output_path,
-                stop_after_n_empty,
             )
-            _cmd_resume_auto(
+            _cmd_run(
                 start_id=1,
+                end_id=max_id,
                 output_path=output_path,
                 max_rps=max_rps,
                 existing_mode=existing_mode,
-                stop_after_n_empty=stop_after_n_empty,
             )
-            return
-        logger.info(
-            "Output file %s exists but contains no reviews. "
-            "Falling back to full scrape.",
-            output_path,
-        )
-        _cmd_run(
-            start_id=1,
-            end_id=max_id,
-            output_path=output_path,
-            max_rps=max_rps,
-            existing_mode=existing_mode,
-        )
         return
-
-    start_id = max(existing_ids) + 1
 
     if max_id is None:
         logger.info(
-            "Resuming from ID %s (existing: %s entries). "
-            "Will stop after %s consecutive missing IDs (mode=%s).",
+            "Resuming from ID %s. Will stop after %s consecutive missing IDs.",
             start_id,
-            len(existing_ids),
             stop_after_n_empty,
-            existing_mode.value,
         )
-        _cmd_resume_auto(
-            start_id=start_id,
+        scrape_until_gap(
+            start_id,
             output_path=output_path,
             max_rps=max_rps,
-            existing_mode=existing_mode,
+            update_mode=update_mode,
             stop_after_n_empty=stop_after_n_empty,
         )
         return
@@ -375,10 +284,9 @@ def _cmd_resume(
         return
 
     logger.info(
-        "Resuming scrape from ID %s up to %s (existing IDs: %s entries, mode=%s).",
+        "Resuming scrape from ID %s up to %s (mode=%s).",
         start_id,
         max_id,
-        len(existing_ids),
         existing_mode.value,
     )
     _cmd_run(
@@ -390,78 +298,14 @@ def _cmd_resume(
     )
 
 
-def _cmd_resume_auto(
-    *,
-    start_id: int,
-    output_path: Path,
-    max_rps: float,
-    existing_mode: ExistingMode,
-    stop_after_n_empty: int,
-) -> None:
-    """Resume scraping from start_id until N consecutive missing IDs."""
-    if stop_after_n_empty < 1:
-        msg = "stop_after_n_empty must be >= 1."
-        raise ValueError(msg)
-
-    rate_limiter = RateLimiter(max_per_second=max_rps)
-    corpus: dict[int, dict] | None = None
-    if existing_mode is ExistingMode.UPDATE and output_path.exists():
-        corpus = load_corpus(output_path)
-        logger.info(
-            "Loaded existing corpus from %s with %s reviews.",
-            output_path,
-            len(corpus),
-        )
-
-    processed = 0
-    consecutive_empty = 0
-    current_id = start_id
-
-    with ScraperClient() as client:
-        while True:
-            rate_limiter.wait()
-            html = client.fetch_html(current_id)
-
-            if html is None:
-                consecutive_empty += 1
-                if consecutive_empty >= stop_after_n_empty:
-                    logger.info(
-                        "Stopping: %s consecutive missing IDs (from ID %s onward).",
-                        stop_after_n_empty,
-                        current_id - stop_after_n_empty + 1,
-                    )
-                    break
-                current_id += 1
-                continue
-
-            consecutive_empty = 0
-            review = parse_review(current_id, html)
-            if review is None:
-                current_id += 1
-                continue
-
-            if existing_mode is ExistingMode.ADD:
-                append_review(output_path, review)
-            else:
-                assert corpus is not None
-                corpus[review.id] = review_to_raw(review)
-
-            processed += 1
-            current_id += 1
-
-            if processed % 50 == 0:
-                logger.info("Processed %s reviews so far.", processed)
-
-    if existing_mode is ExistingMode.UPDATE and corpus is not None:
-        ordered = [corpus[i] for i in sorted(corpus.keys())]
-        write_corpus(output_path, ordered)
-        logger.info(
-            "Mode 'update': wrote %s reviews to %s.",
-            len(ordered),
-            output_path,
-        )
-    else:
-        logger.info("Done. Processed %s reviews.", processed)
+def _resolve_resume_start_id(output_path: Path) -> int | None:
+    """Determine the start ID for resume, or None if no valid corpus exists."""
+    if not output_path.exists():
+        return None
+    existing_ids = load_existing_ids(output_path)
+    if not existing_ids:
+        return None
+    return max(existing_ids) + 1
 
 
 if __name__ == "__main__":

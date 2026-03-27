@@ -1,15 +1,19 @@
 from __future__ import annotations
 
 import html
-import json
 import random
-from datetime import datetime
 from pathlib import Path
 from typing import Any
 
 import streamlit as st
+from pages.page_helpers import (
+    format_release_date,
+    get_selected_communities,
+    load_communities_res_10,
+    load_community_memberships,
+    load_genre_labels_res_10,
+)
 
-import music_review.config  # noqa: F401 - load .env and set up paths
 from music_review.config import (
     RECOMMENDATION_DEFAULT_COMMUNITY_CROSSOVER,
     RECOMMENDATION_RATING_DEFAULT_WHEN_MISSING,
@@ -33,7 +37,6 @@ from music_review.dashboard.user_profile_store import ACTIVE_PROFILE_SESSION_KEY
 from music_review.io.jsonl import iter_jsonl_objects, load_jsonl_as_map
 from music_review.io.reviews_jsonl import load_reviews_from_jsonl
 from music_review.pipeline.retrieval.reference_graph import (
-    load_artist_communities,
     reference_community_position_masses,
 )
 from music_review.pipeline.retrieval.vector_store import (
@@ -215,29 +218,6 @@ def _recommendations_css() -> None:
     )
 
 
-def _format_release_date(value: Any, release_year: Any) -> str:
-    """Format Release date for cards.
-
-    Supports:
-    - datetime/date objects
-    - ISO date strings (as stored by Chroma metadata)
-    """
-    if value is not None:
-        if hasattr(value, "strftime"):
-            try:
-                return value.strftime("%d.%m.%Y")
-            except Exception:
-                pass
-        if isinstance(value, str):
-            try:
-                return datetime.fromisoformat(value).strftime("%d.%m.%Y")
-            except ValueError:
-                pass
-    if release_year is not None:
-        return str(release_year)
-    return ""
-
-
 @st.cache_data(ttl=3600)
 def _load_reviews_and_metadata() -> tuple[list[Any], dict[int, dict[str, Any]]]:
     reviews_path = resolve_data_path("data/reviews.jsonl")
@@ -257,13 +237,6 @@ def _load_reviews_and_metadata() -> tuple[list[Any], dict[int, dict[str, Any]]]:
             log_errors=False,
         )
     return reviews, metadata
-
-
-@st.cache_data(ttl=3600)
-def _load_community_memberships() -> dict[str, dict[str, str]]:
-    """Artist key (normalized) -> resolution keys -> community id."""
-    mp = resolve_data_path("data/community_memberships.jsonl")
-    return load_artist_communities(mp)
 
 
 @st.cache_data(ttl=3600)
@@ -298,60 +271,8 @@ def _search_rag_hits(
     )
 
 
-@st.cache_data(ttl=3600)
-def _load_communities_res_10() -> list[dict[str, Any]]:
-    data_dir = resolve_data_path("data")
-    res_name = "10"
-    path = Path(data_dir) / f"communities_res_{res_name}.json"
-    if not path.exists():
-        return []
-    try:
-        with path.open("r", encoding="utf-8") as f:
-            data = json.load(f)
-    except Exception:
-        return []
-    comms = data.get("communities")
-    if not isinstance(comms, list):
-        return []
-    return [c for c in comms if isinstance(c, dict) and c.get("id")]
-
-
-@st.cache_data(ttl=3600)
-def _load_genre_labels_res_10() -> dict[str, str]:
-    data_dir = resolve_data_path("data")
-    path = Path(data_dir) / "community_genre_labels_res_10.json"
-    if not path.exists():
-        return {}
-    try:
-        with path.open("r", encoding="utf-8") as f:
-            data = json.load(f)
-    except Exception:
-        return {}
-    labels = data.get("labels")
-    if not isinstance(labels, list):
-        return {}
-    mapping: dict[str, str] = {}
-    for item in labels:
-        if not isinstance(item, dict):
-            continue
-        cid = item.get("community_id")
-        label = item.get("genre_label")
-        if cid is None or not label:
-            continue
-        mapping[str(cid)] = str(label)
-    return mapping
-
-
-def _get_selected_communities() -> set[str]:
-    artist_comms = st.session_state.get("artist_flow_selected_communities") or set()
-    genre_comms = st.session_state.get("genre_flow_selected_communities") or set()
-    artist_set = {str(c) for c in artist_comms}
-    genre_set = {str(c) for c in genre_comms}
-    return artist_set.union(genre_set)
-
-
 def _compute_recommendations() -> list[dict[str, Any]]:
-    selected_comms = _get_selected_communities()
+    selected_comms = get_selected_communities()
     if not selected_comms:
         return []
 
@@ -384,9 +305,9 @@ def _compute_recommendations() -> list[dict[str, Any]]:
 
     reviews, metadata = _load_reviews_and_metadata()
     affinities = _load_affinities()
-    memberships = _load_community_memberships()
-    communities = _load_communities_res_10()
-    genre_labels = _load_genre_labels_res_10()
+    memberships = load_community_memberships()
+    communities = load_communities_res_10()
+    genre_labels = load_genre_labels_res_10()
 
     if not reviews or not affinities:
         return []
@@ -625,7 +546,7 @@ def main() -> None:
         return
 
     # Kurze, nachvollziehbare Erklärung der aktuellen Score-Berechnung
-    selected_comms = _get_selected_communities()
+    selected_comms = get_selected_communities()
     filter_settings: dict[str, Any] = st.session_state.get("filter_settings") or {}
     weights_raw: dict[str, float] = st.session_state.get("community_weights_raw") or {}
 
@@ -936,7 +857,7 @@ def main() -> None:
                     f'<span class="rec-rank" aria-label="Platz {rank}">{rank}.</span>'
                 )
 
-                release_str = _format_release_date(rec.get("release_date"), year)
+                release_str = format_release_date(rec.get("release_date"), year)
                 if rating is not None:
                     rating_bit = f"Rating: {float(rating):g}/10"
                 else:
@@ -1100,8 +1021,8 @@ def main() -> None:
                     )
                 else:
                     # RAG-only hits: Score & Genre-Abdeckung wie bei normalen Karten.
-                    genre_labels = _load_genre_labels_res_10()
-                    communities = _load_communities_res_10()
+                    genre_labels = load_genre_labels_res_10()
+                    communities = load_communities_res_10()
                     comm_by_id: dict[str, dict[str, Any]] = {
                         str(c.get("id")): c for c in communities if c.get("id")
                     }
@@ -1113,7 +1034,7 @@ def main() -> None:
                     }
                     reviews_rag, _ = _load_reviews_and_metadata()
                     review_index_rag = {int(r.id): r for r in reviews_rag}
-                    rag_memberships = _load_community_memberships()
+                    rag_memberships = load_community_memberships()
 
                     fs_rag = st.session_state.get("filter_settings") or {}
                     crossover_w_rag = float(

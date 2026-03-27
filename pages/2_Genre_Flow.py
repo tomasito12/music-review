@@ -1,59 +1,7 @@
 from __future__ import annotations
 
-import json
-from pathlib import Path
-from typing import Any
-
 import streamlit as st
-
-import music_review.config  # noqa: F401 - load .env and set up paths
-from music_review.config import resolve_data_path
-
-
-@st.cache_data(ttl=3600)
-def _load_communities_res_10() -> list[dict[str, Any]]:
-    """Load resolution-10 communities."""
-    data_dir = resolve_data_path("data")
-    res_name = "10"
-    path = Path(data_dir) / f"communities_res_{res_name}.json"
-    if not path.exists():
-        return []
-    try:
-        with path.open("r", encoding="utf-8") as f:
-            data = json.load(f)
-    except Exception:
-        return []
-    comms = data.get("communities")
-    if not isinstance(comms, list):
-        return []
-    return [c for c in comms if isinstance(c, dict) and c.get("id")]
-
-
-@st.cache_data(ttl=3600)
-def _load_genre_labels_res_10() -> dict[str, str]:
-    """Load LLM-basiert vergebene Genre-Labels für Communities (res_10)."""
-    data_dir = resolve_data_path("data")
-    path = Path(data_dir) / "community_genre_labels_res_10.json"
-    if not path.exists():
-        return {}
-    try:
-        with path.open("r", encoding="utf-8") as f:
-            data = json.load(f)
-    except Exception:
-        return {}
-    labels = data.get("labels")
-    if not isinstance(labels, list):
-        return {}
-    mapping: dict[str, str] = {}
-    for item in labels:
-        if not isinstance(item, dict):
-            continue
-        cid = item.get("community_id")
-        label = item.get("genre_label")
-        if cid is None or not label:
-            continue
-        mapping[str(cid)] = str(label)
-    return mapping
+from pages.page_helpers import load_communities_res_10, load_genre_labels_res_10
 
 
 def _ensure_session_state() -> None:
@@ -77,8 +25,8 @@ def main() -> None:
         "in späteren Schritten mit RAG und weiteren Filtern kombiniert werden.",
     )
 
-    communities = _load_communities_res_10()
-    genre_labels = _load_genre_labels_res_10()
+    communities = load_communities_res_10()
+    genre_labels = load_genre_labels_res_10()
 
     if not communities:
         st.warning(

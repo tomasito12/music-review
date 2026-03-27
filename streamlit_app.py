@@ -5,7 +5,6 @@ from __future__ import annotations
 
 import streamlit as st
 
-import music_review.config  # noqa: F401 - load .env and set up paths
 from music_review.dashboard.user_profile_store import (
     ACTIVE_PROFILE_SESSION_KEY,
     apply_profile_to_session,

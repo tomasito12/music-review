@@ -94,9 +94,7 @@ def test_percentile_rank_differs_from_min_max_when_skewed() -> None:
 def test_community_spectrum_norm_batch_lambda_zero_is_purity_norm() -> None:
     pur = [0.2, 0.8, 0.5]
     br = [0.9, 0.1, 0.5]
-    p_n, b_n, mix = community_spectrum_norm_batch(
-        pur, br, crossover_weight=0.0
-    )
+    p_n, b_n, mix = community_spectrum_norm_batch(pur, br, crossover_weight=0.0)
     assert p_n == normalize_coverage_batch(pur)
     assert mix == p_n
     assert b_n == percentile_rank_normalize_batch(br)
@@ -105,9 +103,7 @@ def test_community_spectrum_norm_batch_lambda_zero_is_purity_norm() -> None:
 def test_community_spectrum_norm_batch_lambda_one_is_breadth_norm() -> None:
     pur = [0.2, 0.8, 0.5]
     br = [0.9, 0.1, 0.5]
-    _p_n, b_n, mix = community_spectrum_norm_batch(
-        pur, br, crossover_weight=1.0
-    )
+    _p_n, b_n, mix = community_spectrum_norm_batch(pur, br, crossover_weight=1.0)
     assert b_n == percentile_rank_normalize_batch(br)
     assert mix == b_n
 

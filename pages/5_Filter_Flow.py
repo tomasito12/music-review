@@ -1,66 +1,21 @@
 from __future__ import annotations
 
-import json
-from pathlib import Path
 from typing import Any
 
 import streamlit as st
+from pages.page_helpers import (
+    get_selected_communities,
+    load_communities_res_10,
+    load_genre_labels_res_10,
+)
 
-import music_review.config  # noqa: F401 - load .env and set up paths
 from music_review.config import (
     RECOMMENDATION_DEFAULT_COMMUNITY_CROSSOVER,
     RECOMMENDATION_OVERALL_ALPHA,
     RECOMMENDATION_OVERALL_BETA,
     RECOMMENDATION_OVERALL_GAMMA,
     normalize_overall_weights,
-    resolve_data_path,
 )
-
-
-@st.cache_data(ttl=3600)
-def _load_communities_res_10() -> list[dict[str, Any]]:
-    """Load resolution-10 communities for display."""
-    data_dir = resolve_data_path("data")
-    res_name = "10"
-    path = Path(data_dir) / f"communities_res_{res_name}.json"
-    if not path.exists():
-        return []
-    try:
-        with path.open("r", encoding="utf-8") as f:
-            data = json.load(f)
-    except Exception:
-        return []
-    comms = data.get("communities")
-    if not isinstance(comms, list):
-        return []
-    return [c for c in comms if isinstance(c, dict) and c.get("id")]
-
-
-@st.cache_data(ttl=3600)
-def _load_genre_labels_res_10() -> dict[str, str]:
-    """Load LLM genre/mood labels for communities (res_10) for nicer display."""
-    data_dir = resolve_data_path("data")
-    path = Path(data_dir) / "community_genre_labels_res_10.json"
-    if not path.exists():
-        return {}
-    try:
-        with path.open("r", encoding="utf-8") as f:
-            data = json.load(f)
-    except Exception:
-        return {}
-    labels = data.get("labels")
-    if not isinstance(labels, list):
-        return {}
-    mapping: dict[str, str] = {}
-    for item in labels:
-        if not isinstance(item, dict):
-            continue
-        cid = item.get("community_id")
-        label = item.get("genre_label")
-        if cid is None or not label:
-            continue
-        mapping[str(cid)] = str(label)
-    return mapping
 
 
 def _ensure_session_state() -> None:
@@ -68,16 +23,6 @@ def _ensure_session_state() -> None:
         st.session_state["filter_settings"] = {}
     if "community_weights_raw" not in st.session_state:
         st.session_state["community_weights_raw"] = {}
-
-
-def _get_selected_communities() -> set[str]:
-    """Union aller bisher gewählten Communities (Artist- und Genre-Flow)."""
-    artist_comms = st.session_state.get("artist_flow_selected_communities") or set()
-    genre_comms = st.session_state.get("genre_flow_selected_communities") or set()
-    # Beide können als set oder list vorliegen; in Strings umwandeln
-    artist_set = {str(c) for c in artist_comms}
-    genre_set = {str(c) for c in genre_comms}
-    return artist_set.union(genre_set)
 
 
 def main() -> None:
@@ -89,7 +34,7 @@ def main() -> None:
 
     _ensure_session_state()
 
-    selected_comms = _get_selected_communities()
+    selected_comms = get_selected_communities()
 
     st.title("🎛️ Filter & Community-Gewichte")
     st.caption(
@@ -281,8 +226,8 @@ def main() -> None:
         raw_weights: dict[str, float] = {}
     else:
         # Schönere Labels: Genre/Mood + Top-Artists
-        communities = _load_communities_res_10()
-        genre_labels = _load_genre_labels_res_10()
+        communities = load_communities_res_10()
+        genre_labels = load_genre_labels_res_10()
         comm_by_id: dict[str, dict[str, Any]] = {
             str(c.get("id")): c for c in communities if c.get("id")
         }

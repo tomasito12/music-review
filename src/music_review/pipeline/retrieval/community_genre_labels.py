@@ -28,7 +28,6 @@ import time
 from pathlib import Path
 from typing import Any
 
-import music_review.config  # noqa: F401 - load .env early
 from music_review.config import resolve_data_path
 
 logger = logging.getLogger(__name__)

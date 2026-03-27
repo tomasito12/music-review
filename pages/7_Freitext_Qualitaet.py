@@ -7,7 +7,6 @@ from typing import Any, cast
 
 import streamlit as st
 
-import music_review.config  # noqa: F401 - load .env
 from music_review.config import resolve_data_path
 from music_review.io.jsonl import iter_jsonl_objects
 from music_review.pipeline.retrieval.vector_store import (

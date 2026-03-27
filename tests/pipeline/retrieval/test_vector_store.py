@@ -6,6 +6,7 @@ import json
 from pathlib import Path
 
 from music_review.domain.models import Review
+from music_review.pipeline.retrieval import search as search_mod
 from music_review.pipeline.retrieval import vector_store
 
 
@@ -165,7 +166,7 @@ def test_search_reviews_with_variants_deduplicates_by_best_distance(
             {"review_id": 3, "distance": 0.50, "artist": "E", "album": "F"},
         ]
 
-    monkeypatch.setattr(vector_store, "search_reviews", fake_search_reviews)
+    monkeypatch.setattr(search_mod, "search_reviews", fake_search_reviews)
 
     hits = vector_store.search_reviews_with_variants(
         "spröde",
@@ -208,8 +209,8 @@ def test_search_reviews_with_variants_strategy_c_applies_rank_bonus(
             ]
         return []
 
-    monkeypatch.setattr(vector_store, "generate_query_variants", fake_variants)
-    monkeypatch.setattr(vector_store, "search_reviews", fake_search_reviews)
+    monkeypatch.setattr(search_mod, "generate_query_variants", fake_variants)
+    monkeypatch.setattr(search_mod, "search_reviews", fake_search_reviews)
 
     hits = vector_store.search_reviews_with_variants(
         "query",

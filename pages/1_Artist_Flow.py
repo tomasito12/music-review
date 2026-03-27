@@ -1,32 +1,7 @@
 from __future__ import annotations
 
-import json
-from pathlib import Path
-from typing import Any
-
 import streamlit as st
-
-import music_review.config  # noqa: F401 - load .env and set up paths
-from music_review.config import resolve_data_path
-
-
-@st.cache_data(ttl=3600)
-def _load_communities_res_10() -> list[dict[str, Any]]:
-    """Load resolution-10 communities with top artists."""
-    data_dir = resolve_data_path("data")
-    res_name = "10"
-    path = Path(data_dir) / f"communities_res_{res_name}.json"
-    if not path.exists():
-        return []
-    try:
-        with path.open("r", encoding="utf-8") as f:
-            data = json.load(f)
-    except Exception:
-        return []
-    comms = data.get("communities")
-    if not isinstance(comms, list):
-        return []
-    return [c for c in comms if isinstance(c, dict) and c.get("id")]
+from pages.page_helpers import load_communities_res_10
 
 
 def _ensure_session_state() -> None:
@@ -50,7 +25,7 @@ def main() -> None:
         "und kann in späteren Schritten für Empfehlungen weiterverwendet werden.",
     )
 
-    communities = _load_communities_res_10()
+    communities = load_communities_res_10()
     if not communities:
         st.warning(
             "Keine Communities für Auflösung 10 gefunden. Bitte zuerst den "

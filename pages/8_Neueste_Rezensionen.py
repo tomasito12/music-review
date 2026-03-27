@@ -3,14 +3,18 @@
 from __future__ import annotations
 
 import html
-import json
-from datetime import datetime
 from pathlib import Path
 from typing import Any
 
 import streamlit as st
+from pages.page_helpers import (
+    format_release_date,
+    get_selected_communities,
+    load_communities_res_10,
+    load_community_memberships,
+    load_genre_labels_res_10,
+)
 
-import music_review.config  # noqa: F401 - load .env
 from music_review.config import (
     RECOMMENDATION_RATING_DEFAULT_WHEN_MISSING,
     resolve_data_path,
@@ -22,7 +26,6 @@ from music_review.dashboard.preference_ranking import (
 from music_review.domain.models import Review
 from music_review.io.jsonl import iter_jsonl_objects
 from music_review.io.reviews_jsonl import load_reviews_from_jsonl
-from music_review.pipeline.retrieval.reference_graph import load_artist_communities
 
 RECENT_DEFAULT = 20
 RES_KEY = "res_10"
@@ -110,69 +113,6 @@ def _newest_css() -> None:
     )
 
 
-def _format_release_date(value: Any, release_year: Any) -> str:
-    if value is not None:
-        if hasattr(value, "strftime"):
-            try:
-                return value.strftime("%d.%m.%Y")
-            except Exception:
-                pass
-        if isinstance(value, str):
-            try:
-                return datetime.fromisoformat(value).strftime("%d.%m.%Y")
-            except ValueError:
-                pass
-    if release_year is not None:
-        try:
-            return str(int(release_year))
-        except (TypeError, ValueError):
-            pass
-    return ""
-
-
-@st.cache_data(ttl=3600)
-def _load_communities_res_10() -> list[dict[str, Any]]:
-    data_dir = resolve_data_path("data")
-    path = Path(data_dir) / "communities_res_10.json"
-    if not path.exists():
-        return []
-    try:
-        with path.open("r", encoding="utf-8") as f:
-            data = json.load(f)
-    except Exception:
-        return []
-    comms = data.get("communities")
-    if not isinstance(comms, list):
-        return []
-    return [c for c in comms if isinstance(c, dict) and c.get("id")]
-
-
-@st.cache_data(ttl=3600)
-def _load_genre_labels_res_10() -> dict[str, str]:
-    data_dir = resolve_data_path("data")
-    path = Path(data_dir) / "community_genre_labels_res_10.json"
-    if not path.exists():
-        return {}
-    try:
-        with path.open("r", encoding="utf-8") as f:
-            data = json.load(f)
-    except Exception:
-        return {}
-    labels = data.get("labels")
-    if not isinstance(labels, list):
-        return {}
-    mapping: dict[str, str] = {}
-    for item in labels:
-        if not isinstance(item, dict):
-            continue
-        cid = item.get("community_id")
-        label = item.get("genre_label")
-        if cid is None or not label:
-            continue
-        mapping[str(cid)] = str(label)
-    return mapping
-
-
 @st.cache_data(ttl=3600)
 def _load_affinity_top_map(*, top_k: int = 5) -> dict[int, list[tuple[str, float]]]:
     path = resolve_data_path("data/album_community_affinities.jsonl")
@@ -226,7 +166,7 @@ def _cached_global_breadth_norm_map(
     all_rev = _load_all_reviews_for_breadth_norm()
     if not all_rev:
         return {}
-    memberships = _load_community_memberships()
+    memberships = load_community_memberships()
     weights = {k: float(v) for k, v in weights_key}
     return global_breadth_norm_by_review_id(
         all_rev,
@@ -234,12 +174,6 @@ def _cached_global_breadth_norm_map(
         selected_comms=set(selected_key),
         weights_raw=weights,
     )
-
-
-@st.cache_data(ttl=3600)
-def _load_community_memberships() -> dict[str, dict[str, str]]:
-    mp = resolve_data_path("data/community_memberships.jsonl")
-    return load_artist_communities(mp)
 
 
 @st.cache_data(ttl=3600)
@@ -255,14 +189,6 @@ def _load_affinity_by_review_id() -> dict[int, dict[str, Any]]:
         if isinstance(rid, int):
             out[rid] = obj
     return out
-
-
-def _get_selected_communities() -> set[str]:
-    artist_comms = st.session_state.get("artist_flow_selected_communities") or set()
-    genre_comms = st.session_state.get("genre_flow_selected_communities") or set()
-    artist_set = {str(c) for c in artist_comms}
-    genre_set = {str(c) for c in genre_comms}
-    return artist_set.union(genre_set)
 
 
 def _top_communities_display(
@@ -317,9 +243,7 @@ def _rec_top_communities_html(top_comms: list[dict[str, Any]]) -> str:
 def _rating_line(review: Review) -> str:
     if review.rating is not None:
         return f"Rating: {float(review.rating):g}/10"
-    return (
-        f"Rating: {RECOMMENDATION_RATING_DEFAULT_WHEN_MISSING:.0f}/10 (angenommen)"
-    )
+    return f"Rating: {RECOMMENDATION_RATING_DEFAULT_WHEN_MISSING:.0f}/10 (angenommen)"
 
 
 def _render_newest_chronological_card(
@@ -338,13 +262,11 @@ def _render_newest_chronological_card(
         header_html = f'<a {link} class="rec-title">{header}</a>'
     else:
         header_html = f'<span class="rec-title">{header}</span>'
-    rank_html = (
-        f'<span class="rec-rank" aria-label="Platz {rank}">{rank}.</span>'
-    )
+    rank_html = f'<span class="rec-rank" aria-label="Platz {rank}">{rank}.</span>'
 
     label_list = review.labels or []
     label_str = ", ".join(str(x) for x in label_list) if label_list else ""
-    rel = _format_release_date(review.release_date, review.release_year)
+    rel = format_release_date(review.release_date, review.release_year)
     core = (
         f"Rezensions-ID {rid}"
         f"{(' - ' + rel) if rel else ''}"
@@ -391,11 +313,9 @@ def _render_newest_scored_card(
         header_html = f'<a {link} class="rec-title">{header}</a>'
     else:
         header_html = f'<span class="rec-title">{header}</span>'
-    rank_html = (
-        f'<span class="rec-rank" aria-label="Platz {rank}">{rank}.</span>'
-    )
+    rank_html = f'<span class="rec-rank" aria-label="Platz {rank}">{rank}.</span>'
 
-    release_str = _format_release_date(review.release_date, review.release_year)
+    release_str = format_release_date(review.release_date, review.release_year)
     label_list = review.labels or []
     label_str = ", ".join(str(x) for x in label_list) if label_list else ""
 
@@ -472,7 +392,7 @@ def main() -> None:
         unsafe_allow_html=True,
     )
 
-    selected_comms = _get_selected_communities()
+    selected_comms = get_selected_communities()
     if selected_comms:
         st.markdown(
             '<p class="nw-page-desc" style="margin-top:-0.5rem;">'
@@ -499,17 +419,13 @@ def main() -> None:
     reviews = _load_newest_reviews(n_show)
     ranked_rows: list[dict[str, Any]] | None = None
     if selected_comms:
-        filter_settings: dict[str, Any] = (
-            st.session_state.get("filter_settings") or {}
-        )
+        filter_settings: dict[str, Any] = st.session_state.get("filter_settings") or {}
         weights_raw: dict[str, float] = (
             st.session_state.get("community_weights_raw") or {}
         )
         aff_map_full = _load_affinity_by_review_id()
-        memberships = _load_community_memberships()
-        weights_key = tuple(
-            (str(k), float(v)) for k, v in sorted(weights_raw.items())
-        )
+        memberships = load_community_memberships()
+        weights_key = tuple((str(k), float(v)) for k, v in sorted(weights_raw.items()))
         breadth_norm_global = _cached_global_breadth_norm_map(
             tuple(sorted(selected_comms)),
             weights_key,
@@ -532,8 +448,8 @@ def main() -> None:
         return
 
     aff_map = _load_affinity_top_map(top_k=5)
-    genre_labels = _load_genre_labels_res_10()
-    communities = _load_communities_res_10()
+    genre_labels = load_genre_labels_res_10()
+    communities = load_communities_res_10()
     comm_by_id: dict[str, dict[str, Any]] = {
         str(c.get("id")): c for c in communities if c.get("id")
     }

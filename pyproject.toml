@@ -64,7 +64,7 @@ update-db = "python scripts/update_database.py {args:}"
 full-data-update = "python scripts/full_data_update.py {args:}"
 dashboard = "streamlit run streamlit_app.py {args:}"
 batch-embed = "python -m music_review.pipeline.retrieval.cli {args:}"
-graph-build = "python -m music_review.pipeline.retrieval.reference_graph {args:}"
+graph-build = "python -m music_review.pipeline.retrieval.reference_graph_cli {args:}"
 community-genre-labels = "python -m music_review.pipeline.retrieval.community_genre_labels {args:}"
 
 # --- Lint environment -------------------------------------------------------
@@ -123,6 +123,17 @@ warn_unused_configs = true
 disallow_untyped_defs = false
 check_untyped_defs = true
 ignore_missing_imports = true
+
+[[tool.mypy.overrides]]
+module = [
+  "music_review.pipeline.retrieval.chunking",
+  "music_review.pipeline.retrieval.search",
+  "music_review.pipeline.retrieval.batch_api",
+  "music_review.pipeline.retrieval.chroma_repo",
+  "music_review.pipeline.retrieval.reference_graph_cli",
+  "music_review.pipeline.scraper.service",
+]
+disallow_untyped_defs = true
 
 # ---------------------------------------------------------------------------
 # Pytest configuration

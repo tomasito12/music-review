@@ -7,7 +7,6 @@ from collections.abc import Iterable
 from dataclasses import asdict, dataclass
 from pathlib import Path
 
-import music_review.config  # noqa: F401 - load .env early
 from music_review.config import resolve_data_path
 from music_review.io.jsonl import (
     iter_jsonl_objects,

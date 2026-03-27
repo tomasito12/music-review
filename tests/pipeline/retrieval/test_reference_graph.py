@@ -70,11 +70,14 @@ def test_reference_community_position_masses_two_refs() -> None:
 
 def test_reference_community_position_masses_empty_refs() -> None:
     review = Review(id=1, url="u", artist="A", album="B", text="t", references=[])
-    assert reference_community_position_masses(
-        review,
-        {"x": {"res_10": "C1"}},
-        res_key="res_10",
-    ) == {}
+    assert (
+        reference_community_position_masses(
+            review,
+            {"x": {"res_10": "C1"}},
+            res_key="res_10",
+        )
+        == {}
+    )
 
 
 def test_build_artist_graph_position_averaging(tmp_path: Path) -> None:

@@ -77,12 +77,15 @@ def test_rank_keeps_no_match_reviews_but_sorts_them_lower() -> None:
 
 def test_global_breadth_norm_by_review_id_empty_without_selection() -> None:
     r = _review(1)
-    assert global_breadth_norm_by_review_id(
-        [r],
-        memberships={},
-        selected_comms=set(),
-        weights_raw={},
-    ) == {}
+    assert (
+        global_breadth_norm_by_review_id(
+            [r],
+            memberships={},
+            selected_comms=set(),
+            weights_raw={},
+        )
+        == {}
+    )
 
 
 def test_global_breadth_map_overrides_batch_breadth_norm() -> None:

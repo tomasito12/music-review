@@ -9,8 +9,6 @@ import os
 import subprocess
 import sys
 
-import music_review.config  # noqa: F401 - load .env before OPENAI_API_KEY check
-
 logging.basicConfig(
     level=logging.INFO,
     format="%(asctime)s [%(levelname)s] %(message)s",
@@ -240,7 +238,7 @@ def main() -> int:
             "louvain" if args.recluster_communities else "incremental",
         ]
         if not run_module(
-            "music_review.pipeline.retrieval.reference_graph",
+            "music_review.pipeline.retrieval.reference_graph_cli",
             graph_args,
         ):
             return 1

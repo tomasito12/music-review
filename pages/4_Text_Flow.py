@@ -2,8 +2,6 @@ from __future__ import annotations
 
 import streamlit as st
 
-import music_review.config  # noqa: F401 - load .env and set up paths
-
 
 def _ensure_session_state() -> None:
     if "free_text_query" not in st.session_state:

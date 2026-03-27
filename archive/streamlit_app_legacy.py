@@ -13,7 +13,6 @@ from typing import Any
 
 import streamlit as st
 
-import music_review.config  # noqa: F401 - load .env and set up paths
 from music_review.config import resolve_data_path
 from music_review.io.jsonl import iter_jsonl_objects, load_jsonl_as_map
 from music_review.io.reviews_jsonl import load_reviews_from_jsonl

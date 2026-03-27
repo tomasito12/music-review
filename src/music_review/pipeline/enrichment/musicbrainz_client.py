@@ -20,8 +20,6 @@ from typing import Any, cast
 import requests
 from urllib3.exceptions import InsecureRequestWarning
 
-import music_review.config  # noqa: F401 - load .env early
-
 logger = logging.getLogger(__name__)
 
 BASE_URL = "https://musicbrainz.org/ws/2"
