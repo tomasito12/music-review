@@ -15,6 +15,7 @@ from music_review.pipeline.retrieval.reference_graph import (
     build_artist_graph,
     load_graph,
     position_weight,
+    reference_community_position_masses,
     save_graph,
 )
 
@@ -41,6 +42,39 @@ def test_position_weight_custom_w_min() -> None:
 def test_position_weight_zero_refs_returns_w_min() -> None:
     """No references: return w_min."""
     assert position_weight(1, 0, w_min=0.2) == 0.2
+
+
+def test_reference_community_position_masses_two_refs() -> None:
+    """Masses match position_weight per referenced artist community."""
+    review = Review(
+        id=1,
+        url="u",
+        artist="A",
+        album="B",
+        text="t",
+        references=["X", "Y"],
+    )
+    memberships = {
+        "x": {"res_10": "C1"},
+        "y": {"res_10": "C2"},
+    }
+    m = reference_community_position_masses(
+        review,
+        memberships,
+        res_key="res_10",
+        w_min=0.2,
+    )
+    assert m["C1"] == pytest.approx(1.0)
+    assert m["C2"] == pytest.approx(0.2)
+
+
+def test_reference_community_position_masses_empty_refs() -> None:
+    review = Review(id=1, url="u", artist="A", album="B", text="t", references=[])
+    assert reference_community_position_masses(
+        review,
+        {"x": {"res_10": "C1"}},
+        res_key="res_10",
+    ) == {}
 
 
 def test_build_artist_graph_position_averaging(tmp_path: Path) -> None:

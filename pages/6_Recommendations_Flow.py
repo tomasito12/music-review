@@ -10,10 +10,32 @@ from typing import Any
 import streamlit as st
 
 import music_review.config  # noqa: F401 - load .env and set up paths
-from music_review.config import resolve_data_path
+from music_review.config import (
+    RECOMMENDATION_DEFAULT_COMMUNITY_CROSSOVER,
+    RECOMMENDATION_RATING_DEFAULT_WHEN_MISSING,
+    RECOMMENDATION_SPECTRUM_MATCHING_GATE_HALF_SATURATION,
+    REFERENCE_POSITION_W_MIN,
+    get_recommendation_overall_weights,
+    normalize_overall_weights,
+    resolve_data_path,
+)
+from music_review.dashboard.recommendation_scoring import (
+    breadth_raw_from_selected_community_masses,
+    community_spectrum_norm_batch,
+    effective_plattentests_rating,
+    gated_community_spectrum,
+    overall_score,
+    purity_max_weighted_share,
+    rating_to_unit_interval,
+    serendipity_rank_sort_key,
+)
 from music_review.dashboard.user_profile_store import ACTIVE_PROFILE_SESSION_KEY
 from music_review.io.jsonl import iter_jsonl_objects, load_jsonl_as_map
 from music_review.io.reviews_jsonl import load_reviews_from_jsonl
+from music_review.pipeline.retrieval.reference_graph import (
+    load_artist_communities,
+    reference_community_position_masses,
+)
 from music_review.pipeline.retrieval.vector_store import (
     CHUNK_COLLECTION_NAME,
     search_reviews_with_variants,
@@ -60,7 +82,13 @@ def _recommendations_css() -> None:
             border: 1px solid #6366f1;
             background: #eef2ff;
         }
-        .rec-header { margin-bottom: 0.35rem; }
+        .rec-header {
+            margin-bottom: 0.35rem;
+            display: flex;
+            align-items: baseline;
+            gap: 0.35rem;
+            flex-wrap: wrap;
+        }
         .rec-title {
             font-size: 1.05rem;
             font-weight: 600;
@@ -72,6 +100,13 @@ def _recommendations_css() -> None:
             font-size: 0.8rem;
             color: #6b7280;
             margin-bottom: 0.40rem;
+        }
+        .rec-meta-formula {
+            font-size: 0.76rem;
+            color: #64748b;
+            margin: 0.15rem 0 0.35rem 0;
+            line-height: 1.35;
+            font-variant-numeric: tabular-nums;
         }
         .rec-communities {
             font-size: 0.78rem;
@@ -225,6 +260,13 @@ def _load_reviews_and_metadata() -> tuple[list[Any], dict[int, dict[str, Any]]]:
 
 
 @st.cache_data(ttl=3600)
+def _load_community_memberships() -> dict[str, dict[str, str]]:
+    """Artist key (normalized) -> resolution keys -> community id."""
+    mp = resolve_data_path("data/community_memberships.jsonl")
+    return load_artist_communities(mp)
+
+
+@st.cache_data(ttl=3600)
 def _load_affinities() -> list[dict[str, Any]]:
     path = resolve_data_path("data/album_community_affinities.jsonl")
     p = Path(path)
@@ -322,12 +364,27 @@ def _compute_recommendations() -> list[dict[str, Any]]:
     rating_max = float(filter_settings.get("rating_max", 10.0))
     score_min = float(filter_settings.get("score_min", 0.0))
     score_max = float(filter_settings.get("score_max", 1.0))
-    min_hits_pct = float(filter_settings.get("min_hits_pct", 0.0))
     sort_mode = str(filter_settings.get("sort_mode", "Deterministisch"))
     serendipity = float(filter_settings.get("serendipity", 0.0))
+    crossover_w = float(
+        filter_settings.get(
+            "community_spectrum_crossover",
+            RECOMMENDATION_DEFAULT_COMMUNITY_CROSSOVER,
+        )
+    )
+
+    def _overall_weights_from_session() -> tuple[float, float, float]:
+        fs = filter_settings
+        a = fs.get("overall_weight_alpha")
+        b = fs.get("overall_weight_beta")
+        c = fs.get("overall_weight_gamma")
+        if a is not None and b is not None and c is not None:
+            return normalize_overall_weights(float(a), float(b), float(c))
+        return get_recommendation_overall_weights()
 
     reviews, metadata = _load_reviews_and_metadata()
     affinities = _load_affinities()
+    memberships = _load_community_memberships()
     communities = _load_communities_res_10()
     genre_labels = _load_genre_labels_res_10()
 
@@ -340,7 +397,6 @@ def _compute_recommendations() -> list[dict[str, Any]]:
     }
 
     res_key = "res_10"
-    total_liked = len(selected_comms) if selected_comms else 1
 
     candidates: list[dict[str, Any]] = []
 
@@ -364,9 +420,10 @@ def _compute_recommendations() -> list[dict[str, Any]]:
         )
         top_entries = sorted_entries[:3]
 
-        # Score nur über ausgewählte Communities
+        # Score nur über ausgewählte Communities; max Einzelbeitrag für Reinheit
         s = 0.0
         k_hits = 0
+        max_wv = 0.0
         for entry in entries_any:
             if not isinstance(entry, dict):
                 continue
@@ -378,9 +435,11 @@ def _compute_recommendations() -> list[dict[str, Any]]:
                 continue
             val = float(score_val)
             w = float(weights_raw.get(cid, 1.0))
-            s += w * val
+            contrib = w * val
+            s += contrib
             if val > 0:
                 k_hits += 1
+                max_wv = max(max_wv, contrib)
 
         if k_hits == 0:
             continue
@@ -395,9 +454,11 @@ def _compute_recommendations() -> list[dict[str, Any]]:
             continue
 
         rating_val = review.rating
-        if rating_val is not None and (
-            rating_val < rating_min or rating_val > rating_max
-        ):
+        eff_rating = effective_plattentests_rating(
+            rating_val,
+            default_when_missing=RECOMMENDATION_RATING_DEFAULT_WHEN_MISSING,
+        )
+        if eff_rating < rating_min or eff_rating > rating_max:
             continue
 
         year_val: int | None = None
@@ -408,9 +469,19 @@ def _compute_recommendations() -> list[dict[str, Any]]:
         if year_val is not None and not (year_min <= year_val <= year_max):
             continue
 
-        hits_pct = 100.0 * k_hits / total_liked
-        if hits_pct < min_hits_pct:
-            continue
+        ref_masses = reference_community_position_masses(
+            review,
+            memberships,
+            res_key=res_key,
+            w_min=REFERENCE_POSITION_W_MIN,
+        )
+        breadth_raw = breadth_raw_from_selected_community_masses(
+            ref_masses,
+            selected_comms,
+            weights_raw,
+        )
+        hits_pct = 100.0 * breadth_raw
+        purity_raw = purity_max_weighted_share(max_wv, s)
 
         meta = metadata.get(review_id_val) or {}
         label_list = meta.get("labels") or []
@@ -446,8 +517,11 @@ def _compute_recommendations() -> list[dict[str, Any]]:
                 "album": review.album,
                 "score": s,
                 "k_hits": k_hits,
+                "purity_raw": purity_raw,
+                "breadth_raw": breadth_raw,
                 "hits_pct": hits_pct,
                 "rating": rating_val,
+                "rating_effective": eff_rating,
                 "year": year_val,
                 "release_date": review.release_date,
                 "labels": label_str,
@@ -460,18 +534,61 @@ def _compute_recommendations() -> list[dict[str, Any]]:
     if not candidates:
         return []
 
-    # Sortierung
+    alpha, beta, gamma = _overall_weights_from_session()
+    purity_list = [float(c["purity_raw"]) for c in candidates]
+    breadth_list = [float(c["breadth_raw"]) for c in candidates]
+    purity_norms, breadth_norms, spec_norm_list = community_spectrum_norm_batch(
+        purity_list,
+        breadth_list,
+        crossover_weight=crossover_w,
+    )
+    for item, p_n, b_n, spec_n in zip(
+        candidates,
+        purity_norms,
+        breadth_norms,
+        spec_norm_list,
+        strict=True,
+    ):
+        rn = rating_to_unit_interval(
+            item["rating"],
+            default_on_10_scale=RECOMMENDATION_RATING_DEFAULT_WHEN_MISSING,
+        )
+        item["purity_norm"] = p_n
+        item["breadth_norm"] = b_n
+        item["community_spectrum_norm"] = spec_n
+        spec_eff, gate = gated_community_spectrum(
+            float(spec_n),
+            float(item["score"]),
+        )
+        item["spectrum_matching_gate"] = gate
+        item["community_spectrum_effective"] = spec_eff
+        item["rating_norm"] = rn
+        item["overall_score"] = overall_score(
+            float(item["score"]),
+            rn,
+            spec_eff,
+            alpha=alpha,
+            beta=beta,
+            gamma=gamma,
+        )
+
+    # Immer zuerst nach echtem Gesamtscore; Serendipity mischt die Reihenfolge
+    # (Spearman-Rangkorrelation vor/nachher grob ~ 1 - s).
+    candidates.sort(key=lambda x: float(x["overall_score"]), reverse=True)
     if sort_mode == "Serendipity" and serendipity > 0.0:
-        rng = random.Random(42)
+        # Kein fester Seed: bei jedem Neuaufbau der Liste frische Zufallswerte.
+        rng = random.Random()
+        n = len(candidates)
+        for i, item in enumerate(candidates):
+            item["_serendipity_key"] = serendipity_rank_sort_key(
+                i,
+                serendipity=serendipity,
+                rng=rng,
+                n_items=n,
+            )
+        candidates.sort(key=lambda x: float(x["_serendipity_key"]))
         for item in candidates:
-            base = float(item["score"])
-            noise = rng.random()
-            item["serendipity_score"] = (1.0 - serendipity) * base + serendipity * noise
-        candidates.sort(key=lambda x: x["serendipity_score"], reverse=True)
-    else:
-        # Kein Freitext + deterministisch: streng nach Score absteigend.
-        # (Wenn später Freitext/RAG hinzukommt, kann hier erweitert werden.)
-        candidates.sort(key=lambda x: float(x["score"]), reverse=True)
+            item.pop("_serendipity_key", None)
 
     return candidates
 
@@ -518,21 +635,64 @@ def main() -> None:
     rating_max = float(filter_settings.get("rating_max", 10.0))
     score_min = float(filter_settings.get("score_min", 0.0))
     score_max = float(filter_settings.get("score_max", 1.0))
-    min_hits_pct = float(filter_settings.get("min_hits_pct", 0.0))
     sort_mode = str(filter_settings.get("sort_mode", "Deterministisch"))
     serendipity = float(filter_settings.get("serendipity", 0.0))
+    crossover_ui = float(
+        filter_settings.get(
+            "community_spectrum_crossover",
+            RECOMMENDATION_DEFAULT_COMMUNITY_CROSSOVER,
+        )
+    )
+    fs_for_weights = st.session_state.get("filter_settings") or {}
+    wa = fs_for_weights.get("overall_weight_alpha")
+    wb = fs_for_weights.get("overall_weight_beta")
+    wc = fs_for_weights.get("overall_weight_gamma")
+    if wa is not None and wb is not None and wc is not None:
+        oa, ob, og = normalize_overall_weights(float(wa), float(wb), float(wc))
+    else:
+        oa, ob, og = get_recommendation_overall_weights()
 
     with st.expander("Wie werden die Scores berechnet?", expanded=True):
         st.markdown(
-            "- **Formel pro Album**:\n"
-            "  `Score = Summe über alle gewählten Communities "
-            "(Gewicht_c * Affinitaet_c,Album)`\n"
-            "  mit:\n"
-            "  - `C_selected`: aktuell gewählte Communities (Artist-/Genre-Flow)\n"
-            "  - `Gewicht_c`: Community-Gewicht "
-            '(Slider in "Filter & Community-Gewichte")\n'
-            "  - `Affinität_c,Album`: Score der Album-Community-Affinität "
-            "aus `album_community_affinities.jsonl` für `res_10`.",
+            "- **`S_a` (Community-Affinität)**:\n"
+            "  `S_a = Summe (Gewicht_c * Affinitaet_c,Album)` ueber gewählte "
+            "Communities\n"
+            "  (Affinitäten aus `album_community_affinities.jsonl`, `res_10`).\n"
+            "- **`rating_norm`**: Plattentests-Rating / 10 (0 bis 1). "
+            f"Ohne Rating: **{RECOMMENDATION_RATING_DEFAULT_WHEN_MISSING:.0f}/10** "
+            "angenommen.\n"
+            "- **Reinheit** `purity_raw`: Anteil von `S_a`, der auf die "
+            "**eine** stärkste gewählte Community entfällt (hoch = blütenrein).\n"
+            "- **Breite** `breadth_raw`: **1 - Gini** ueber positionsgewichtete "
+            "Referenzmasse je **gewaehlter** Community (wie bei Affinitaets-Pipeline: "
+            f"`position_weight`, `w_min={REFERENCE_POSITION_W_MIN}`). "
+            "Referenzen ausserhalb der Auswahl zaehlen nicht. Gleichverteilung der "
+            "Masse -> `breadth_raw` nahe 1; eine Community dominiert -> nahe 0.\n"
+            f"- **Regler lambda (aktuell {crossover_ui:.2f})**: `purity_norm` ist "
+            "min-max ueber die Trefferliste. `breadth_norm` ist **Perzentil-Rang** "
+            "nach `breadth_raw`: Album mit **geringster** Breite in der Liste -> 0, "
+            "**groesster** Breite -> 1. Dann "
+            "`community_spectrum_norm = (1-lambda)*purity_norm + lambda*breadth_norm`. "
+            "**lambda=0** bevorzugt **bluetenreine** Alben; **lambda=1** bevorzugt "
+            "**Cross-Over** (relativ zur aktuellen Liste).\n"
+            f"- **Matching-Kopplung (probeweise)**: Der Spektrum-Term wird mit "
+            f"`g(S_a) = S_a / (S_a + k)` multipliziert, aktuell `k = "
+            f"{RECOMMENDATION_SPECTRUM_MATCHING_GATE_HALF_SATURATION:g}` "
+            f"(bei `S_a = k` ist `g = 0.5`). "
+            "`effektives_Spektrum = community_spectrum_norm * g(S_a)`. "
+            "`k <= 0` in der Config schaltet die Kopplung aus (`g = 1`).\n"
+            "- **Gesamtscore** (alpha, beta, gamma aus den Filtern, vorher auf Summe 1 "
+            "normiert):\n"
+            f"  `overall = {oa:.2f}*S_a + {ob:.2f}*rating_norm + "
+            f"{og:.2f}*effektives_Spektrum`\n"
+            "  **gamma** (normiert) steuert dabei den Anteil des "
+            "Community-Spektrums vs. S_a und Rating.\n"
+            "- **Sortierung**: absteigend nach `overall`. **Serendipity** (Slider "
+            "``s``): zuerst dieselbe Reihenfolge, dann wird mit "
+            "``(1-s) * Rang_norm + s * Zufall`` neu sortiert (aufsteigend). "
+            "``s=0`` unverändert; ``s=1`` fast vollständig zufällige Permutation; "
+            "dazwischen ist die **Spearman-Korrelation** der Plätze vor/nachher "
+            "in etwa **1 - s** (intuitiv: Rest bleibt am Ranking haengen).\n",
         )
 
         if selected_comms:
@@ -564,12 +724,16 @@ def main() -> None:
                 "(Score-Berechnung deaktiviert).",
             )
 
+        ph = RECOMMENDATION_RATING_DEFAULT_WHEN_MISSING
         st.markdown(
             "**Zusätzliche Filter, bevor ein Album angezeigt wird:**\n"
             f"- Veröffentlichungsjahr: **{year_min}-{year_max}**\n"
-            f"- Rating: **{rating_min:.1f}-{rating_max:.1f}**\n"
-            f"- Score-Range: **{score_min:.2f}-{score_max:.2f}**\n"
-            f"- Min. Anteil getroffener Communities: **{min_hits_pct:.0f}%**\n"
+            f"- Rating (effektiv; fehlend = **{ph:.0f}/10**): "
+            f"**{rating_min:.1f}-{rating_max:.1f}**\n"
+            f"- Score-Range (`S_a`): **{score_min:.2f}-{score_max:.2f}**\n"
+            f"- Bluetenrein <-> Cross-Over (lambda): **{crossover_ui:.2f}**\n"
+            f"- Gesamtscore-Gewichte (normiert): alpha={oa:.3f}, beta={ob:.3f}, "
+            f"gamma={og:.3f}\n"
             f"- Sortierung: **{sort_mode}**"
             + (f" (Serendipity={serendipity})" if sort_mode == "Serendipity" else ""),
         )
@@ -720,10 +884,12 @@ def main() -> None:
         rec_list: list[dict[str, Any]],
         *,
         rag_match: set[int],
+        rank_start: int = 1,
     ) -> None:
         num_cols = 1
         cols = st.columns(num_cols)
         for idx, rec in enumerate(rec_list):
+            rank = rank_start + idx
             col = cols[idx % num_cols]
             with col:
                 artist = rec.get("artist") or ""
@@ -733,9 +899,15 @@ def main() -> None:
                 year = rec.get("year")
                 labels = rec.get("labels") or ""
                 score = float(rec.get("score") or 0.0)
-                hits_pct = float(rec.get("hits_pct") or 0.0)
+                overall = float(rec.get("overall_score") or 0.0)
+                spec_raw = float(rec.get("community_spectrum_norm") or 0.0)
+                spec_eff = float(
+                    rec.get("community_spectrum_effective", spec_raw) or 0.0,
+                )
+                spec_gate = float(rec.get("spectrum_matching_gate", 1.0) or 1.0)
                 top_comms = rec.get("top_communities") or []
                 rag_distance = None
+                hit: dict[str, Any] | None = None
                 if rec.get("review_id") in rag_match:
                     hit = rag_hits_by_id.get(int(rec["review_id"]))
                     if hit and isinstance(hit.get("distance"), (int, float)):
@@ -760,28 +932,35 @@ def main() -> None:
                     header_html = f'<a {link_attrs} class="rec-title">{header}</a>'
                 else:
                     header_html = f'<span class="rec-title">{header}</span>'
+                rank_html = (
+                    f'<span class="rec-rank" aria-label="Platz {rank}">{rank}.</span>'
+                )
 
-                meta_parts: list[str] = []
                 release_str = _format_release_date(rec.get("release_date"), year)
-                if release_str:
-                    meta_parts.append(release_str)
-                if labels:
-                    meta_parts.append(labels)
                 if rating is not None:
-                    meta_parts.append(f"{int(rating)}/10")
-                meta_parts.append(f"Score: {score:.3f}")
-                meta_parts.append(
-                    f"Abdeckung ausgewählter Genres: {hits_pct:.0f}%",
+                    rating_bit = f"Rating: {float(rating):g}/10"
+                else:
+                    rating_bit = (
+                        f"Rating: {RECOMMENDATION_RATING_DEFAULT_WHEN_MISSING:.0f}/10 "
+                        "(angenommen)"
+                    )
+                core = (
+                    f"{release_str + ' - ' if release_str else ''}"
+                    f"{labels + ' - ' if labels else ''}"
+                    f"{rating_bit} - Gesamt: {overall:.3f} "
+                    f"(Matching-Score: {score:.3f}, "
+                    f"Abdeckungsquantil eff.: {spec_eff:.3f} "
+                    f"[roh {spec_raw:.3f} * g(S_a)={spec_gate:.3f}])"
                 )
                 if is_rag and rag_distance is not None:
-                    meta_parts.append(f"Freitext-Distanz: {rag_distance:.3f}")
-                meta_html = " - ".join(html.escape(str(p)) for p in meta_parts)
+                    core += f" - Freitext-Distanz: {rag_distance:.3f}"
+                meta_html = html.escape(core)
 
                 snippet_html = html.escape(snippet).replace("\n", "<br>")
 
                 card_class = "rec-card rec-card-rag" if is_rag else "rec-card"
                 card = f'<div class="{card_class}">'
-                card += f'<div class="rec-header">{header_html}</div>'
+                card += f'<div class="rec-header">{rank_html}{header_html}</div>'
                 if meta_html:
                     card += f'<div class="rec-meta">{meta_html}</div>'
                 if top_comms:
@@ -849,7 +1028,10 @@ def main() -> None:
             "</div>",
             unsafe_allow_html=True,
         )
-        _render_filter_cards(recs, rag_match=intersection_ids)
+        _render_filter_cards(
+            recs,
+            rag_match=intersection_ids,
+        )
 
     # Right column: semantic hits below chat (same bordered panel).
     with results_placeholder.container():
@@ -929,27 +1111,48 @@ def main() -> None:
                         for obj in affinities
                         if isinstance(obj.get("review_id"), int)
                     }
+                    reviews_rag, _ = _load_reviews_and_metadata()
+                    review_index_rag = {int(r.id): r for r in reviews_rag}
+                    rag_memberships = _load_community_memberships()
 
-                    total_liked_for_scoring = (
-                        len(selected_comms) if selected_comms else 1
+                    fs_rag = st.session_state.get("filter_settings") or {}
+                    crossover_w_rag = float(
+                        fs_rag.get(
+                            "community_spectrum_crossover",
+                            RECOMMENDATION_DEFAULT_COMMUNITY_CROSSOVER,
+                        )
                     )
+                    ra = fs_rag.get("overall_weight_alpha")
+                    rb = fs_rag.get("overall_weight_beta")
+                    rc = fs_rag.get("overall_weight_gamma")
+                    if ra is not None and rb is not None and rc is not None:
+                        rag_alpha, rag_beta, rag_gamma = normalize_overall_weights(
+                            float(ra),
+                            float(rb),
+                            float(rc),
+                        )
+                    else:
+                        rag_alpha, rag_beta, rag_gamma = (
+                            get_recommendation_overall_weights()
+                        )
 
                     def _score_for_review_id(
                         rid: int,
-                    ) -> tuple[float, float, list[dict[str, Any]]]:
-                        """Compute Score + Genre-Abdeckung + top tags for review."""
+                    ) -> tuple[float, float, float, list[dict[str, Any]], int]:
+                        """S_a, breadth_raw, purity_raw, top tags, k_hits (aff.>0)."""
                         obj = affinities_by_review_id.get(rid)
                         if not obj:
-                            return 0.0, 0.0, []
+                            return 0.0, 0.0, 0.0, [], 0
                         comms_any = obj.get("communities", {})
                         if not isinstance(comms_any, dict):
-                            return 0.0, 0.0, []
+                            return 0.0, 0.0, 0.0, [], 0
                         entries_any = comms_any.get("res_10")
                         if not isinstance(entries_any, list):
-                            return 0.0, 0.0, []
+                            return 0.0, 0.0, 0.0, [], 0
 
                         s = 0.0
                         k_hits = 0
+                        max_wv = 0.0
                         for entry in entries_any:
                             if not isinstance(entry, dict):
                                 continue
@@ -961,11 +1164,28 @@ def main() -> None:
                                 continue
                             val = float(score_val)
                             w = float(weights_raw.get(cid, 1.0))
-                            s += w * val
+                            contrib = w * val
+                            s += contrib
                             if val > 0:
                                 k_hits += 1
+                                max_wv = max(max_wv, contrib)
 
-                        hits_pct = 100.0 * k_hits / total_liked_for_scoring
+                        rev = review_index_rag.get(rid)
+                        if rev is not None:
+                            rm = reference_community_position_masses(
+                                rev,
+                                rag_memberships,
+                                res_key="res_10",
+                                w_min=REFERENCE_POSITION_W_MIN,
+                            )
+                            breadth_raw = breadth_raw_from_selected_community_masses(
+                                rm,
+                                selected_comms,
+                                weights_raw,
+                            )
+                        else:
+                            breadth_raw = 0.0
+                        purity_raw = purity_max_weighted_share(max_wv, s)
 
                         sorted_entries = sorted(
                             [
@@ -995,7 +1215,7 @@ def main() -> None:
                                 {"id": cid, "label": label, "affinity": aff},
                             )
 
-                        return s, hits_pct, top_comms
+                        return s, breadth_raw, purity_raw, top_comms, k_hits
 
                     pseudo_recs: list[dict[str, Any]] = []
                     rag_match_set: set[int] = set()
@@ -1004,26 +1224,86 @@ def main() -> None:
                         if not isinstance(rid_val, int):
                             continue
                         rid = rid_val
-                        score_val, hits_pct_val, top_comms = _score_for_review_id(rid)
+                        score_val, br_raw, pur_raw, top_comms, kh = (
+                            _score_for_review_id(rid)
+                        )
+                        r_raw = h.get("rating")
+                        if r_raw is None:
+                            rating_v = None
+                        elif isinstance(r_raw, (int, float)):
+                            rating_v = float(r_raw)
+                        else:
+                            try:
+                                rating_v = float(r_raw)
+                            except (TypeError, ValueError):
+                                rating_v = None
+                        eff_r = effective_plattentests_rating(
+                            rating_v,
+                            default_when_missing=RECOMMENDATION_RATING_DEFAULT_WHEN_MISSING,
+                        )
                         pseudo_recs.append(
                             {
                                 "review_id": rid,
                                 "artist": h.get("artist") or "",
                                 "album": h.get("album") or "",
                                 "url": h.get("url") or "",
-                                "rating": h.get("rating"),
+                                "rating": rating_v,
+                                "rating_effective": eff_r,
                                 "year": h.get("release_year"),
                                 "release_date": h.get("release_date"),
                                 "labels": h.get("labels") or "",
                                 "score": score_val,
-                                "hits_pct": hits_pct_val,
+                                "purity_raw": pur_raw,
+                                "breadth_raw": br_raw,
+                                "k_hits": kh,
+                                "hits_pct": 100.0 * br_raw,
                                 "top_communities": top_comms,
                                 "text": h.get("chunk_text") or h.get("text") or "",
                             }
                         )
                         rag_match_set.add(rid)
 
-                    _render_filter_cards(pseudo_recs, rag_match=rag_match_set)
+                    pr_pur = [float(p["purity_raw"]) for p in pseudo_recs]
+                    pr_br = [float(p["breadth_raw"]) for p in pseudo_recs]
+                    pr_pur_n, pr_br_n, pr_spec_n = community_spectrum_norm_batch(
+                        pr_pur,
+                        pr_br,
+                        crossover_weight=crossover_w_rag,
+                    )
+                    for p, pn, bn, sn in zip(
+                        pseudo_recs,
+                        pr_pur_n,
+                        pr_br_n,
+                        pr_spec_n,
+                        strict=True,
+                    ):
+                        rn = rating_to_unit_interval(
+                            p["rating"],
+                            default_on_10_scale=RECOMMENDATION_RATING_DEFAULT_WHEN_MISSING,
+                        )
+                        p["purity_norm"] = pn
+                        p["breadth_norm"] = bn
+                        p["community_spectrum_norm"] = sn
+                        sn_eff, sn_gate = gated_community_spectrum(
+                            float(sn),
+                            float(p["score"]),
+                        )
+                        p["spectrum_matching_gate"] = sn_gate
+                        p["community_spectrum_effective"] = sn_eff
+                        p["rating_norm"] = rn
+                        p["overall_score"] = overall_score(
+                            float(p["score"]),
+                            rn,
+                            sn_eff,
+                            alpha=rag_alpha,
+                            beta=rag_beta,
+                            gamma=rag_gamma,
+                        )
+
+                    _render_filter_cards(
+                        pseudo_recs,
+                        rag_match=rag_match_set,
+                    )
 
     st.markdown("---")
     col_back, col_start = st.columns([1, 1])

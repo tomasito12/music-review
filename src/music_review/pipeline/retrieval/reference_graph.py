@@ -9,6 +9,8 @@ from typing import Any
 
 import networkx as nx
 
+from music_review.config import REFERENCE_POSITION_W_MIN
+from music_review.domain.models import Review
 from music_review.io.jsonl import iter_jsonl_objects, load_jsonl_as_map
 from music_review.io.reviews_jsonl import load_reviews_from_jsonl
 
@@ -21,7 +23,7 @@ def _normalize_name(name: str) -> str:
 def position_weight(
     position_1based: int,
     num_references: int,
-    w_min: float = 0.2,
+    w_min: float = REFERENCE_POSITION_W_MIN,
 ) -> float:
     """Weight for a reference by its position in the album's reference list.
 
@@ -45,9 +47,43 @@ def position_weight(
     )
 
 
+def reference_community_position_masses(
+    review: Review,
+    memberships: dict[str, dict[str, str]],
+    *,
+    res_key: str,
+    w_min: float = REFERENCE_POSITION_W_MIN,
+) -> dict[str, float]:
+    """Sum position weights per community ID for one resolution key.
+
+    Matches the aggregation step in :func:`compute_album_affinities` before
+    per-album normalisation: each ordered reference adds ``position_weight`` to
+    the referenced artist's community for ``res_key`` (e.g. ``res_10``).
+    """
+    refs = [r for r in review.references if isinstance(r, str) and r.strip()]
+    if not refs:
+        return {}
+    n = len(refs)
+    scores: dict[str, float] = {}
+    for idx, ref in enumerate(refs):
+        pos = idx + 1
+        w = position_weight(pos, n, w_min=w_min)
+        artist_key = _normalize_name(ref)
+        if not artist_key:
+            continue
+        artist_comms = memberships.get(artist_key)
+        if not artist_comms:
+            continue
+        cid = artist_comms.get(res_key)
+        if not cid:
+            continue
+        scores[cid] = scores.get(cid, 0.0) + w
+    return scores
+
+
 def build_artist_graph(
     reviews_path: str | Path,
-    w_min: float = 0.2,
+    w_min: float = REFERENCE_POSITION_W_MIN,
 ) -> nx.DiGraph:
     """Build a directed artist graph from reviews JSONL.
 
@@ -567,7 +603,7 @@ def compute_album_affinities(
     reviews_path: str | Path,
     memberships_path: str | Path,
     resolutions: list[float],
-    w_min: float = 0.2,
+    w_min: float = REFERENCE_POSITION_W_MIN,
     top_k_per_res: int | None = None,
     threshold: float = 0.0,
 ) -> list[dict[str, Any]]:
@@ -616,28 +652,17 @@ def compute_album_affinities(
             res_keys[res] = f"res_{res}"
 
     for review in reviews:
-        refs = [r for r in review.references if isinstance(r, str) and r.strip()]
-        if not refs:
+        res_scores: dict[float, dict[str, float]] = {}
+        for res in resolutions:
+            res_key = res_keys[res]
+            res_scores[res] = reference_community_position_masses(
+                review,
+                memberships,
+                res_key=res_key,
+                w_min=w_min,
+            )
+        if not any(res_scores.values()):
             continue
-        n = len(refs)
-        res_scores: dict[float, dict[str, float]] = {res: {} for res in resolutions}
-
-        for idx, ref in enumerate(refs):
-            pos = idx + 1
-            w = position_weight(pos, n, w_min=w_min)
-            artist_key = _normalize_name(ref)
-            if not artist_key:
-                continue
-            artist_comms = memberships.get(artist_key)
-            if not artist_comms:
-                continue
-            for res in resolutions:
-                res_key = res_keys[res]
-                cid = artist_comms.get(res_key)
-                if not cid:
-                    continue
-                bucket = res_scores[res]
-                bucket[cid] = bucket.get(cid, 0.0) + w
 
         communities_out: dict[str, list[dict[str, Any]]] = {}
         for res in resolutions:
@@ -880,8 +905,11 @@ def _main() -> int:
     parser.add_argument(
         "--w-min",
         type=float,
-        default=0.2,
-        help="Minimum weight for last reference in a list (default 0.2).",
+        default=REFERENCE_POSITION_W_MIN,
+        help=(
+            "Minimum weight for last reference in a list "
+            f"(default {REFERENCE_POSITION_W_MIN})."
+        ),
     )
     parser.add_argument(
         "--scan-resolutions",

@@ -6,7 +6,12 @@ from pathlib import Path
 
 import pytest
 
-from music_review.config import get_project_root, resolve_data_path
+from music_review.config import (
+    get_project_root,
+    get_recommendation_overall_weights,
+    normalize_overall_weights,
+    resolve_data_path,
+)
 
 
 def test_resolve_data_path_absolute_returns_unchanged() -> None:
@@ -29,6 +34,24 @@ def test_resolve_data_path_relative_joins_project_root(
         resolve_data_path("data/reviews.jsonl") == fake_root / "data" / "reviews.jsonl"
     )
     assert resolve_data_path(Path("metadata.jsonl")) == fake_root / "metadata.jsonl"
+
+
+def test_get_recommendation_overall_weights_sum_to_one() -> None:
+    a, b, c = get_recommendation_overall_weights()
+    assert abs(a + b + c - 1.0) < 1e-9
+    assert a > 0 and b > 0 and c > 0
+
+
+def test_normalize_overall_weights_sum_to_one() -> None:
+    a, b, c = normalize_overall_weights(2.0, 2.0, 4.0)
+    assert abs(a + b + c - 1.0) < 1e-9
+    assert abs(a - 0.25) < 1e-9 and abs(c - 0.5) < 1e-9
+
+
+def test_normalize_overall_weights_all_zero_falls_back() -> None:
+    a, b, c = normalize_overall_weights(0.0, 0.0, 0.0)
+    assert abs(a + b + c - 1.0) < 1e-9
+    assert abs(a - b) < 1e-9 and abs(b - c) < 1e-9
 
 
 def test_get_project_root_returns_cwd_when_env_unset(

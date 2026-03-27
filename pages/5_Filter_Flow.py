@@ -7,7 +7,14 @@ from typing import Any
 import streamlit as st
 
 import music_review.config  # noqa: F401 - load .env and set up paths
-from music_review.config import resolve_data_path
+from music_review.config import (
+    RECOMMENDATION_DEFAULT_COMMUNITY_CROSSOVER,
+    RECOMMENDATION_OVERALL_ALPHA,
+    RECOMMENDATION_OVERALL_BETA,
+    RECOMMENDATION_OVERALL_GAMMA,
+    normalize_overall_weights,
+    resolve_data_path,
+)
 
 
 @st.cache_data(ttl=3600)
@@ -88,9 +95,13 @@ def main() -> None:
     st.caption(
         (
             "Hier kannst du deine Vorauswahl noch feiner einstellen: "
-            "Veröffentlichungsjahr, Rating, Score, Anteil der getroffenen "
-            "Communities und den Grad an Zufall (Serendipity). Außerdem kannst "
-            "du einzelne Communities unterschiedlich gewichten."
+            "Veröffentlichungsjahr, Rating, S_a-Bereich und den Grad an Zufall "
+            "(Serendipity). Mit dem Regler **Blütenrein <-> Cross-Over** und den "
+            "Gewichten **alpha, beta, gamma** steuerst du, wie stark "
+            "Community-Reinheit/Breite und Rating neben der Affinität S_a in den "
+            "Gesamtscore einfließen "
+            "(Rohwerte werden auf Summe 1 normiert). Außerdem kannst du einzelne "
+            "Communities unterschiedlich gewichten."
         ),
     )
 
@@ -111,7 +122,6 @@ def main() -> None:
     rating_max_default = float(existing_settings.get("rating_max", 10.0))
     score_min_default = float(existing_settings.get("score_min", 0.0))
     score_max_default = float(existing_settings.get("score_max", 1.0))
-    min_hits_pct_default = int(existing_settings.get("min_hits_pct", 0))
 
     col_year, col_rating = st.columns(2)
     with col_year:
@@ -131,23 +141,88 @@ def main() -> None:
             step=0.5,
         )
 
-    col_score, col_hits = st.columns(2)
-    with col_score:
-        score_min, score_max = st.slider(
-            "Score-Bereich (vor Normalisierung)",
+    score_min, score_max = st.slider(
+        "S_a-Bereich (Community-Affinität, wie bisher)",
+        min_value=0.0,
+        max_value=1.0,
+        value=(score_min_default, score_max_default),
+        step=0.05,
+        help=(
+            "Filter auf die gewichtete Summe der Affinitäten zu deinen gewählten "
+            "Communities — nicht auf den linearen Gesamtscore."
+        ),
+    )
+
+    crossover_default = float(
+        existing_settings.get(
+            "community_spectrum_crossover",
+            RECOMMENDATION_DEFAULT_COMMUNITY_CROSSOVER,
+        )
+    )
+    community_spectrum_crossover = st.slider(
+        "Bluetenrein (0) <-> Cross-Over (1)",
+        min_value=0.0,
+        max_value=1.0,
+        value=crossover_default,
+        step=0.05,
+        help=(
+            "lambda: 0 = nur **Reinheit** (eine Community dominiert S_a); "
+            "1 = nur **Breite** (Referenzen: 1-Gini auf gew. Communities, dann "
+            "Perzentil-Rang in der Liste). Reinheit: min-max. "
+            "Dann mit lambda mischen. **gamma** bestimmt den Anteil im Gesamtscore."
+        ),
+    )
+
+    # --- Gesamtscore: alpha, beta, gamma (raw -> normalized to sum 1) ---
+    st.subheader("Gesamtscore-Gewichte (alpha, beta, gamma)")
+    ow_a_def = float(
+        existing_settings.get("overall_weight_alpha", RECOMMENDATION_OVERALL_ALPHA),
+    )
+    ow_b_def = float(
+        existing_settings.get("overall_weight_beta", RECOMMENDATION_OVERALL_BETA),
+    )
+    ow_g_def = float(
+        existing_settings.get("overall_weight_gamma", RECOMMENDATION_OVERALL_GAMMA),
+    )
+    st.caption(
+        "Rohwerte 0-1. Vor der Berechnung werden sie zu normierten Gewichten "
+        "mit Summe 1 skaliert. **gamma** steuert den Anteil des Community-Spektrums "
+        "(Reinheit/Breite nach Regler) gegenueber **S_a** (alpha) und "
+        "**Rating** (beta)."
+    )
+    col_owa, col_owb, col_owg = st.columns(3)
+    with col_owa:
+        overall_weight_alpha = st.slider(
+            "alpha - Affinitaet S_a",
             min_value=0.0,
             max_value=1.0,
-            value=(score_min_default, score_max_default),
+            value=min(1.0, max(0.0, ow_a_def)),
             step=0.05,
         )
-    with col_hits:
-        min_hits_pct = st.slider(
-            "Min. Anteil getroffener Communities (%)",
-            min_value=0,
-            max_value=100,
-            value=min_hits_pct_default,
-            step=5,
+    with col_owb:
+        overall_weight_beta = st.slider(
+            "beta - Plattentests-Rating",
+            min_value=0.0,
+            max_value=1.0,
+            value=min(1.0, max(0.0, ow_b_def)),
+            step=0.05,
         )
+    with col_owg:
+        overall_weight_gamma = st.slider(
+            "gamma - Community-Spektrum (Reinheit/Cross-Over)",
+            min_value=0.0,
+            max_value=1.0,
+            value=min(1.0, max(0.0, ow_g_def)),
+            step=0.05,
+        )
+    ah, bh, gh = normalize_overall_weights(
+        overall_weight_alpha,
+        overall_weight_beta,
+        overall_weight_gamma,
+    )
+    st.caption(
+        f"Aktuell normiert: alpha={ah:.3f}, beta={bh:.3f}, gamma={gh:.3f}",
+    )
 
     # --- Sortierung & Serendipity ---
     st.subheader("Sortierung")
@@ -168,6 +243,12 @@ def main() -> None:
             value=serendipity_default,
             step=0.1,
             disabled=(sort_mode != "Serendipity"),
+            help=(
+                "Misst, wie stark die finale Reihenfolge von der rein nach Gesamtscore "
+                "sortierten Liste abweicht: Sortierschluessel (1-s)*Rang + s*Zufall "
+                "(s in [0,1]). s=0: fix; s=1: fast komplett neu gemischt; "
+                "Spearman-Rangkorrelation vor/nachher grob 1-s."
+            ),
         )
 
     # --- Freitext-Retrieval-Strategie (A/B/C) ---
@@ -256,7 +337,10 @@ def main() -> None:
         "rating_max": rating_max,
         "score_min": score_min,
         "score_max": score_max,
-        "min_hits_pct": min_hits_pct,
+        "community_spectrum_crossover": community_spectrum_crossover,
+        "overall_weight_alpha": overall_weight_alpha,
+        "overall_weight_beta": overall_weight_beta,
+        "overall_weight_gamma": overall_weight_gamma,
         "sort_mode": sort_mode,
         "serendipity": serendipity,
         "rag_query_strategy": rag_query_strategy,
