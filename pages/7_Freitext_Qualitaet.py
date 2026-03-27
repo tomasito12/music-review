@@ -343,7 +343,7 @@ def _render_stored_results() -> None:
 def main() -> None:
     st.set_page_config(
         page_title="Music Review — Freitext-Qualitaet",
-        page_icon="🔬",
+        page_icon=None,
         layout="wide",
     )
 

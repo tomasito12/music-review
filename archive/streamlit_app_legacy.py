@@ -163,7 +163,7 @@ def render_browse_page(
     st.session_state["selected_album"] = album
     with col_btn:
         st.write("")  # align button with selectboxes
-        if st.button("🎲 Random"):
+        if st.button("Random"):
             r = random.choice(reviews)
             st.session_state["selected_artist"] = r.artist
             st.session_state["selected_album"] = r.album
@@ -217,7 +217,7 @@ def render_browse_page(
     if review.tracklist:
         with st.expander("Tracklist", expanded=False):
             for t in review.tracklist:
-                highlight = " ⭐" if t.is_highlight else ""
+                highlight = " (Highlight)" if t.is_highlight else ""
                 st.text(f"{t.number}. {t.title}{highlight}")
         if review.highlights:
             st.caption("Highlights: " + ", ".join(review.highlights))
@@ -1287,10 +1287,10 @@ def render_communities_page() -> None:
 def main() -> None:
     st.set_page_config(
         page_title="Music Review Dashboard",
-        page_icon="🎵",
+        page_icon=None,
         layout="wide",
     )
-    st.title("🎵 Music Review Dashboard")
+    st.title("Music Review Dashboard")
     st.caption("Browse plattentests.de reviews and MusicBrainz metadata.")
 
     reviews, metadata_map = load_data()

@@ -13,6 +13,7 @@ from pages.page_helpers import (
     load_communities_res_10,
     load_community_memberships,
     load_genre_labels_res_10,
+    render_toolbar,
 )
 
 from music_review.config import (
@@ -211,14 +212,14 @@ def _top_communities_display(
     return out
 
 
-def _rec_tag_colors(aff: float) -> tuple[str, str, str, str]:
+def _rec_tag_colors(aff: float) -> tuple[str, str, str]:
     if aff >= 0.6:
-        return "#0f766e", "#0f766e", "#ecfeff", "▮▮▮"
+        return "#0f766e", "#0f766e", "#ecfeff"
     if aff >= 0.3:
-        return "#22c55e", "#16a34a", "#ecfdf3", "▮▮"
+        return "#22c55e", "#16a34a", "#ecfdf3"
     if aff >= 0.1:
-        return "#e0f2fe", "#93c5fd", "#0f172a", "▮"
-    return "#f3f4f6", "#e5e7eb", "#4b5563", ""
+        return "#e0f2fe", "#93c5fd", "#0f172a"
+    return "#f3f4f6", "#e5e7eb", "#4b5563"
 
 
 def _rec_top_communities_html(top_comms: list[dict[str, Any]]) -> str:
@@ -228,8 +229,8 @@ def _rec_top_communities_html(top_comms: list[dict[str, Any]]) -> str:
     for tc in top_comms:
         aff = float(tc.get("affinity") or 0.0)
         lab = str(tc.get("label") or "")
-        bg, border, fg, bars = _rec_tag_colors(aff)
-        tag_text = lab + (f" {bars}" if bars else "")
+        bg, border, fg = _rec_tag_colors(aff)
+        tag_text = lab
         parts.append(
             f'<span class="rec-comm-tag" '
             f'style="background-color:{bg};border-color:{border};color:{fg};">'
@@ -374,9 +375,10 @@ def _render_newest_scored_card(
 def main() -> None:
     st.set_page_config(
         page_title="Music Review — Neueste Rezensionen",
-        page_icon="🆕",
+        page_icon=None,
         layout="wide",
     )
+    render_toolbar("neueste")
     _newest_css()
 
     st.markdown(

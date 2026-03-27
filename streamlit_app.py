@@ -1,168 +1,107 @@
 #!/usr/bin/env python3
-"""Start page for the multi-step music recommendation flow."""
+"""Welcome / landing page for the Plattenradar."""
 
 from __future__ import annotations
 
 import streamlit as st
 
-from music_review.dashboard.user_profile_store import (
-    ACTIVE_PROFILE_SESSION_KEY,
-    apply_profile_to_session,
-    build_profile_payload,
-    default_profiles_dir,
-    load_profile,
-    normalize_profile_slug,
-    save_profile,
-)
 
-KEY_PROFILE_NAME = "streamlit_profile_name_input"
-KEY_PROFILE_SIGN_IN = "streamlit_profile_sign_in"
-KEY_PROFILE_SAVE = "streamlit_profile_save"
-KEY_PROFILE_SIGN_OUT = "streamlit_profile_sign_out"
-
-
-def _render_profile_panel() -> None:
-    """Passwordless profile: load/save JSON under data/user_profiles/."""
-    profiles_dir = default_profiles_dir()
-    active = st.session_state.get(ACTIVE_PROFILE_SESSION_KEY)
-
-    with st.expander(
-        "Profil (ohne Passwort): laden und speichern",
-        expanded=False,
-    ):
-        st.caption(
-            "Gewaehlte Communities, Filter und Gewichte werden lokal in "
-            "`data/user_profiles/` abgelegt. Ohne Passwortschutz: wer den Namen "
-            "kennt, kann dasselbe Profil laden. Nur fuer vertrauenswuerdige "
-            "Umgebungen geeignet.",
-        )
-        if active:
-            st.success(f"Angemeldet als **{active}**")
-
-        name_raw = st.text_input(
-            "Profilname",
-            value="",
-            placeholder="z. B. anna oder mein-setup",
-            key=KEY_PROFILE_NAME,
-        )
-
-        col_si, col_sv, col_so = st.columns(3)
-        with col_si:
-            if st.button("Anmelden", key=KEY_PROFILE_SIGN_IN):
-                try:
-                    slug_try = normalize_profile_slug(name_raw)
-                except ValueError as err:
-                    st.error(str(err))
-                else:
-                    data = load_profile(profiles_dir, slug_try)
-                    if data is None:
-                        st.error("Kein gespeichertes Profil unter diesem Namen.")
-                    else:
-                        apply_profile_to_session(st.session_state, data)
-                        st.session_state[ACTIVE_PROFILE_SESSION_KEY] = slug_try
-                        st.success(f"Profil '{slug_try}' geladen.")
-                        st.rerun()
-        with col_sv:
-            if st.button("Speichern", key=KEY_PROFILE_SAVE):
-                target = (active or name_raw).strip()
-                try:
-                    slug_save = normalize_profile_slug(target)
-                except ValueError as err:
-                    st.error(str(err))
-                else:
-                    artist = st.session_state.get("artist_flow_selected_communities")
-                    if not isinstance(artist, set):
-                        artist = set()
-                    genre = st.session_state.get("genre_flow_selected_communities")
-                    if not isinstance(genre, set):
-                        genre = set()
-                    fs = st.session_state.get("filter_settings")
-                    if not isinstance(fs, dict):
-                        fs = {}
-                    weights = st.session_state.get("community_weights_raw")
-                    if not isinstance(weights, dict):
-                        weights = {}
-                    payload = build_profile_payload(
-                        profile_slug=slug_save,
-                        flow_mode=st.session_state.get("flow_mode"),
-                        artist_communities=artist,
-                        genre_communities=genre,
-                        filter_settings=fs,
-                        community_weights_raw=weights,
-                    )
-                    save_profile(profiles_dir, slug_save, payload)
-                    st.session_state[ACTIVE_PROFILE_SESSION_KEY] = slug_save
-                    st.success(f"Profil '{slug_save}' gespeichert.")
-                    st.rerun()
-        with col_so:
-            if st.button("Abmelden", key=KEY_PROFILE_SIGN_OUT):
-                st.session_state.pop(ACTIVE_PROFILE_SESSION_KEY, None)
-                st.info(
-                    "Abgemeldet. Die aktuellen Einstellungen im Tab bleiben, bis "
-                    "du sie aenderst oder ein Profil laedst.",
-                )
+def _welcome_css() -> None:
+    st.markdown(
+        """
+        <style>
+        .welcome-hero {
+            text-align: center;
+            padding: 3rem 1rem 1.5rem 1rem;
+        }
+        .welcome-title {
+            font-size: 2.4rem;
+            font-weight: 700;
+            letter-spacing: -0.03em;
+            margin-bottom: 0.3rem;
+            color: #111827;
+        }
+        .welcome-subtitle {
+            font-size: 1.05rem;
+            color: #6b7280;
+            margin-bottom: 2rem;
+        }
+        .welcome-body {
+            max-width: 38rem;
+            margin: 0 auto;
+            font-size: 1rem;
+            line-height: 1.7;
+            color: #374151;
+            text-align: left;
+        }
+        .welcome-body p {
+            margin-bottom: 1rem;
+        }
+        .welcome-cta {
+            text-align: center;
+            margin-top: 2.5rem;
+            margin-bottom: 2rem;
+        }
+        </style>
+        """,
+        unsafe_allow_html=True,
+    )
 
 
 def main() -> None:
     st.set_page_config(
-        page_title="Music Review — Start",
-        page_icon="🎵",
-        layout="wide",
+        page_title="Plattenradar",
+        page_icon=None,
+        layout="centered",
     )
 
-    # Flow-Modus Standard, wenn noch nicht gesetzt
-    if "flow_mode" not in st.session_state:
-        st.session_state["flow_mode"] = None
+    _welcome_css()
 
-    _render_profile_panel()
-
-    st.title("🎵 Music Review Recommender")
     st.markdown(
-        "**Wie möchtest du zu deinen Empfehlungen kommen?** "
-        "Wähle einen Einstieg - du kannst später jederzeit zurück zur "
-        "Startseite wechseln.",
+        '<div class="welcome-hero">'
+        '<p class="welcome-title">Plattenradar</p>'
+        '<p class="welcome-subtitle">'
+        "Dein Empfehlungssystem für den plattentests.de-Kosmos"
+        "</p>"
+        "</div>",
+        unsafe_allow_html=True,
     )
 
-    st.markdown("---")
-
-    col1, col2, col3 = st.columns(3)
-
-    with col1:
-        st.subheader("Musik-Stile / Genres / Moods")
-        st.caption(
-            "Starte mit Communities, Genres und Moods. "
-            "Ideal, wenn du eher eine Stimmung als konkrete Künstler im Kopf hast.",
-        )
-        if st.button("Diesen Weg wählen", key="start_genre_flow"):
-            st.session_state["flow_mode"] = "genres"
-            st.switch_page("pages/2_Genre_Flow.py")
-
-    with col2:
-        st.subheader("Artists")
-        st.caption(
-            "Starte mit Künstlern, die du magst, und entdecke ähnliche Alben "
-            "über das Community- und RAG-System.",
-        )
-        if st.button("Diesen Weg wählen", key="start_artist_flow"):
-            st.session_state["flow_mode"] = "artists"
-            st.switch_page("pages/1_Artist_Flow.py")
-
-    with col3:
-        st.subheader("Beides kombinieren")
-        st.caption(
-            "Kombiniere Artist- und Genre/Mood-Signale zu einem mehrstufigen "
-            "Recommender-Prozess.",
-        )
-        if st.button("Diesen Weg wählen", key="start_combined_flow"):
-            st.session_state["flow_mode"] = "combined"
-            st.switch_page("pages/1_Artist_Flow.py")
-
-    st.markdown("---")
-    st.caption(
-        "Hinweis: Die bisherige Dashboard-Ansicht ist unter "
-        "`archive/streamlit_app_legacy.py` weiterhin verfügbar. "
-        "RAG-/Freitext-Diagnose: Sidebar-Seite **Freitext-Qualitaet**.",
+    st.markdown(
+        '<div class="welcome-body">'
+        "<p>"
+        "Willkommen! <strong>plattentests.de</strong> rezensiert seit 1999 "
+        "Alben aus allen Ecken der Musikwelt &mdash; mittlerweile sind es "
+        "über 21.000 Stück. Wie viele davon würden dir gefallen, wenn du "
+        "sie nur kennen würdest? Bands, die damals unter dem Radar liefen, "
+        "Genres, die man nie auf dem Schirm hatte, Platten, die in keiner "
+        "Playlist auftauchen. Diese App öffnet dir das gesamte Universum "
+        "dieses Kosmos, damit du genau solche Alben entdecken kannst."
+        "</p>"
+        "<p>"
+        "Die Grundlage bilden sämtliche Rezensionen von plattentests.de, "
+        "angereichert mit Metadaten aus MusicBrainz und aufbereitet durch ein "
+        "AI-basiertes Empfehlungssystem. Du kannst über "
+        "<strong>Genres und Stimmungen</strong>, über "
+        "<strong>Künstler</strong> oder über beides kombiniert einsteigen. "
+        "Zusätzlich steht dir eine Freitext-Suche zur Verfügung, mit der du "
+        "beschreiben kannst, wonach dir gerade ist &mdash; das System findet "
+        "passende Alben per semantischer Ähnlichkeit."
+        "</p>"
+        "<p>"
+        "Die App ist zunächst zu Testzwecken für den Freundeskreis gedacht. "
+        "Ein Profilname genügt, um deine Einstellungen zu speichern und "
+        "später wiederzuverwenden &mdash; ganz ohne Passwort oder "
+        "Registrierung."
+        "</p>"
+        "</div>",
+        unsafe_allow_html=True,
     )
+
+    st.markdown('<div class="welcome-cta">', unsafe_allow_html=True)
+    if st.button("Weiter", type="primary", use_container_width=True):
+        st.switch_page("pages/0_Profil.py")
+    st.markdown("</div>", unsafe_allow_html=True)
 
 
 if __name__ == "__main__":

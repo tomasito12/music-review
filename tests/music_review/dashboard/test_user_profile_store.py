@@ -11,6 +11,7 @@ from music_review.dashboard.user_profile_store import (
     SCHEMA_VERSION,
     apply_profile_to_session,
     build_profile_payload,
+    list_profile_slugs,
     load_profile,
     normalize_profile_slug,
     save_profile,
@@ -84,6 +85,21 @@ def test_apply_profile_to_session_sets_sets_and_dicts() -> None:
     assert session["filter_settings"] == {"sort_mode": "Deterministisch"}
     assert session["community_weights_raw"] == {"10": 1.0}
     assert session["flow_mode"] == "artists"
+
+
+def test_list_profile_slugs_empty_dir(tmp_path: Path) -> None:
+    assert list_profile_slugs(tmp_path) == []
+
+
+def test_list_profile_slugs_nonexistent_dir(tmp_path: Path) -> None:
+    assert list_profile_slugs(tmp_path / "does_not_exist") == []
+
+
+def test_list_profile_slugs_returns_sorted_stems(tmp_path: Path) -> None:
+    (tmp_path / "bob.json").write_text("{}", encoding="utf-8")
+    (tmp_path / "anna.json").write_text("{}", encoding="utf-8")
+    (tmp_path / "readme.txt").write_text("ignore", encoding="utf-8")
+    assert list_profile_slugs(tmp_path) == ["anna", "bob"]
 
 
 def test_save_atomic_replace(tmp_path: Path) -> None:

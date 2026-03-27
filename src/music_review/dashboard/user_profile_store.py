@@ -27,6 +27,13 @@ def default_profiles_dir() -> Path:
     return resolve_data_path("data/user_profiles")
 
 
+def list_profile_slugs(base_dir: Path) -> list[str]:
+    """Return sorted slugs of all saved profiles (filenames without .json)."""
+    if not base_dir.is_dir():
+        return []
+    return sorted(p.stem for p in base_dir.glob("*.json") if p.is_file())
+
+
 def normalize_profile_slug(raw: str) -> str:
     """Normalize user input to a safe filename component.
 

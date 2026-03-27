@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import streamlit as st
+from pages.page_helpers import render_toolbar
 
 
 def _ensure_session_state() -> None:
@@ -11,13 +12,14 @@ def _ensure_session_state() -> None:
 def main() -> None:
     st.set_page_config(
         page_title="Music Review — Freitext",
-        page_icon="🎵",
+        page_icon=None,
         layout="wide",
     )
 
     _ensure_session_state()
+    render_toolbar("text_flow")
 
-    st.title("✏️ Stimmung / Freitext-Eingabe")
+    st.title("Stimmung / Freitext-Eingabe")
     st.markdown(
         "Beschreibe hier, wonach du suchst - Stimmung, Klangbilder, Nuancen.\n\n"
         "Beispiele:\n"
@@ -43,7 +45,7 @@ def main() -> None:
     col_back, col_next = st.columns([1, 1])
     with col_back:
         if st.button("Zur Startseite"):
-            st.switch_page("streamlit_app.py")
+            st.switch_page("pages/0b_Einstieg.py")
     with col_next:
         if st.button("Weiter"):
             st.switch_page("pages/5_Filter_Flow.py")

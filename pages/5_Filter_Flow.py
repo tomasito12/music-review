@@ -7,6 +7,7 @@ from pages.page_helpers import (
     get_selected_communities,
     load_communities_res_10,
     load_genre_labels_res_10,
+    render_toolbar,
 )
 
 from music_review.config import (
@@ -28,15 +29,16 @@ def _ensure_session_state() -> None:
 def main() -> None:
     st.set_page_config(
         page_title="Music Review — Filter & Gewichte",
-        page_icon="🎵",
+        page_icon=None,
         layout="wide",
     )
 
     _ensure_session_state()
+    render_toolbar("filter_flow")
 
     selected_comms = get_selected_communities()
 
-    st.title("🎛️ Filter & Community-Gewichte")
+    st.title("Filter & Community-Gewichte")
     st.caption(
         (
             "Hier kannst du deine Vorauswahl noch feiner einstellen: "

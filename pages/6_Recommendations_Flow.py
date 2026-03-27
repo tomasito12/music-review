@@ -12,6 +12,7 @@ from pages.page_helpers import (
     load_communities_res_10,
     load_community_memberships,
     load_genre_labels_res_10,
+    render_toolbar,
 )
 
 from music_review.config import (
@@ -517,10 +518,11 @@ def _compute_recommendations() -> list[dict[str, Any]]:
 def main() -> None:
     st.set_page_config(
         page_title="Music Review — Empfehlungen",
-        page_icon="🎵",
+        page_icon=None,
         layout="wide",
     )
 
+    render_toolbar("recommendations")
     _recommendations_css()
 
     st.markdown(
@@ -893,26 +895,20 @@ def main() -> None:
                             bg = "#0f766e"
                             border = "#0f766e"
                             fg = "#ecfeff"
-                            bars = "▮▮▮"
                         elif aff >= 0.3:
                             bg = "#22c55e"
                             border = "#16a34a"
                             fg = "#ecfdf3"
-                            bars = "▮▮"
                         elif aff >= 0.1:
                             bg = "#e0f2fe"
                             border = "#93c5fd"
                             fg = "#0f172a"
-                            bars = "▮"
                         else:
                             bg = "#f3f4f6"
                             border = "#e5e7eb"
                             fg = "#4b5563"
-                            bars = ""
 
                         tag_text = f"{label}"
-                        if bars:
-                            tag_text += f" {bars}"
                         card += (
                             f'<span class="rec-comm-tag" '
                             f'style="background-color:{bg};border-color:{border};'
@@ -1239,7 +1235,7 @@ def main() -> None:
             st.session_state.clear()
             if saved_slug is not None:
                 st.session_state[ACTIVE_PROFILE_SESSION_KEY] = saved_slug
-            st.switch_page("streamlit_app.py")
+            st.switch_page("pages/0b_Einstieg.py")
 
 
 if __name__ == "__main__":

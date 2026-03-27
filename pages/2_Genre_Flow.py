@@ -1,7 +1,11 @@
 from __future__ import annotations
 
 import streamlit as st
-from pages.page_helpers import load_communities_res_10, load_genre_labels_res_10
+from pages.page_helpers import (
+    load_communities_res_10,
+    load_genre_labels_res_10,
+    render_toolbar,
+)
 
 
 def _ensure_session_state() -> None:
@@ -12,13 +16,14 @@ def _ensure_session_state() -> None:
 def main() -> None:
     st.set_page_config(
         page_title="Music Review — Genre/Mood Flow",
-        page_icon="🎵",
+        page_icon=None,
         layout="wide",
     )
 
     _ensure_session_state()
+    render_toolbar("genre_flow")
 
-    st.title("🎼 Genre- / Mood-basierter Empfehlungs-Flow")
+    st.title("Genre- / Mood-basierter Empfehlungs-Flow")
     st.markdown(
         "Wähle hier Communities über ihre Genre-/Mood-Labels. "
         "Die Auswahl der Community-IDs wird im Session State gespeichert und kann "
@@ -83,7 +88,7 @@ def main() -> None:
     col_back, col_next = st.columns([1, 1])
     with col_back:
         if st.button("Zur Startseite"):
-            st.switch_page("streamlit_app.py")
+            st.switch_page("pages/0b_Einstieg.py")
     with col_next:
         if st.button("Weiter"):
             st.switch_page("pages/5_Filter_Flow.py")

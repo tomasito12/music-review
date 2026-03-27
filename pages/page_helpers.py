@@ -10,6 +10,12 @@ from typing import Any
 import streamlit as st
 
 from music_review.config import resolve_data_path
+from music_review.dashboard.user_profile_store import (
+    ACTIVE_PROFILE_SESSION_KEY,
+    build_profile_payload,
+    default_profiles_dir,
+    save_profile,
+)
 from music_review.pipeline.retrieval.reference_graph import load_artist_communities
 
 
@@ -96,3 +102,89 @@ def load_community_memberships() -> dict[str, dict[str, str]]:
     """Load artist key (normalized) -> resolution keys -> community id."""
     mp = resolve_data_path("data/community_memberships.jsonl")
     return load_artist_communities(mp)
+
+
+def save_current_profile_to_disk() -> None:
+    """Persist current session settings under the active profile slug."""
+    active = st.session_state.get(ACTIVE_PROFILE_SESSION_KEY)
+    if not active:
+        st.warning("Kein Profil aktiv -- bitte zuerst anmelden.")
+        return
+    profiles_dir = default_profiles_dir()
+    artist = st.session_state.get("artist_flow_selected_communities")
+    if not isinstance(artist, set):
+        artist = set()
+    genre = st.session_state.get("genre_flow_selected_communities")
+    if not isinstance(genre, set):
+        genre = set()
+    fs = st.session_state.get("filter_settings")
+    if not isinstance(fs, dict):
+        fs = {}
+    weights = st.session_state.get("community_weights_raw")
+    if not isinstance(weights, dict):
+        weights = {}
+    payload = build_profile_payload(
+        profile_slug=active,
+        flow_mode=st.session_state.get("flow_mode"),
+        artist_communities=artist,
+        genre_communities=genre,
+        filter_settings=fs,
+        community_weights_raw=weights,
+    )
+    save_profile(profiles_dir, active, payload)
+    st.success(f"Profil '{active}' gespeichert.")
+
+
+def _reset_filters() -> None:
+    """Clear all filter/community selections back to defaults."""
+    st.session_state["artist_flow_selected_communities"] = set()
+    st.session_state["genre_flow_selected_communities"] = set()
+    st.session_state["filter_settings"] = {}
+    st.session_state["community_weights_raw"] = {}
+    st.session_state["free_text_query"] = ""
+
+
+def render_toolbar(page_key: str) -> None:
+    """Compact profile/action bar at the top of every flow page."""
+    active = st.session_state.get(ACTIVE_PROFILE_SESSION_KEY)
+
+    if active:
+        col_status, col_save, col_reset, col_out = st.columns([3, 1, 1, 1])
+        with col_status:
+            st.caption(f"Angemeldet als **{active}**")
+        with col_save:
+            if st.button(
+                "Speichern",
+                key=f"tb_{page_key}_save",
+                use_container_width=True,
+            ):
+                save_current_profile_to_disk()
+        with col_reset:
+            if st.button(
+                "Filter zurücksetzen",
+                key=f"tb_{page_key}_reset",
+                use_container_width=True,
+            ):
+                _reset_filters()
+                st.rerun()
+        with col_out:
+            if st.button(
+                "Abmelden",
+                key=f"tb_{page_key}_logout",
+                use_container_width=True,
+            ):
+                st.session_state.pop(ACTIVE_PROFILE_SESSION_KEY, None)
+                st.rerun()
+    else:
+        col_status, col_login = st.columns([5, 1])
+        with col_status:
+            st.caption("Kein Profil aktiv")
+        with col_login:
+            if st.button(
+                "Anmelden",
+                key=f"tb_{page_key}_login",
+                use_container_width=True,
+            ):
+                st.switch_page("pages/0_Profil.py")
+
+    st.markdown("---")

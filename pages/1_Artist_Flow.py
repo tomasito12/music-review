@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 import streamlit as st
-from pages.page_helpers import load_communities_res_10
+from pages.page_helpers import load_communities_res_10, render_toolbar
 
 
 def _ensure_session_state() -> None:
@@ -12,13 +12,14 @@ def _ensure_session_state() -> None:
 def main() -> None:
     st.set_page_config(
         page_title="Music Review — Artist Flow",
-        page_icon="🎵",
+        page_icon=None,
         layout="wide",
     )
 
     _ensure_session_state()
+    render_toolbar("artist_flow")
 
-    st.title("🎤 Artist-basierter Empfehlungs-Flow")
+    st.title("Artist-basierter Empfehlungs-Flow")
     st.markdown(
         "Wähle hier Communities auf Basis ihrer repräsentativen Artists. "
         "Die Auswahl der Community-IDs wird im Session State gespeichert "
@@ -77,7 +78,7 @@ def main() -> None:
     col_back, col_next = st.columns([1, 1])
     with col_back:
         if st.button("Zur Startseite"):
-            st.switch_page("streamlit_app.py")
+            st.switch_page("pages/0b_Einstieg.py")
     with col_next:
         if st.button("Weiter"):
             mode = st.session_state.get("flow_mode")
