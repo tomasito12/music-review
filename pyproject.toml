@@ -66,6 +66,7 @@ dashboard = "streamlit run streamlit_app.py {args:}"
 batch-embed = "python -m music_review.pipeline.retrieval.cli {args:}"
 graph-build = "python -m music_review.pipeline.retrieval.reference_graph_cli {args:}"
 community-genre-labels = "python -m music_review.pipeline.retrieval.community_genre_labels {args:}"
+dq-report = "python -m music_review.pipeline.data_quality.cli {args:}"
 
 # --- Lint environment -------------------------------------------------------
 
@@ -132,6 +133,13 @@ module = [
   "music_review.pipeline.retrieval.chroma_repo",
   "music_review.pipeline.retrieval.reference_graph_cli",
   "music_review.pipeline.scraper.service",
+  "music_review.pipeline.data_quality.models",
+  "music_review.pipeline.data_quality.checks_reviews",
+  "music_review.pipeline.data_quality.checks_metadata",
+  "music_review.pipeline.data_quality.checks_artifacts",
+  "music_review.pipeline.data_quality.report",
+  "music_review.pipeline.data_quality.run",
+  "music_review.pipeline.data_quality.cli",
 ]
 disallow_untyped_defs = true
 

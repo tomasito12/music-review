@@ -7,7 +7,7 @@
 - Always include type hints.
 - Provide readable, understandable, concise, non-technical (if possible) docstrings.
 - **Logging**: Write adequate logs so that progress can be evaluated when running pipelines or CLI tools. Use appropriate levels: **INFO** for normal progress (start, steps, completion), **WARN** for recoverable issues (e.g. fallbacks, retries), **DEBUG** for detailed diagnostics. In CLI tools, support a verbose/DEBUG option (e.g. `-v` / `--verbose`) where useful.
-- **Testing**: Use one test module per source module (e.g. `config.py` → `tests/test_config.py`; `io/jsonl.py` → `tests/io/test_jsonl.py`; `pipeline/scraper/client.py` → `tests/pipeline/scraper/test_client.py`). Prefer tests that are readable and serve as documentation; use mocks only when necessary (e.g. network or external APIs).
+- **Testing**: Mirror the package under `tests/music_review/` — source `src/music_review/foo.py` or `src/music_review/pkg/foo.py` maps to `tests/music_review/test_foo.py` or `tests/music_review/pkg/test_foo.py` (always `test_<module>.py`). Code outside the package (e.g. `pages/page_helpers.py`) lives under `tests/pages/test_page_helpers.py`. Prefer tests that are readable and serve as documentation; use mocks only when necessary (e.g. network or external APIs).
 - **Lint workflow**:
   - Run `hatch run lint:fix` regularly while implementing changes.
   - After each coding step, run `hatch run lint:all`.
@@ -38,7 +38,8 @@ Music Review is a Python 3.12+ CLI-based data pipeline that scrapes album review
 | Run tests with coverage | `hatch run test:cov` |
 | Run individual tools | `hatch run lint:check`, `hatch run lint:format`, `hatch run lint:typing` |
 | Run scraper | `hatch run python -m music_review.pipeline.scraper.cli -v run --start-id 1 --end-id 10` |
-| Update full DB + graph + affinities + chunk Chroma (default) | `hatch run update-db` — rebuilds reference graph; **incremental** community IDs from `community_memberships.jsonl` (stable `C00x` + genre labels); `-- --recluster-communities` for full Louvain (then rerun `community-genre-labels`); `album_community_affinities.jsonl` (res 10); Chroma chunks if `OPENAI_API_KEY` set; `-- --skip-graph-affinities` / `-- --skip-chroma`; `-- --chroma-legacy` for legacy collection |
+| Update full DB + graph + affinities + chunk Chroma (default) | `hatch run update-db` — rebuilds reference graph; **incremental** community IDs from `community_memberships.jsonl` (stable `C00x` + genre labels); `-- --recluster-communities` for full Louvain (then rerun `community-genre-labels`); `album_community_affinities.jsonl` (res 10); Chroma chunks if `OPENAI_API_KEY` set; `-- --skip-graph-affinities` / `-- --skip-chroma`; `-- --chroma-legacy` for legacy collection; after the run writes `data/pipeline_health_report.json` unless `-- --skip-dq`; `-- --dq-strict` fails on warnings; `-- --dq-output PATH` |
+| Data-quality report (manual) | `hatch run dq-report` — optional `--expect-graph-artifacts`, `--strict`, `--reviews`, `--metadata-imputed`, `--output` |
 | Same as update-db | `hatch run full-data-update` (alias; forwards `--skip-chroma` / `--chroma-legacy`) |
 | Batch embeddings (OpenAI Batch API → Chroma) | `hatch run batch-embed prepare` then `batch-embed submit <batch_id>` etc., or `hatch run batch-embed run` for full pipeline |
 | Artist reference graph | `hatch run graph-build` — GraphML from `data/reviews.jsonl`; add `--export-communities 10` (+ `--export-album-affinities`) for communities; default `--communities-mode incremental` (stable IDs), `--communities-mode louvain` to recluster |

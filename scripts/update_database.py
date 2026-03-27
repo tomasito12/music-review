@@ -161,6 +161,21 @@ def main() -> int:
             "(music_reviews). By default only the chunk collection is updated."
         ),
     )
+    parser.add_argument(
+        "--skip-dq",
+        action="store_true",
+        help="Skip data-quality checks and health report after the pipeline.",
+    )
+    parser.add_argument(
+        "--dq-strict",
+        action="store_true",
+        help=("Fail the run (exit 1) if any DQ warning is present, not only errors."),
+    )
+    parser.add_argument(
+        "--dq-output",
+        default="data/pipeline_health_report.json",
+        help="Path for the DQ JSON report (default: %(default)s).",
+    )
     args = parser.parse_args()
 
     verbose = ["-v"] if args.verbose else []
@@ -267,6 +282,28 @@ def main() -> int:
             return rc
 
     logger.info("Full update pipeline finished.")
+
+    if not args.skip_dq:
+        from music_review.config import resolve_data_path
+        from music_review.pipeline.data_quality.models import DataQualityConfig
+        from music_review.pipeline.data_quality.run import run_data_quality
+
+        dq_cfg = DataQualityConfig(
+            reviews_path=resolve_data_path(args.reviews),
+            metadata_imputed_path=resolve_data_path(args.metadata_imputed),
+            output_report_path=resolve_data_path(args.dq_output),
+            expect_graph_artifacts=not args.skip_graph_affinities,
+            strict=args.dq_strict,
+        )
+        dq_result = run_data_quality(dq_cfg)
+        if dq_result.exit_code != 0:
+            logger.error(
+                "Data-quality checks failed (exit %s). See %s.",
+                dq_result.exit_code,
+                dq_result.report_path,
+            )
+            return dq_result.exit_code
+
     return 0
 
 
