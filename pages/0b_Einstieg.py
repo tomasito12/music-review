@@ -61,7 +61,7 @@ def main() -> None:
         unsafe_allow_html=True,
     )
 
-    broad_categories, category_mappings = load_broad_categories_res_10()
+    broad_categories, _ = load_broad_categories_res_10()
 
     if not broad_categories:
         st.warning(
@@ -74,13 +74,9 @@ def main() -> None:
         )
 
         for cat in broad_categories:
-            n_communities = sum(
-                1 for bc_list in category_mappings.values() if cat in bc_list
-            )
-            label = f"{cat}  ({n_communities} Communities)"
             key = f"broad_cat_{cat}"
             checked = st.checkbox(
-                label,
+                cat,
                 key=key,
                 value=(cat in selected),
             )
@@ -92,10 +88,7 @@ def main() -> None:
         st.session_state["selected_broad_categories"] = selected
 
         if selected:
-            st.caption(
-                f"**{len(selected)}** Kategorien ausgewählt: "
-                + ", ".join(sorted(selected)),
-            )
+            st.caption("Ausgewählt: " + ", ".join(sorted(selected)))
 
     if st.button("Weiter", type="primary", use_container_width=True):
         st.switch_page("pages/1_Community_Auswahl.py")

@@ -5,13 +5,13 @@ from __future__ import annotations
 from typing import Any
 
 import streamlit as st
+from pages.page_helpers import get_selected_communities
 
 from music_review.dashboard.user_profile_store import (
     ACTIVE_PROFILE_SESSION_KEY,
     apply_profile_to_session,
     build_profile_payload,
     default_profiles_dir,
-    list_profile_slugs,
     load_profile,
     normalize_profile_slug,
     save_profile,
@@ -20,9 +20,7 @@ from music_review.dashboard.user_profile_store import (
 KEY_PROFILE_NAME = "profil_page_name_input"
 KEY_PROFILE_SIGN_IN = "profil_page_sign_in"
 KEY_PROFILE_SIGN_OUT = "profil_page_sign_out"
-KEY_EXISTING_SELECT = "profil_page_existing_select"
-
-_NO_SELECTION = "(kein Profil ausgewählt)"
+KEY_EXISTING_NAME = "profil_page_existing_name_input"
 
 
 def _profil_css() -> None:
@@ -102,9 +100,10 @@ def _create_new(profiles_dir: Any, name_raw: str) -> None:
     existing_data = load_profile(profiles_dir, slug)
     if existing_data is not None:
         st.error(
-            f"Ein Profil mit dem Namen '{slug}' existiert bereits. "
-            "Bitte wähle es unter 'Bestehendes Profil' oder verwende "
-            "einen anderen Namen.",
+            "Ein Profil mit diesem Namen existiert bereits. "
+            "Wenn es dein Profil ist, melde dich unter "
+            "„Bestehendes Profil laden“ mit demselben Namen an. "
+            "Andernfalls wähle einen anderen Namen.",
         )
         return
     payload = build_profile_payload(
@@ -139,7 +138,6 @@ def _render_active_profile() -> None:
 def _render_profile_choices() -> None:
     """Three-tab profile selection: existing / new / skip."""
     profiles_dir = default_profiles_dir()
-    existing = list_profile_slugs(profiles_dir)
 
     tab_existing, tab_new, tab_skip = st.tabs(
         [
@@ -150,30 +148,32 @@ def _render_profile_choices() -> None:
     )
 
     with tab_existing:
-        if existing:
-            options: list[str] = [_NO_SELECTION, *existing]
-            choice = st.selectbox(
-                "Profil auswählen",
-                options=options,
-                index=0,
-                key=KEY_EXISTING_SELECT,
-            )
-            if st.button("Anmelden", key=KEY_PROFILE_SIGN_IN):
-                if choice == _NO_SELECTION:
-                    st.error("Bitte wähle ein Profil aus der Liste.")
-                else:
-                    _sign_in(profiles_dir, str(choice))
-        else:
-            st.info(
-                "Noch keine gespeicherten Profile vorhanden. "
-                "Lege ein neues Profil an oder starte ohne Profil.",
-            )
+        st.markdown("> Gib deinen Profilnamen ein.")
+        st.caption(
+            "Ohne Leerzeichen im Namen, bitte "
+            "(Bindestrich oder Unterstrich sind erlaubt).",
+        )
+        existing_name = st.text_input(
+            "Profilname",
+            value="",
+            placeholder="z. B. thomas",
+            key=KEY_EXISTING_NAME,
+        )
+        if st.button("Anmelden", key=KEY_PROFILE_SIGN_IN):
+            if not (existing_name or "").strip():
+                st.error("Bitte gib einen Profilnamen ein.")
+            else:
+                _sign_in(profiles_dir, existing_name)
 
     with tab_new:
+        st.caption(
+            "Ohne Leerzeichen im Namen, bitte "
+            "(Bindestrich oder Unterstrich sind erlaubt).",
+        )
         name_raw = st.text_input(
             "Profilname",
             value="",
-            placeholder="z. B. anna oder mein-setup",
+            placeholder="z. B. thomas",
             key=KEY_PROFILE_NAME,
         )
         if st.button("Profil erstellen", key="profil_page_create"):
@@ -247,7 +247,11 @@ def main() -> None:
 
     st.markdown('<div class="profil-cta">', unsafe_allow_html=True)
     if st.button("Weiter", type="primary", use_container_width=True):
-        st.switch_page("pages/0b_Einstieg.py")
+        active_slug = st.session_state.get(ACTIVE_PROFILE_SESSION_KEY)
+        if active_slug and get_selected_communities():
+            st.switch_page("pages/8_Neueste_Rezensionen.py")
+        else:
+            st.switch_page("pages/0b_Einstieg.py")
     st.markdown("</div>", unsafe_allow_html=True)
 
 

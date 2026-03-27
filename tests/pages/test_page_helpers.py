@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from datetime import date, datetime
 
-from pages.page_helpers import format_release_date
+from pages.page_helpers import community_display_label, format_release_date
 
 
 class TestFormatReleaseDate:
@@ -33,3 +33,41 @@ class TestFormatReleaseDate:
 
     def test_invalid_both_returns_empty(self) -> None:
         assert format_release_date("not-a-date", None) == ""
+
+
+class TestCommunityDisplayLabel:
+    def test_uses_genre_label_when_present(self) -> None:
+        assert (
+            community_display_label(
+                "C001",
+                {"C001": "Shoegaze"},
+                None,
+            )
+            == "Shoegaze"
+        )
+
+    def test_falls_back_to_centroid(self) -> None:
+        assert (
+            community_display_label(
+                "C002",
+                {},
+                {"id": "C002", "centroid": "Artist A"},
+            )
+            == "Artist A"
+        )
+
+    def test_genre_label_wins_over_centroid(self) -> None:
+        assert (
+            community_display_label(
+                "C003",
+                {"C003": "Post-Punk"},
+                {"id": "C003", "centroid": "Other"},
+            )
+            == "Post-Punk"
+        )
+
+    def test_generic_when_no_label_or_centroid(self) -> None:
+        assert community_display_label("C099", {}, None) == "Stil-Cluster"
+
+    def test_empty_community_dict_without_genre(self) -> None:
+        assert community_display_label("C100", {}, {}) == "Stil-Cluster"

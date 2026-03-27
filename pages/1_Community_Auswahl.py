@@ -6,6 +6,7 @@ from typing import Any
 
 import streamlit as st
 from pages.page_helpers import (
+    community_display_label,
     load_broad_categories_res_10,
     load_communities_res_10,
     load_genre_labels_res_10,
@@ -46,17 +47,15 @@ def _build_community_index(
         cid = str(comm.get("id", ""))
         if not cid:
             continue
-        genre_label = genre_labels.get(cid, str(comm.get("centroid", cid)))
+        genre_label = community_display_label(cid, genre_labels, comm)
         top_artists = comm.get("top_artists") or []
         if not isinstance(top_artists, list):
             top_artists = []
-        size = int(comm.get("size", 0))
         cats = category_mappings.get(cid, [])
         info = {
             "id": cid,
             "genre_label": genre_label,
             "top_artists": [str(a) for a in top_artists[:3]],
-            "size": size,
         }
         if not cats:
             cats = ["Sonstige"]
@@ -96,14 +95,14 @@ def _render_community_list(
         return selected
 
     with st.expander(
-        f"{category} ({len(visible)} Communities)",
+        category,
         expanded=False,
     ):
         for item in visible:
             cid = item["id"]
             rendered_ids.add(cid)
             artists_str = ", ".join(item["top_artists"])
-            label = f"**{item['genre_label']}** -- {artists_str} (n={item['size']})"
+            label = f"**{item['genre_label']}** -- {artists_str}"
             key = f"comm_sel_{cid}"
             checked = st.checkbox(
                 label,
@@ -185,12 +184,9 @@ def main() -> None:
         st.session_state["selected_communities"] = selected
 
         if selected:
-            st.success(
-                f"**{len(selected)} Communities ausgewählt:** "
-                + ", ".join(sorted(selected)),
-            )
+            st.success("Deine Auswahl ist aktiv.")
         else:
-            st.info("Noch keine Communities ausgewählt.")
+            st.info("Noch keine Einträge ausgewählt.")
 
     st.markdown("---")
     col_back, col_next = st.columns([1, 1])

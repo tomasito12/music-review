@@ -7,6 +7,7 @@ from typing import Any
 
 import streamlit as st
 from pages.page_helpers import (
+    community_display_label,
     format_release_date,
     get_selected_communities,
     load_communities_res_10,
@@ -416,14 +417,12 @@ def _compute_recommendations() -> list[dict[str, Any]]:
         for e in top_entries:
             cid = str(e.get("id"))
             aff = float(e.get("score", 0.0))
-            label = genre_labels.get(cid)
             c_obj = comm_by_id.get(cid)
-            if not label and isinstance(c_obj, dict):
-                centroid = c_obj.get("centroid")
-                if centroid:
-                    label = str(centroid)
-            if not label:
-                label = f"Community {cid}"
+            label = community_display_label(
+                cid,
+                genre_labels,
+                c_obj if isinstance(c_obj, dict) else None,
+            )
             top_communities.append(
                 {
                     "id": cid,
@@ -621,6 +620,11 @@ def main() -> None:
         if selected_comms:
             # Normierte Gewichte nur zur Anzeige.
             # Score-Berechnung bleibt bei Roh-Gewichten.
+            comms_disp = load_communities_res_10()
+            genre_disp = load_genre_labels_res_10()
+            comm_by_id_disp: dict[str, dict[str, Any]] = {
+                str(c.get("id")): c for c in comms_disp if c.get("id")
+            }
             total_w = sum(float(weights_raw.get(cid, 1.0)) for cid in selected_comms)
             if total_w <= 0:
                 n = len(selected_comms)
@@ -635,8 +639,14 @@ def main() -> None:
             for cid in sorted(selected_comms):
                 w_raw = float(weights_raw.get(cid, 1.0))
                 w_norm = norm[cid]
+                c_disp = comm_by_id_disp.get(cid)
+                name = community_display_label(
+                    cid,
+                    genre_disp,
+                    c_disp if isinstance(c_disp, dict) else None,
+                )
                 weights_lines.append(
-                    f"- Community **{cid}**: Roh-Gewicht **{w_raw:.2f}**, "
+                    f"- **{name}**: Roh-Gewicht **{w_raw:.2f}**, "
                     f"normiert **{w_norm:.3f}**",
                 )
             st.markdown("**Aktuelle Gewichte (normiert für Erklärung):**")
@@ -1120,14 +1130,12 @@ def main() -> None:
                         for e in top_entries:
                             cid = str(e.get("id"))
                             aff = float(e.get("score", 0.0))
-                            label = genre_labels.get(cid)
                             c_obj = comm_by_id.get(cid)
-                            if not label and isinstance(c_obj, dict):
-                                centroid = c_obj.get("centroid")
-                                if centroid:
-                                    label = str(centroid)
-                            if not label:
-                                label = f"Community {cid}"
+                            label = community_display_label(
+                                cid,
+                                genre_labels,
+                                c_obj if isinstance(c_obj, dict) else None,
+                            )
                             top_comms.append(
                                 {"id": cid, "label": label, "affinity": aff},
                             )

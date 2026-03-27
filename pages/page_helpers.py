@@ -97,6 +97,22 @@ def load_broad_categories_res_10() -> tuple[list[str], dict[str, list[str]]]:
     return cats, mapping
 
 
+def community_display_label(
+    community_id: str,
+    genre_labels: dict[str, str],
+    community: dict[str, Any] | None = None,
+) -> str:
+    """Human-readable name for a music cluster in the UI (never the internal id)."""
+    gl = genre_labels.get(community_id)
+    if gl:
+        return gl
+    if isinstance(community, dict):
+        centroid = community.get("centroid")
+        if centroid:
+            return str(centroid)
+    return "Stil-Cluster"
+
+
 def get_selected_communities() -> set[str]:
     """Return the set of selected community IDs.
 

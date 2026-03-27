@@ -8,6 +8,7 @@ from typing import Any
 
 import streamlit as st
 from pages.page_helpers import (
+    community_display_label,
     format_release_date,
     get_selected_communities,
     load_communities_res_10,
@@ -200,14 +201,12 @@ def _top_communities_display(
 ) -> list[dict[str, Any]]:
     out: list[dict[str, Any]] = []
     for cid, aff in aff_map.get(review_id, []):
-        label = genre_labels.get(cid)
         c_obj = comm_by_id.get(cid)
-        if not label and isinstance(c_obj, dict):
-            centroid = c_obj.get("centroid")
-            if centroid:
-                label = str(centroid)
-        if not label:
-            label = f"Community {cid}"
+        label = community_display_label(
+            cid,
+            genre_labels,
+            c_obj if isinstance(c_obj, dict) else None,
+        )
         out.append({"id": cid, "label": label, "affinity": aff})
     return out
 
@@ -256,7 +255,6 @@ def _render_newest_chronological_card(
     artist = review.artist or ""
     album = review.album or ""
     url = review.url or ""
-    rid = int(review.id)
     header = f"{html.escape(str(artist))} — {html.escape(str(album))}"
     if url:
         link = f'href="{html.escape(url)}" target="_blank" rel="noopener"'
@@ -269,11 +267,10 @@ def _render_newest_chronological_card(
     label_str = ", ".join(str(x) for x in label_list) if label_list else ""
     rel = format_release_date(review.release_date, review.release_year)
     core = (
-        f"Rezensions-ID {rid}"
-        f"{(' - ' + rel) if rel else ''}"
-        f"{(' - ' + label_str) if label_str else ''}"
-        f" - {_rating_line(review)}"
-        " - Sortierung: neueste zuerst (Rezensions-ID)"
+        f"{rel + ' - ' if rel else ''}"
+        f"{label_str + ' - ' if label_str else ''}"
+        f"{_rating_line(review)}"
+        " - Sortierung: neueste zuerst"
     )
     meta_html = html.escape(core)
 
@@ -288,8 +285,8 @@ def _render_newest_chronological_card(
         card += _rec_top_communities_html(top_comms)
     else:
         card += (
-            '<div class="rec-meta">Keine Eintraege in '
-            "<code>album_community_affinities.jsonl</code> fuer diese ID.</div>"
+            '<div class="rec-meta">Keine Stil-Tags fuer dieses Album '
+            "(Zuordnungsdaten fehlen).</div>"
         )
     if snippet_html:
         card += f'<div class="rec-excerpt">{snippet_html}</div>'
@@ -307,7 +304,6 @@ def _render_newest_scored_card(
     artist = review.artist or ""
     album = review.album or ""
     url = review.url or ""
-    rid = int(review.id)
     header = f"{html.escape(str(artist))} — {html.escape(str(album))}"
     if url:
         link = f'href="{html.escape(url)}" target="_blank" rel="noopener"'
@@ -339,7 +335,6 @@ def _render_newest_scored_card(
         f"(Matching-Score: {score:.3f}, "
         f"Abdeckungsquantil eff.: {spec_eff:.3f} "
         f"[roh {spec_raw:.3f} * g={spec_gate:.3f}])"
-        f" - ID {rid}"
     )
     meta_html = html.escape(core)
 
@@ -363,8 +358,8 @@ def _render_newest_scored_card(
         card += _rec_top_communities_html(top_comms)
     else:
         card += (
-            '<div class="rec-meta">Keine Eintraege in '
-            "<code>album_community_affinities.jsonl</code> fuer diese ID.</div>"
+            '<div class="rec-meta">Keine Stil-Tags fuer dieses Album '
+            "(Zuordnungsdaten fehlen).</div>"
         )
     if snippet_html:
         card += f'<div class="rec-excerpt">{snippet_html}</div>'
@@ -387,10 +382,11 @@ def main() -> None:
     )
     st.markdown(
         '<p class="nw-page-desc">Die zuletzt im lokalen Corpus vorhandenen Alben '
-        "(nach <strong>Rezensions-ID</strong>, absteigend — entspricht in der "
-        "Regel den zuletzt auf plattentests.de hinzugekommenen Rezensionen). "
-        "Die farbigen Tags zeigen die staerksten Community-Zuordnungen "
-        "(Aufloesung <code>res_10</code>) mit Genre-Label wo vorhanden.</p>",
+        "(nach interner Reihenfolge der Rezensionen; in der Regel "
+        "entspricht das den zuletzt auf plattentests.de hinzugekommenen "
+        "Rezensionen). Die farbigen Tags zeigen die staerksten "
+        "Stil-Zuordnungen (Genre-Label oder Schwerpunkt-Künstler, "
+        "sofern vorhanden).</p>",
         unsafe_allow_html=True,
     )
 
@@ -398,15 +394,14 @@ def main() -> None:
     if selected_comms:
         st.markdown(
             '<p class="nw-page-desc" style="margin-top:-0.5rem;">'
-            "<strong>Präferenzen aktiv</strong> (gewählte Communities &amp; Gewichte "
-            "aus dem Filter-Flow): die Kachelmenge bleibt die <em>neuesten</em> "
-            "IDs, die <strong>Reihenfolge</strong> folgt demselben Gesamtscore wie "
-            "auf der Seite <strong>Empfehlungen</strong>. "
-            "<strong>Serendipity</strong> wird hier <strong>nicht</strong> genutzt "
-            "— die Reihenfolge ist immer strikt nach Gesamtscore "
-            "(deterministisch). Das <strong>Abdeckungsperzentil</strong> "
-            "(<code>breadth_norm</code>) bezieht sich auf <strong>alle</strong> "
-            "Rezensionen in <code>reviews.jsonl</code>, nicht nur auf die "
+            "<strong>Präferenzen aktiv</strong> (deine Stil-Auswahl und Gewichte "
+            "aus den Filtern): Es werden weiter die <em>neuesten</em> Alben "
+            "gezeigt, die <strong>Reihenfolge</strong> entspricht demselben "
+            "Gesamtscore wie auf der Seite <strong>Empfehlungen</strong>. "
+            "<strong>Serendipity</strong> wird hier <strong>nicht</strong> "
+            "genutzt; die Sortierung ist deterministisch. "
+            "Das Breiten-Merkmal in der Bewertung bezieht sich auf das "
+            "gesamte lokale Rezensionskorpus, nicht nur auf die hier "
             "angezeigte Teilmenge.</p>",
             unsafe_allow_html=True,
         )
@@ -459,8 +454,8 @@ def main() -> None:
     missing_aff = sum(1 for r in reviews if r.id not in aff_map)
     if missing_aff:
         st.caption(
-            f"Hinweis: Bei **{missing_aff}** der angezeigten IDs fehlen "
-            "Graph-Affinitaeten (Datei veraltet oder noch nicht neu berechnet)."
+            "Hinweis: Zu einigen der angezeigten Alben fehlen Zuordnungsdaten "
+            "für die Stil-Tags (Datenstand ggf. veraltet)."
         )
 
     if ranked_rows is not None:

@@ -4,6 +4,7 @@ from typing import Any
 
 import streamlit as st
 from pages.page_helpers import (
+    community_display_label,
     get_selected_communities,
     load_communities_res_10,
     load_genre_labels_res_10,
@@ -54,8 +55,7 @@ def main() -> None:
 
     with st.expander("Zusammenfassung deiner Auswahl", expanded=True):
         st.markdown(
-            f"- **Gewählte Communities:** {len(selected_comms)}\n"
-            f"- **Aktueller Freitext:** "
+            "- **Aktueller Freitext:** "
             f"`{(st.session_state.get('free_text_query') or '').strip()}`",
         )
 
@@ -246,23 +246,17 @@ def main() -> None:
             cols = st.columns(3)
             for idx, cid in enumerate(sorted(selected_comms)):
                 c = comm_by_id.get(cid, {})
-                size = int(c.get("size", 0)) if isinstance(c, dict) else 0
                 top_artists = c.get("top_artists") if isinstance(c, dict) else None
                 if not isinstance(top_artists, list):
                     top_artists = []
                 top_artists_str = ", ".join(str(a) for a in top_artists[:2])
-                genre_label = genre_labels.get(cid)
+                comm_dict = c if isinstance(c, dict) else None
+                base = community_display_label(cid, genre_labels, comm_dict)
 
-                if genre_label and top_artists_str:
-                    label = f"{genre_label} ({top_artists_str})"
-                elif genre_label:
-                    label = genre_label
-                elif top_artists_str:
-                    label = top_artists_str
+                if top_artists_str:
+                    display_label = f"{base} ({top_artists_str})"
                 else:
-                    label = f"Community {cid}"
-
-                display_label = f"{label}  ·  ID {cid}  ·  n={size}"
+                    display_label = base
 
                 col = cols[idx % len(cols)]
                 with col:

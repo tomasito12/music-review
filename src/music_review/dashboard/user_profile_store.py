@@ -37,10 +37,20 @@ def list_profile_slugs(base_dir: Path) -> list[str]:
 def normalize_profile_slug(raw: str) -> str:
     """Normalize user input to a safe filename component.
 
+    Leading and trailing space is stripped. Any remaining whitespace
+    (spaces, tabs, line breaks inside the name) is rejected so users
+    are asked to omit spaces rather than having them stripped silently.
+
     Raises:
-        ValueError: if empty or invalid after normalization.
+        ValueError: if empty, contains internal whitespace, or invalid.
     """
-    s = raw.strip().lower().replace(" ", "-")
+    s = raw.strip()
+    if any(ch.isspace() for ch in s):
+        raise ValueError(
+            "Bitte verzichte auf Leerzeichen im Profilnamen "
+            "(Bindestrich oder Unterstrich sind erlaubt).",
+        )
+    s = s.lower()
     s = re.sub(r"[^a-z0-9_-]+", "", s)
     s = s.strip("-_")
     if not s:

@@ -20,7 +20,16 @@ from music_review.dashboard.user_profile_store import (
 
 def test_normalize_profile_slug_trims_and_lowercase() -> None:
     assert normalize_profile_slug("  Anna  ") == "anna"
-    assert normalize_profile_slug("My Setup") == "my-setup"
+    assert normalize_profile_slug("my-setup") == "my-setup"
+
+
+def test_normalize_profile_slug_rejects_internal_whitespace() -> None:
+    with pytest.raises(ValueError, match="Leerzeichen"):
+        normalize_profile_slug("My Setup")
+    with pytest.raises(ValueError, match="Leerzeichen"):
+        normalize_profile_slug("tho Mas")
+    with pytest.raises(ValueError, match="Leerzeichen"):
+        normalize_profile_slug("a\tb")
 
 
 def test_normalize_profile_slug_rejects_empty() -> None:
