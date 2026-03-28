@@ -9,12 +9,16 @@ from pages.page_helpers import (
     OVERALL_WEIGHT_TRADEOFF_RED_DARK,
     OVERALL_WEIGHT_TRADEOFF_RED_LIGHT,
     OVERALL_WEIGHT_TRADEOFF_RED_MID,
+    PLATTENLABEL_SONSTIGE_UI,
     SPECTRUM_CROSSOVER_STOPS,
     STYLE_MATCH_FILTER_PERCENT_STEP,
     build_community_broad_category_index,
     clamp_plattentests_rating_filter_range,
     clamp_year_filter_bounds,
+    collapse_plattenlabel_ui_selection,
     community_display_label,
+    expand_plattenlabel_ui_selection,
+    format_record_labels_for_card,
     format_release_date,
     format_style_match_range_display,
     max_release_year_in_jsonl,
@@ -22,13 +26,132 @@ from pages.page_helpers import (
     normalize_filter_expander_vspace_gap,
     overall_weights_display_percents,
     overall_weights_tradeoff_bar_html,
+    plattenlabel_filter_passes,
+    plattenlabel_frequency_buckets_from_reviews_jsonl,
     review_raw_release_year,
     snap_spectrum_crossover,
     spectrum_crossover_option_label,
     spectrum_crossover_semantic_label,
     style_match_percent_tuple_for_slider,
     style_match_scores_from_percent_slider,
+    unique_plattenlabels_from_reviews_jsonl,
 )
+
+
+class TestPlattenlabelFrequencyBuckets:
+    def test_frequent_at_least_80_percent(self, tmp_path: Path) -> None:
+        p = tmp_path / "reviews.jsonl"
+        lines = []
+        for i in range(10):
+            lab = "Common" if i < 8 else "Rare"
+            lines.append(f'{{"id": {i}, "labels": ["{lab}"]}}\n')
+        p.write_text("".join(lines), encoding="utf-8")
+        freq, rare, n = plattenlabel_frequency_buckets_from_reviews_jsonl(
+            p,
+            min_share=0.8,
+        )
+        assert n == 10
+        assert freq == ["Common"]
+        assert rare == ["Rare"]
+
+    def test_counts_once_per_review(self, tmp_path: Path) -> None:
+        p = tmp_path / "reviews.jsonl"
+        p.write_text(
+            '{"id": 1, "labels": ["X", "X", "X"]}\n{"id": 2, "labels": ["X"]}\n',
+            encoding="utf-8",
+        )
+        freq, rare, n = plattenlabel_frequency_buckets_from_reviews_jsonl(
+            p,
+            min_share=0.8,
+        )
+        assert n == 2
+        assert freq == ["X"]
+        assert rare == []
+
+
+class TestExpandCollapsePlattenlabelUi:
+    def test_expand_sonstige_adds_rare(self) -> None:
+        out = expand_plattenlabel_ui_selection(
+            ["A", PLATTENLABEL_SONSTIGE_UI],
+            ["r1", "r2"],
+        )
+        assert set(out) == {"A", "r1", "r2"}
+
+    def test_collapse_full_rare_adds_sonstige(self) -> None:
+        ui = collapse_plattenlabel_ui_selection(
+            {"A", "r1", "r2"},
+            frequent=["A"],
+            rare=["r1", "r2"],
+        )
+        assert PLATTENLABEL_SONSTIGE_UI in ui
+        assert "A" in ui
+
+    def test_roundtrip(self) -> None:
+        freq = ["F1"]
+        rare = ["R1", "R2"]
+        ui = [freq[0], PLATTENLABEL_SONSTIGE_UI]
+        concrete = set(expand_plattenlabel_ui_selection(ui, rare))
+        back = collapse_plattenlabel_ui_selection(concrete, freq, rare)
+        assert set(back) == set(ui)
+
+
+class TestUniquePlattenlabelsFromReviewsJsonl:
+    def test_collects_sorted_unique_labels(self, tmp_path: Path) -> None:
+        p = tmp_path / "reviews.jsonl"
+        p.write_text(
+            '{"id": 1, "labels": ["B", "A"]}\n{"id": 2, "labels": ["A", "  "]}\n',
+            encoding="utf-8",
+        )
+        assert unique_plattenlabels_from_reviews_jsonl(p) == ["A", "B"]
+
+    def test_missing_file_returns_empty(self, tmp_path: Path) -> None:
+        p = tmp_path / "missing.jsonl"
+        assert unique_plattenlabels_from_reviews_jsonl(p) == []
+
+
+class TestPlattenlabelFilterPasses:
+    def test_no_corpus_labels_always_passes(self) -> None:
+        assert plattenlabel_filter_passes(["X"], None, []) is True
+        assert plattenlabel_filter_passes(["X"], [], []) is True
+
+    def test_missing_selection_no_filter(self) -> None:
+        all_l = ["A", "B"]
+        assert plattenlabel_filter_passes(["A"], None, all_l) is True
+        assert plattenlabel_filter_passes(["A"], "bad", all_l) is True
+
+    def test_all_selected_no_filter(self) -> None:
+        all_l = ["A", "B"]
+        assert plattenlabel_filter_passes(["Z"], ["A", "B"], all_l) is True
+
+    def test_empty_selection_only_unlabeled(self) -> None:
+        all_l = ["A", "B"]
+        assert plattenlabel_filter_passes([], [], all_l) is True
+        assert plattenlabel_filter_passes(["A"], [], all_l) is False
+
+    def test_partial_or_semantics(self) -> None:
+        all_l = ["A", "B", "C"]
+        assert plattenlabel_filter_passes(["A", "B"], ["B"], all_l) is True
+        assert plattenlabel_filter_passes(["C"], ["A"], all_l) is False
+
+    def test_unlabeled_album_passes_when_partial(self) -> None:
+        all_l = ["A", "B"]
+        assert plattenlabel_filter_passes([], ["A"], all_l) is True
+
+
+class TestFormatRecordLabelsForCard:
+    def test_prefers_metadata_list(self) -> None:
+        assert format_record_labels_for_card(["A", "B"], ["Scraped"]) == "A, B"
+
+    def test_falls_back_to_review_labels(self) -> None:
+        assert format_record_labels_for_card([], ["Sub Pop"]) == "Sub Pop"
+        assert format_record_labels_for_card(None, ["  X  ", ""]) == "X"
+
+    def test_metadata_string_used_verbatim(self) -> None:
+        assert format_record_labels_for_card("Foo, Bar", ["Z"]) == "Foo, Bar"
+
+    def test_empty_when_no_source(self) -> None:
+        assert format_record_labels_for_card([], []) == ""
+        assert format_record_labels_for_card("", None) == ""
 
 
 class TestFormatReleaseDate:

@@ -158,6 +158,16 @@ DEFAULT_PLATTENTESTS_RATING_FILTER_MAX = 10
 # Wenn reviews.jsonl fehlt oder kein Jahr enthalten: Untergrenze Jahr-Slider.
 YEAR_SLIDER_FALLBACK_FLOOR = 1990
 
+# Session-State-Schlüssel für das Plattenlabel-Multiselect auf der Filterseite.
+FILTER_PLATTENLABEL_MULTISELECT_KEY = "filter_plattenlabel_multiselect"
+
+# Sammel-Option in der Filter-UI für seltene Plattenlabels.
+PLATTENLABEL_SONSTIGE_UI = "Sonstige"
+
+# Mindestanteil aller Reviews, in denen ein Label vorkommen muss, damit es
+# einzeln wählbar ist (sonst nur über „Sonstige“).
+PLATTENLABEL_FREQUENT_MIN_REVIEW_SHARE = 0.8
+
 
 def clamp_plattentests_rating_filter_range(
     rating_min: Any,
@@ -464,6 +474,162 @@ RECOMMENDATION_CARD_TAG_COLORS: tuple[tuple[float, str, str, str], ...] = (
 )
 
 
+def unique_plattenlabels_from_reviews_jsonl(path: Path) -> list[str]:
+    """Return sorted unique non-empty label strings from a reviews JSONL file."""
+    labels: set[str] = set()
+    for obj in iter_jsonl_objects(path, log_errors=False):
+        raw = obj.get("labels")
+        if not isinstance(raw, list):
+            continue
+        for lab in raw:
+            s = str(lab).strip()
+            if s:
+                labels.add(s)
+    return sorted(labels)
+
+
+def plattenlabel_frequency_buckets_from_reviews_jsonl(
+    path: Path,
+    *,
+    min_share: float = PLATTENLABEL_FREQUENT_MIN_REVIEW_SHARE,
+) -> tuple[list[str], list[str], int]:
+    """Split labels into frequent vs rare by share of reviews (one hit per review).
+
+    A label is *frequent* if it appears on at least ``min_share`` of all
+    reviews (counting each review at most once per label). Remaining labels
+    are *rare* and are grouped in the UI under ``PLATTENLABEL_SONSTIGE_UI``.
+
+    Returns ``(frequent_sorted, rare_sorted, n_reviews)``.
+    """
+    n_reviews = 0
+    label_counts: dict[str, int] = {}
+    for obj in iter_jsonl_objects(path, log_errors=False):
+        if not isinstance(obj, dict):
+            continue
+        n_reviews += 1
+        raw = obj.get("labels")
+        if not isinstance(raw, list):
+            continue
+        seen_in_row: set[str] = set()
+        for lab in raw:
+            s = str(lab).strip()
+            if not s or s in seen_in_row:
+                continue
+            seen_in_row.add(s)
+            label_counts[s] = label_counts.get(s, 0) + 1
+    if n_reviews == 0:
+        return [], [], 0
+    cutoff = float(min_share) * float(n_reviews)
+    frequent: list[str] = []
+    rare: list[str] = []
+    for lab in sorted(label_counts.keys()):
+        if float(label_counts[lab]) >= cutoff:
+            frequent.append(lab)
+        else:
+            rare.append(lab)
+    return frequent, rare, n_reviews
+
+
+@st.cache_data(ttl=3600)
+def load_plattenlabel_filter_buckets() -> tuple[list[str], list[str], int]:
+    """Cached frequent/rare Plattenlabel buckets from ``data/reviews.jsonl``."""
+    p = Path(resolve_data_path("data/reviews.jsonl"))
+    return plattenlabel_frequency_buckets_from_reviews_jsonl(p)
+
+
+def expand_plattenlabel_ui_selection(
+    ui: list[str],
+    rare: list[str],
+    *,
+    sonstige_token: str = PLATTENLABEL_SONSTIGE_UI,
+) -> list[str]:
+    """Turn multiselect values into concrete labels (expand „Sonstige“)."""
+    picked = {str(x).strip() for x in ui if str(x).strip()}
+    if sonstige_token in picked:
+        picked.discard(sonstige_token)
+        picked.update(str(r).strip() for r in rare if str(r).strip())
+    return sorted(picked)
+
+
+def collapse_plattenlabel_ui_selection(
+    concrete: set[str],
+    frequent: list[str],
+    rare: list[str],
+    *,
+    sonstige_token: str = PLATTENLABEL_SONSTIGE_UI,
+) -> list[str]:
+    """Build multiselect values from stored concrete label set."""
+    rare_set = frozenset(str(r).strip() for r in rare if str(r).strip())
+    ui: list[str] = [f for f in frequent if f in concrete]
+    if rare_set and rare_set <= concrete:
+        ui.append(sonstige_token)
+    return ui
+
+
+@st.cache_data(ttl=3600)
+def load_sorted_unique_plattenlabels_from_reviews() -> list[str]:
+    """Load sorted unique Plattenlabels from ``data/reviews.jsonl`` (cached)."""
+    p = Path(resolve_data_path("data/reviews.jsonl"))
+    return unique_plattenlabels_from_reviews_jsonl(p)
+
+
+def plattenlabel_filter_passes(
+    album_labels: list[str] | None,
+    selection: Any,
+    all_labels: list[str],
+) -> bool:
+    """Whether an album passes the Plattenlabel expert filter.
+
+    - Missing or invalid ``selection`` (e.g. old profiles): no filtering.
+    - When the selection equals the full corpus set: no filtering.
+    - When the selection is empty: only albums without labels pass.
+    - Otherwise: pass if the album has no labels or shares at least one
+      label with the selection (OR across the album's labels).
+    """
+    if not all_labels:
+        return True
+    all_set = frozenset(str(x).strip() for x in all_labels if str(x).strip())
+    if selection is None:
+        return True
+    if not isinstance(selection, list):
+        return True
+    sel_set = frozenset(str(x).strip() for x in selection if str(x).strip())
+    if sel_set == all_set:
+        return True
+    raw_album = list(album_labels) if album_labels else []
+    album_set = frozenset(str(x).strip() for x in raw_album if str(x).strip())
+    if not sel_set:
+        return len(album_set) == 0
+    if not album_set:
+        return True
+    return bool(album_set & sel_set)
+
+
+def format_record_labels_for_card(
+    metadata_labels: Any,
+    review_labels: list[str] | None,
+) -> str:
+    """Build comma-separated Plattenlabel text for recommendation cards.
+
+    Uses labels from imputed/metadata JSONL when present; otherwise the
+    label list scraped with the review (plattentests). Chroma hit metadata
+    may pass a single pre-joined string instead of a list.
+    """
+    if isinstance(metadata_labels, str):
+        s = metadata_labels.strip()
+        if s:
+            return s
+    items: list[str] = []
+    if isinstance(metadata_labels, list):
+        items = [str(x).strip() for x in metadata_labels if str(x).strip()]
+        if items:
+            return ", ".join(items)
+    if review_labels:
+        items = [str(x).strip() for x in review_labels if str(x).strip()]
+        return ", ".join(items)
+    return ""
+
+
 def recommendation_card_meta_parts(
     release_date: Any,
     year: Any,
@@ -483,8 +649,9 @@ def recommendation_card_meta_parts(
     else:
         parts.append(f"Rating {default_rating:.0f}/10 (angenommen)")
     parts.append(f"Score {overall:.2f}")
-    if labels:
-        parts.append(labels)
+    label_plain = labels.strip()
+    if label_plain:
+        parts.append(f"Plattenlabel: {label_plain}")
     return parts
 
 
@@ -601,6 +768,7 @@ def _reset_filters() -> None:
     st.session_state["filter_settings"] = {}
     st.session_state["community_weights_raw"] = {}
     st.session_state["free_text_query"] = ""
+    st.session_state.pop(FILTER_PLATTENLABEL_MULTISELECT_KEY, None)
 
 
 def render_toolbar(page_key: str) -> None:

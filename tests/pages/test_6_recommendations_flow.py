@@ -22,7 +22,7 @@ class TestRecommendationCardMetaParts:
         assert parts[0] == "15.03.2024"
         assert "8/10" in parts[1]
         assert "0.87" in parts[2]
-        assert parts[3] == "Indie, Rock"
+        assert parts[3] == "Plattenlabel: Indie, Rock"
 
     def test_no_rating_uses_default(self) -> None:
         parts = recommendation_card_meta_parts(

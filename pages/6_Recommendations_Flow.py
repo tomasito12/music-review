@@ -12,12 +12,15 @@ from pages.page_helpers import (
     clamp_plattentests_rating_filter_range,
     clamp_year_filter_bounds,
     community_display_label,
+    format_record_labels_for_card,
     get_selected_communities,
     load_communities_res_10,
     load_community_memberships,
     load_genre_labels_res_10,
+    load_sorted_unique_plattenlabels_from_reviews,
     max_release_year_from_corpus,
     min_release_year_from_corpus,
+    plattenlabel_filter_passes,
     recommendation_card_community_tags_html,
     recommendation_card_meta_parts,
     render_toolbar,
@@ -75,16 +78,30 @@ def _recommendations_css() -> None:
     st.markdown(
         """
         <style>
+        .rec-hero {
+            text-align: center;
+            padding: 0.5rem 0 0.15rem 0;
+        }
         .rec-page-title {
             font-size: 1.6rem;
             font-weight: 650;
             letter-spacing: -0.02em;
             margin-bottom: 0.25rem;
         }
-        .rec-page-desc {
+        /* Streamlit Markdown-Container: Beschreibung zuverlässig zentrieren */
+        div[data-testid="stMarkdownContainer"] #rec-page-desc-wrap {
+            text-align: center !important;
+            width: 100% !important;
+            box-sizing: border-box;
+            margin: 0 0 1.3rem 0 !important;
+        }
+        div[data-testid="stMarkdownContainer"] #rec-page-desc-wrap .rec-page-desc {
             color: #6b7280;
             font-size: 0.9rem;
-            margin-bottom: 1.3rem;
+            max-width: 34rem;
+            margin: 0 auto !important;
+            text-align: center !important;
+            line-height: 1.55;
         }
         .rec-sort-section-label {
             font-size: 0.92rem;
@@ -111,7 +128,7 @@ def _recommendations_css() -> None:
         .rec-header {
             margin-bottom: 0.35rem;
             display: flex;
-            align-items: baseline;
+            align-items: center;
             gap: 0.35rem;
             flex-wrap: wrap;
         }
@@ -119,10 +136,11 @@ def _recommendations_css() -> None:
         a.rec-title:link,
         a.rec-title:visited,
         div[data-testid="stMarkdownContainer"] a.rec-title {
-            font-size: 1.05rem;
+            font-size: 1.08rem;
             font-weight: 600;
             text-decoration: none;
-            color: #111827 !important;
+            color: #1f2937 !important;
+            letter-spacing: -0.01em;
         }
         a.rec-title:hover,
         div[data-testid="stMarkdownContainer"] a.rec-title:hover {
@@ -160,10 +178,20 @@ def _recommendations_css() -> None:
         }
         .rec-rank {
             font-variant-numeric: tabular-nums;
-            color: #dc2626;
-            font-size: 0.85rem;
-            font-weight: 600;
-            margin-right: 0.75rem;
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            min-width: 1.8rem;
+            height: 1.45rem;
+            padding: 0 0.4rem;
+            border-radius: 6px;
+            background: #fef2f2;
+            border: 1px solid #fecaca;
+            color: #991b1b;
+            font-size: 0.78rem;
+            font-weight: 700;
+            margin-right: 0.55rem;
+            flex-shrink: 0;
         }
         .rec-pane-header {
             margin: -0.15rem 0 0.85rem 0;
@@ -200,7 +228,6 @@ def _recommendations_css() -> None:
             color: #64748b;
             margin-top: 0.45rem;
             line-height: 1.45;
-            max-width: 36rem;
         }
         .rec-results-divider {
             margin: 1rem 0 0.65rem 0;
@@ -355,6 +382,9 @@ def _compute_recommendations() -> list[dict[str, Any]]:
     if not reviews or not affinities:
         return []
 
+    platten_all = load_sorted_unique_plattenlabels_from_reviews()
+    plat_sel = filter_settings.get("plattenlabel_selection")
+
     review_index: dict[int, Any] = {int(r.id): r for r in reviews}
     comm_by_id: dict[str, dict[str, Any]] = {
         str(c.get("id")): c for c in communities if c.get("id")
@@ -417,6 +447,9 @@ def _compute_recommendations() -> list[dict[str, Any]]:
         if review is None:
             continue
 
+        if not plattenlabel_filter_passes(review.labels, plat_sel, platten_all):
+            continue
+
         rating_val = review.rating
         eff_rating = effective_plattentests_rating(
             rating_val,
@@ -448,10 +481,7 @@ def _compute_recommendations() -> list[dict[str, Any]]:
         purity_raw = purity_max_weighted_share(max_wv, s)
 
         meta = metadata.get(review_id_val) or {}
-        label_list = meta.get("labels") or []
-        if not isinstance(label_list, list):
-            label_list = []
-        label_str = ", ".join(str(label) for label in label_list)
+        label_str = format_record_labels_for_card(meta.get("labels"), review.labels)
 
         # Aufbereitete Top-Community-Infos für die Darstellung
         top_communities: list[dict[str, Any]] = []
@@ -608,23 +638,232 @@ def _render_sort_settings_and_persist() -> None:
         st.session_state["filter_settings"] = fs
 
 
+def _render_semantic_only_cards(
+    top_hits: list[dict[str, Any]],
+    *,
+    selected_comms: dict[str, float],
+    weights_raw: dict[str, float],
+    render_fn: Any,
+) -> None:
+    """Score RAG-only hits and render them as recommendation cards."""
+    genre_labels = load_genre_labels_res_10()
+    communities = load_communities_res_10()
+    comm_by_id: dict[str, dict[str, Any]] = {
+        str(c.get("id")): c for c in communities if c.get("id")
+    }
+    affinities = _load_affinities()
+    affinities_by_review_id: dict[int, dict[str, Any]] = {
+        obj["review_id"]: obj
+        for obj in affinities
+        if isinstance(obj.get("review_id"), int)
+    }
+    reviews_rag, _ = _load_reviews_and_metadata()
+    review_index_rag = {int(r.id): r for r in reviews_rag}
+    rag_memberships = load_community_memberships()
+
+    fs_rag: dict[str, Any] = st.session_state.get("filter_settings") or {}
+    crossover_w_rag = float(
+        fs_rag.get(
+            "community_spectrum_crossover",
+            RECOMMENDATION_DEFAULT_COMMUNITY_CROSSOVER,
+        )
+    )
+    ra = fs_rag.get("overall_weight_alpha")
+    rb = fs_rag.get("overall_weight_beta")
+    rc = fs_rag.get("overall_weight_gamma")
+    if ra is not None and rb is not None and rc is not None:
+        rag_alpha, rag_beta, rag_gamma = normalize_overall_weights(
+            float(ra),
+            float(rb),
+            float(rc),
+        )
+    else:
+        rag_alpha, rag_beta, rag_gamma = get_recommendation_overall_weights()
+
+    def _score_for_review_id(
+        rid: int,
+    ) -> tuple[float, float, float, list[dict[str, Any]], int]:
+        """Return S_a, breadth_raw, purity_raw, top tags, k_hits."""
+        obj = affinities_by_review_id.get(rid)
+        if not obj:
+            return 0.0, 0.0, 0.0, [], 0
+        comms_any = obj.get("communities", {})
+        if not isinstance(comms_any, dict):
+            return 0.0, 0.0, 0.0, [], 0
+        entries_any = comms_any.get("res_10")
+        if not isinstance(entries_any, list):
+            return 0.0, 0.0, 0.0, [], 0
+
+        s = 0.0
+        k_hits = 0
+        max_wv = 0.0
+        for entry in entries_any:
+            if not isinstance(entry, dict):
+                continue
+            cid = str(entry.get("id"))
+            if cid not in selected_comms:
+                continue
+            score_val = entry.get("score")
+            if not isinstance(score_val, (int, float)):
+                continue
+            val = float(score_val)
+            w = float(weights_raw.get(cid, 1.0))
+            contrib = w * val
+            s += contrib
+            if val > 0:
+                k_hits += 1
+                max_wv = max(max_wv, contrib)
+
+        rev = review_index_rag.get(rid)
+        if rev is not None:
+            rm = reference_community_position_masses(
+                rev,
+                rag_memberships,
+                res_key="res_10",
+                w_min=REFERENCE_POSITION_W_MIN,
+            )
+            breadth_raw = breadth_raw_from_selected_community_masses(
+                rm,
+                selected_comms,
+                weights_raw,
+            )
+        else:
+            breadth_raw = 0.0
+        purity_raw = purity_max_weighted_share(max_wv, s)
+
+        sorted_entries = sorted(
+            [
+                e
+                for e in entries_any
+                if isinstance(e, dict) and isinstance(e.get("score"), (int, float))
+            ],
+            key=lambda e: float(e.get("score", 0.0)),
+            reverse=True,
+        )
+        top_entries = sorted_entries[:3]
+
+        top_comms: list[dict[str, Any]] = []
+        for e in top_entries:
+            cid = str(e.get("id"))
+            aff = float(e.get("score", 0.0))
+            c_obj = comm_by_id.get(cid)
+            label = community_display_label(
+                cid,
+                genre_labels,
+                c_obj if isinstance(c_obj, dict) else None,
+            )
+            top_comms.append(
+                {"id": cid, "label": label, "affinity": aff},
+            )
+
+        return s, breadth_raw, purity_raw, top_comms, k_hits
+
+    pseudo_recs: list[dict[str, Any]] = []
+    rag_match_set: set[int] = set()
+    for h in top_hits:
+        rid_val = h.get("review_id")
+        if not isinstance(rid_val, int):
+            continue
+        rid = rid_val
+        score_val, br_raw, pur_raw, top_comms, kh = _score_for_review_id(rid)
+        r_raw = h.get("rating")
+        if r_raw is None:
+            rating_v = None
+        elif isinstance(r_raw, (int, float)):
+            rating_v = float(r_raw)
+        else:
+            try:
+                rating_v = float(r_raw)
+            except (TypeError, ValueError):
+                rating_v = None
+        eff_r = effective_plattentests_rating(
+            rating_v,
+            default_when_missing=RECOMMENDATION_RATING_DEFAULT_WHEN_MISSING,
+        )
+        rev_for_card = review_index_rag.get(rid)
+        pseudo_label_str = format_record_labels_for_card(
+            h.get("labels"),
+            rev_for_card.labels if rev_for_card is not None else None,
+        )
+        pseudo_recs.append(
+            {
+                "review_id": rid,
+                "artist": h.get("artist") or "",
+                "album": h.get("album") or "",
+                "url": h.get("url") or "",
+                "rating": rating_v,
+                "rating_effective": eff_r,
+                "year": h.get("release_year"),
+                "release_date": h.get("release_date"),
+                "labels": pseudo_label_str,
+                "score": score_val,
+                "purity_raw": pur_raw,
+                "breadth_raw": br_raw,
+                "k_hits": kh,
+                "hits_pct": 100.0 * br_raw,
+                "top_communities": top_comms,
+                "text": h.get("chunk_text") or h.get("text") or "",
+            },
+        )
+        rag_match_set.add(rid)
+
+    pr_pur = [float(p["purity_raw"]) for p in pseudo_recs]
+    pr_br = [float(p["breadth_raw"]) for p in pseudo_recs]
+    pr_pur_n, pr_br_n, pr_spec_n = community_spectrum_norm_batch(
+        pr_pur,
+        pr_br,
+        crossover_weight=crossover_w_rag,
+    )
+    for p, pn, bn, sn in zip(
+        pseudo_recs,
+        pr_pur_n,
+        pr_br_n,
+        pr_spec_n,
+        strict=True,
+    ):
+        rn = rating_to_unit_interval(
+            p["rating"],
+            default_on_10_scale=RECOMMENDATION_RATING_DEFAULT_WHEN_MISSING,
+        )
+        p["purity_norm"] = pn
+        p["breadth_norm"] = bn
+        p["community_spectrum_norm"] = sn
+        sn_eff, sn_gate = gated_community_spectrum(
+            float(sn),
+            float(p["score"]),
+        )
+        p["spectrum_matching_gate"] = sn_gate
+        p["community_spectrum_effective"] = sn_eff
+        p["rating_norm"] = rn
+        p["overall_score"] = overall_score(
+            float(p["score"]),
+            rn,
+            sn_eff,
+            alpha=rag_alpha,
+            beta=rag_beta,
+            gamma=rag_gamma,
+        )
+
+    render_fn(pseudo_recs, rag_match=rag_match_set)
+
+
 def main() -> None:
     st.set_page_config(
         page_title="Music Review — Empfehlungen",
         page_icon=None,
-        layout="wide",
+        layout="centered",
     )
 
     render_toolbar("recommendations")
     _recommendations_css()
 
     st.markdown(
-        '<p class="rec-page-title">Deine Empfehlungen</p>',
-        unsafe_allow_html=True,
-    )
-    st.markdown(
+        '<div class="rec-hero">'
+        '<p class="rec-page-title">Deine Empfehlungen</p>'
+        '<div id="rec-page-desc-wrap">'
         '<p class="rec-page-desc">Basierend auf deinen gewählten Stil-Schwerpunkten, '
-        "Filtereinstellungen und (optional) deiner Stimmungsbeschreibung.</p>",
+        "Filtereinstellungen und (optional) deiner Stimmungsbeschreibung.</p>"
+        "</div></div>",
         unsafe_allow_html=True,
     )
 
@@ -649,136 +888,7 @@ def main() -> None:
     selected_comms = get_selected_communities()
     weights_raw: dict[str, float] = st.session_state.get("community_weights_raw") or {}
 
-    col_left, col_right = st.columns([2, 1], gap="large")
-
-    # Right: single panel (chat + RAG tuning + results slot). Placeholder keeps
-    # results in this column after the left pane and RAG computation run.
-    with col_right, st.container(border=True):
-        st.markdown(
-            '<div class="rec-pane-header rec-pane-header-semantic">'
-            '<div class="rec-eyebrow">Semantische Suche</div>'
-            '<div class="rec-pane-title">Finetuning im Dialog</div>'
-            '<div class="rec-pane-sub">Beschreibe Stimmung, Klang oder '
-            "Inhalte. Unten siehst du die Alben, die semantisch am besten "
-            "passen - unabhängig von der linken Rangliste.</div>"
-            "</div>",
-            unsafe_allow_html=True,
-        )
-        chat_reset = st.button("Chat zurücksetzen", key=KEY_CHAT_RESET_BUTTON)
-        if chat_reset:
-            st.session_state["free_text_query"] = ""
-            st.session_state[KEY_CHAT_MESSAGES] = []
-
-        chat_messages = st.session_state.get(KEY_CHAT_MESSAGES)
-        if not isinstance(chat_messages, list):
-            chat_messages = []
-        if not chat_messages:
-            chat_messages = [
-                {
-                    "role": "assistant",
-                    "content": (
-                        "Kannst du mir beschreiben, nach welcher Musik du "
-                        "gerade suchst?"
-                    ),
-                }
-            ]
-
-        # Process chat_input *before* rendering messages: Streamlit runs the script
-        # only once per send; rendering first would skip the new user bubble until
-        # another interaction. (chat_input stays visually at the bottom of the app.)
-        chat_input = st.chat_input(
-            "Stimmung oder Inhalte beschreiben …",
-            key=KEY_CHAT_INPUT,
-        )
-        if chat_input is not None:
-            chat_input_clean = chat_input.strip()
-            st.session_state["free_text_query"] = chat_input_clean
-            if chat_input_clean:
-                chat_messages.append({"role": "user", "content": chat_input_clean})
-                assistant_reply = (
-                    "Alles klar - ich passe die Trefferliste an deine Beschreibung an."
-                )
-                chat_messages.append(
-                    {"role": "assistant", "content": assistant_reply},
-                )
-        st.session_state[KEY_CHAT_MESSAGES] = chat_messages
-
-        for msg in chat_messages:
-            role = msg.get("role")
-            content = msg.get("content")
-            if role not in {"assistant", "user"}:
-                continue
-            if not isinstance(content, str):
-                continue
-            with st.chat_message(role):
-                st.markdown(content)
-
-        q_show = (st.session_state.get("free_text_query") or "").strip()
-        if q_show:
-            st.caption(f"**Aktuelle Freitext-Suche:** {q_show}")
-
-        free_text = (st.session_state.get("free_text_query") or "").strip()
-
-        rag_max_distance_ui = st.slider(
-            "Ähnlichkeit (niedriger = passender)",
-            min_value=0.0,
-            max_value=2.0,
-            value=1.0,
-            step=0.05,
-            disabled=not bool(free_text),
-            key=KEY_RAG_MAX_DISTANCE,
-        )
-        results_placeholder = st.empty()
-
-    # --- RAG-Abgleich (Freitext) ---
-    free_text = (st.session_state.get("free_text_query") or "").strip()
-    max_distance = float(rag_max_distance_ui) if free_text else None
     rag_hits_by_id: dict[int, dict[str, Any]] = {}
-    rag_allowed_ids: set[int] = set()
-
-    if free_text:
-        try:
-            rag_hits = _search_rag_hits(free_text)
-        except RuntimeError as e:
-            if "OPENAI_API_KEY" in str(e):
-                st.error(
-                    "OpenAI API key not set. "
-                    "Set `OPENAI_API_KEY` in your environment or .env."
-                )
-            else:
-                st.error(f"RAG search failed: {e}")
-            rag_hits = []
-        except Exception as e:
-            st.error(f"RAG search failed: {e}")
-            rag_hits = []
-
-        # Speichern: id -> hit, und allowed set via distance threshold
-        for h in rag_hits:
-            rid_val = h.get("review_id")
-            rid: int | None
-            if isinstance(rid_val, int):
-                rid = rid_val
-            else:
-                try:
-                    rid = int(rid_val) if rid_val is not None else None
-                except (TypeError, ValueError):
-                    rid = None
-            if rid is None:
-                continue
-            dist = h.get("distance")
-            if isinstance(dist, (int, float)):
-                # Keep the best (smallest distance) chunk hit per review_id.
-                prev = rag_hits_by_id.get(rid)
-                prev_dist = prev.get("distance") if isinstance(prev, dict) else None
-                if (
-                    prev is None
-                    or not isinstance(prev_dist, (int, float))
-                    or float(dist) < float(prev_dist)
-                ):
-                    rag_hits_by_id[rid] = h
-
-                if float(dist) <= float(max_distance):
-                    rag_allowed_ids.add(rid)
 
     def _render_filter_cards(
         rec_list: list[dict[str, Any]],
@@ -813,14 +923,14 @@ def main() -> None:
                 "..." if len(snippet_source) > 260 else ""
             )
 
-            title = f"{html.escape(str(artist))} -- {html.escape(str(album))}"
+            title = f"{html.escape(str(artist))} — {html.escape(str(album))}"
             if url:
                 la = f'href="{html.escape(url)}" target="_blank" rel="noopener"'
                 title_html = f'<a {la} class="rec-title">{title}</a>'
             else:
                 title_html = f'<span class="rec-title">{title}</span>'
             rank_html = (
-                f'<span class="rec-rank" aria-label="Platz {rank}">{rank}.</span>'
+                f'<span class="rec-rank" aria-label="Platz {rank}">{rank}</span>'
             )
 
             meta_parts = recommendation_card_meta_parts(
@@ -849,6 +959,155 @@ def main() -> None:
             card += "</div>"
             st.markdown(card, unsafe_allow_html=True)
 
+    # ------------------------------------------------------------------
+    # Rangliste (filter-based ranking)
+    # ------------------------------------------------------------------
+    visible = int(
+        st.session_state.get(KEY_VISIBLE_COUNT) or CARDS_PER_PAGE,
+    )
+    visible = max(CARDS_PER_PAGE, min(visible, len(recs)))
+    _render_filter_cards(
+        recs[:visible],
+        rag_match=set(),
+    )
+    if visible < len(recs):
+        remaining = len(recs) - visible
+        batch = min(CARDS_PER_PAGE, remaining)
+        if st.button(
+            f"Mehr anzeigen ({batch} weitere von {remaining})",
+            key="rec_show_more",
+        ):
+            st.session_state[KEY_VISIBLE_COUNT] = visible + batch
+            st.rerun()
+
+    # ------------------------------------------------------------------
+    # Semantische Suche
+    # ------------------------------------------------------------------
+    with st.container(border=True):
+        st.markdown(
+            '<div class="rec-pane-header rec-pane-header-semantic">'
+            '<div class="rec-eyebrow">Semantische Suche</div>'
+            '<div class="rec-pane-title">Finetuning im Dialog</div>'
+            '<div class="rec-pane-sub">Beschreibe Stimmung, Klang oder '
+            "Inhalte. Darunter erscheinen die Alben, die semantisch "
+            "am besten passen.</div>"
+            "</div>",
+            unsafe_allow_html=True,
+        )
+        chat_reset = st.button("Chat zurücksetzen", key=KEY_CHAT_RESET_BUTTON)
+        if chat_reset:
+            st.session_state["free_text_query"] = ""
+            st.session_state[KEY_CHAT_MESSAGES] = []
+
+        chat_messages = st.session_state.get(KEY_CHAT_MESSAGES)
+        if not isinstance(chat_messages, list):
+            chat_messages = []
+        if not chat_messages:
+            chat_messages = [
+                {
+                    "role": "assistant",
+                    "content": (
+                        "Kannst du mir beschreiben, nach welcher Musik du "
+                        "gerade suchst?"
+                    ),
+                }
+            ]
+
+        chat_input = st.chat_input(
+            "Stimmung oder Inhalte beschreiben …",
+            key=KEY_CHAT_INPUT,
+        )
+        if chat_input is not None:
+            chat_input_clean = chat_input.strip()
+            st.session_state["free_text_query"] = chat_input_clean
+            if chat_input_clean:
+                chat_messages.append({"role": "user", "content": chat_input_clean})
+                chat_messages.append(
+                    {
+                        "role": "assistant",
+                        "content": (
+                            "Alles klar - ich passe die Trefferliste "
+                            "an deine Beschreibung an."
+                        ),
+                    },
+                )
+        st.session_state[KEY_CHAT_MESSAGES] = chat_messages
+
+        for msg in chat_messages:
+            role = msg.get("role")
+            content = msg.get("content")
+            if role not in {"assistant", "user"}:
+                continue
+            if not isinstance(content, str):
+                continue
+            with st.chat_message(role):
+                st.markdown(content)
+
+        q_show = (st.session_state.get("free_text_query") or "").strip()
+        if q_show:
+            st.caption(f"**Aktuelle Freitext-Suche:** {q_show}")
+
+        free_text = (st.session_state.get("free_text_query") or "").strip()
+
+        rag_max_distance_ui = st.slider(
+            "Ähnlichkeit (niedriger = passender)",
+            min_value=0.0,
+            max_value=2.0,
+            value=1.0,
+            step=0.05,
+            disabled=not bool(free_text),
+            key=KEY_RAG_MAX_DISTANCE,
+        )
+
+    # ------------------------------------------------------------------
+    # RAG-Abgleich (Freitext)
+    # ------------------------------------------------------------------
+    free_text = (st.session_state.get("free_text_query") or "").strip()
+    max_distance = float(rag_max_distance_ui) if free_text else None
+    rag_allowed_ids: set[int] = set()
+
+    if free_text:
+        try:
+            rag_hits = _search_rag_hits(free_text)
+        except RuntimeError as e:
+            if "OPENAI_API_KEY" in str(e):
+                st.error(
+                    "OpenAI API key not set. "
+                    "Set `OPENAI_API_KEY` in your environment or .env."
+                )
+            else:
+                st.error(f"RAG search failed: {e}")
+            rag_hits = []
+        except Exception as e:
+            st.error(f"RAG search failed: {e}")
+            rag_hits = []
+
+        for h in rag_hits:
+            rid_val = h.get("review_id")
+            rid: int | None
+            if isinstance(rid_val, int):
+                rid = rid_val
+            else:
+                try:
+                    rid = int(rid_val) if rid_val is not None else None
+                except (TypeError, ValueError):
+                    rid = None
+            if rid is None:
+                continue
+            dist = h.get("distance")
+            if isinstance(dist, (int, float)):
+                prev = rag_hits_by_id.get(rid)
+                prev_dist = prev.get("distance") if isinstance(prev, dict) else None
+                if (
+                    prev is None
+                    or not isinstance(prev_dist, (int, float))
+                    or float(dist) < float(prev_dist)
+                ):
+                    rag_hits_by_id[rid] = h
+
+                if float(dist) <= float(max_distance):
+                    rag_allowed_ids.add(rid)
+
     filter_review_ids = {
         int(r["review_id"]) for r in recs if r.get("review_id") is not None
     }
@@ -859,303 +1118,78 @@ def main() -> None:
 
     chat_top_n = 10
 
-    with col_left, st.container(border=True):
+    # ------------------------------------------------------------------
+    # Semantische Treffer
+    # ------------------------------------------------------------------
+    st.markdown(
+        '<div class="rec-results-divider">'
+        '<div class="rec-results-label">Semantische Treffer</div>'
+        '<div class="rec-results-title">Zur aktuellen Beschreibung</div>'
+        "</div>",
+        unsafe_allow_html=True,
+    )
+
+    if not free_text or max_distance is None:
         st.markdown(
-            '<div class="rec-pane-header rec-pane-header-filter">'
-            '<div class="rec-eyebrow">Profil &amp; Filter</div>'
-            '<div class="rec-pane-title">Rangliste</div>'
-            '<div class="rec-pane-sub">Sortierte Empfehlungen aus deinen '
-            "Stil-Schwerpunkten und Filtern. Passt auch der Freitext, wirken "
-            "die Karten etwas hervorgehoben.</div>"
-            "</div>",
+            '<div class="rec-callout rec-callout-info">Schreib eine kurze '
+            "Beschreibung im Chat - dann erscheinen hier die Alben, "
+            "die inhaltlich am besten passen.</div>",
             unsafe_allow_html=True,
         )
-        visible = int(
-            st.session_state.get(KEY_VISIBLE_COUNT) or CARDS_PER_PAGE,
-        )
-        visible = max(CARDS_PER_PAGE, min(visible, len(recs)))
-        _render_filter_cards(
-            recs[:visible],
-            rag_match=intersection_ids,
-        )
-        if visible < len(recs):
-            remaining = len(recs) - visible
-            batch = min(CARDS_PER_PAGE, remaining)
-            if st.button(
-                f"Mehr anzeigen ({batch} weitere von {remaining})",
-                key="rec_show_more",
-            ):
-                st.session_state[KEY_VISIBLE_COUNT] = visible + batch
-                st.rerun()
-
-    # Right column: semantic hits below chat (same bordered panel).
-    with results_placeholder.container():
-        st.markdown(
-            '<div class="rec-results-divider">'
-            '<div class="rec-results-label">Semantische Treffer</div>'
-            '<div class="rec-results-title">Zur aktuellen Beschreibung</div>'
-            "</div>",
-            unsafe_allow_html=True,
-        )
-
-        if not free_text or max_distance is None:
+    else:
+        if intersection_ids:
             st.markdown(
-                '<div class="rec-callout rec-callout-info">Schreib eine kurze '
-                "Beschreibung im Chat darüber - dann erscheinen hier die Alben, "
-                "die inhaltlich am besten passen.</div>",
+                '<div class="rec-pane-sub" style="margin:0 0 0.75rem 0;">'
+                "Schnittmenge mit deiner Rangliste - sortiert nach "
+                "Nähe zum Freitext.</div>",
                 unsafe_allow_html=True,
             )
+            intersection_recs_all = [
+                r for r in recs if int(r["review_id"]) in intersection_ids
+            ]
+            intersection_recs_sorted = sorted(
+                intersection_recs_all,
+                key=lambda r: float(
+                    rag_hits_by_id.get(int(r["review_id"]), {}).get("distance")
+                    or 999.0,
+                ),
+            )[:chat_top_n]
+            rag_match_set = {int(r["review_id"]) for r in intersection_recs_sorted}
+            _render_filter_cards(
+                intersection_recs_sorted,
+                rag_match=rag_match_set,
+            )
         else:
-            if intersection_ids:
+            st.markdown(
+                '<div class="rec-callout rec-callout-warn">Keine Überschneidung '
+                "mit der Rangliste bei aktuellem Distanz-Limit. "
+                "Darunter: die besten rein semantischen Treffer (ggf. "
+                "außerhalb deiner Filter).</div>",
+                unsafe_allow_html=True,
+            )
+
+            rag_allowed_hits = [
+                h for rid, h in rag_hits_by_id.items() if rid in rag_allowed_ids
+            ]
+            top_hits = sorted(
+                rag_allowed_hits,
+                key=lambda h: float(h.get("distance") or 999.0),
+            )[:chat_top_n]
+
+            if not top_hits:
                 st.markdown(
-                    '<div class="rec-pane-sub" style="margin:0 0 0.75rem 0;">'
-                    "Schnittmenge mit deiner linken Rangliste - sortiert nach "
-                    "nahe am Freitext.</div>",
+                    '<div class="rec-callout">Kein Treffer innerhalb der '
+                    "gewählten Maximal-Distanz. Regler lockern oder Text "
+                    "anpassen.</div>",
                     unsafe_allow_html=True,
-                )
-                intersection_recs_all = [
-                    r for r in recs if int(r["review_id"]) in intersection_ids
-                ]
-                intersection_recs_sorted = sorted(
-                    intersection_recs_all,
-                    key=lambda r: float(
-                        rag_hits_by_id.get(int(r["review_id"]), {}).get("distance")
-                        or 999.0,
-                    ),
-                )[:chat_top_n]
-                rag_match_set = {int(r["review_id"]) for r in intersection_recs_sorted}
-                _render_filter_cards(
-                    intersection_recs_sorted,
-                    rag_match=rag_match_set,
                 )
             else:
-                st.markdown(
-                    '<div class="rec-callout rec-callout-warn">Keine Überschneidung '
-                    "mit der linken Rangliste bei aktuellem Distanz-Limit. "
-                    "Darunter: die besten rein semantischen Treffer (ggf. außerhalb "
-                    "deiner Filter).</div>",
-                    unsafe_allow_html=True,
+                _render_semantic_only_cards(
+                    top_hits,
+                    selected_comms=selected_comms,
+                    weights_raw=weights_raw,
+                    render_fn=_render_filter_cards,
                 )
-
-                rag_allowed_hits = [
-                    h for rid, h in rag_hits_by_id.items() if rid in rag_allowed_ids
-                ]
-                top_hits = sorted(
-                    rag_allowed_hits,
-                    key=lambda h: float(h.get("distance") or 999.0),
-                )[:chat_top_n]
-
-                if not top_hits:
-                    st.markdown(
-                        '<div class="rec-callout">Kein Treffer innerhalb der '
-                        "gewählten Maximal-Distanz. Regler lockern oder Text "
-                        "anpassen.</div>",
-                        unsafe_allow_html=True,
-                    )
-                else:
-                    # RAG-only hits: Score & Genre-Abdeckung wie bei normalen Karten.
-                    genre_labels = load_genre_labels_res_10()
-                    communities = load_communities_res_10()
-                    comm_by_id: dict[str, dict[str, Any]] = {
-                        str(c.get("id")): c for c in communities if c.get("id")
-                    }
-                    affinities = _load_affinities()
-                    affinities_by_review_id: dict[int, dict[str, Any]] = {
-                        obj["review_id"]: obj
-                        for obj in affinities
-                        if isinstance(obj.get("review_id"), int)
-                    }
-                    reviews_rag, _ = _load_reviews_and_metadata()
-                    review_index_rag = {int(r.id): r for r in reviews_rag}
-                    rag_memberships = load_community_memberships()
-
-                    fs_rag = st.session_state.get("filter_settings") or {}
-                    crossover_w_rag = float(
-                        fs_rag.get(
-                            "community_spectrum_crossover",
-                            RECOMMENDATION_DEFAULT_COMMUNITY_CROSSOVER,
-                        )
-                    )
-                    ra = fs_rag.get("overall_weight_alpha")
-                    rb = fs_rag.get("overall_weight_beta")
-                    rc = fs_rag.get("overall_weight_gamma")
-                    if ra is not None and rb is not None and rc is not None:
-                        rag_alpha, rag_beta, rag_gamma = normalize_overall_weights(
-                            float(ra),
-                            float(rb),
-                            float(rc),
-                        )
-                    else:
-                        rag_alpha, rag_beta, rag_gamma = (
-                            get_recommendation_overall_weights()
-                        )
-
-                    def _score_for_review_id(
-                        rid: int,
-                    ) -> tuple[float, float, float, list[dict[str, Any]], int]:
-                        """S_a, breadth_raw, purity_raw, top tags, k_hits (aff.>0)."""
-                        obj = affinities_by_review_id.get(rid)
-                        if not obj:
-                            return 0.0, 0.0, 0.0, [], 0
-                        comms_any = obj.get("communities", {})
-                        if not isinstance(comms_any, dict):
-                            return 0.0, 0.0, 0.0, [], 0
-                        entries_any = comms_any.get("res_10")
-                        if not isinstance(entries_any, list):
-                            return 0.0, 0.0, 0.0, [], 0
-
-                        s = 0.0
-                        k_hits = 0
-                        max_wv = 0.0
-                        for entry in entries_any:
-                            if not isinstance(entry, dict):
-                                continue
-                            cid = str(entry.get("id"))
-                            if cid not in selected_comms:
-                                continue
-                            score_val = entry.get("score")
-                            if not isinstance(score_val, (int, float)):
-                                continue
-                            val = float(score_val)
-                            w = float(weights_raw.get(cid, 1.0))
-                            contrib = w * val
-                            s += contrib
-                            if val > 0:
-                                k_hits += 1
-                                max_wv = max(max_wv, contrib)
-
-                        rev = review_index_rag.get(rid)
-                        if rev is not None:
-                            rm = reference_community_position_masses(
-                                rev,
-                                rag_memberships,
-                                res_key="res_10",
-                                w_min=REFERENCE_POSITION_W_MIN,
-                            )
-                            breadth_raw = breadth_raw_from_selected_community_masses(
-                                rm,
-                                selected_comms,
-                                weights_raw,
-                            )
-                        else:
-                            breadth_raw = 0.0
-                        purity_raw = purity_max_weighted_share(max_wv, s)
-
-                        sorted_entries = sorted(
-                            [
-                                e
-                                for e in entries_any
-                                if isinstance(e, dict)
-                                and isinstance(e.get("score"), (int, float))
-                            ],
-                            key=lambda e: float(e.get("score", 0.0)),
-                            reverse=True,
-                        )
-                        top_entries = sorted_entries[:3]
-
-                        top_comms: list[dict[str, Any]] = []
-                        for e in top_entries:
-                            cid = str(e.get("id"))
-                            aff = float(e.get("score", 0.0))
-                            c_obj = comm_by_id.get(cid)
-                            label = community_display_label(
-                                cid,
-                                genre_labels,
-                                c_obj if isinstance(c_obj, dict) else None,
-                            )
-                            top_comms.append(
-                                {"id": cid, "label": label, "affinity": aff},
-                            )
-
-                        return s, breadth_raw, purity_raw, top_comms, k_hits
-
-                    pseudo_recs: list[dict[str, Any]] = []
-                    rag_match_set: set[int] = set()
-                    for h in top_hits:
-                        rid_val = h.get("review_id")
-                        if not isinstance(rid_val, int):
-                            continue
-                        rid = rid_val
-                        score_val, br_raw, pur_raw, top_comms, kh = (
-                            _score_for_review_id(rid)
-                        )
-                        r_raw = h.get("rating")
-                        if r_raw is None:
-                            rating_v = None
-                        elif isinstance(r_raw, (int, float)):
-                            rating_v = float(r_raw)
-                        else:
-                            try:
-                                rating_v = float(r_raw)
-                            except (TypeError, ValueError):
-                                rating_v = None
-                        eff_r = effective_plattentests_rating(
-                            rating_v,
-                            default_when_missing=RECOMMENDATION_RATING_DEFAULT_WHEN_MISSING,
-                        )
-                        pseudo_recs.append(
-                            {
-                                "review_id": rid,
-                                "artist": h.get("artist") or "",
-                                "album": h.get("album") or "",
-                                "url": h.get("url") or "",
-                                "rating": rating_v,
-                                "rating_effective": eff_r,
-                                "year": h.get("release_year"),
-                                "release_date": h.get("release_date"),
-                                "labels": h.get("labels") or "",
-                                "score": score_val,
-                                "purity_raw": pur_raw,
-                                "breadth_raw": br_raw,
-                                "k_hits": kh,
-                                "hits_pct": 100.0 * br_raw,
-                                "top_communities": top_comms,
-                                "text": h.get("chunk_text") or h.get("text") or "",
-                            }
-                        )
-                        rag_match_set.add(rid)
-
-                    pr_pur = [float(p["purity_raw"]) for p in pseudo_recs]
-                    pr_br = [float(p["breadth_raw"]) for p in pseudo_recs]
-                    pr_pur_n, pr_br_n, pr_spec_n = community_spectrum_norm_batch(
-                        pr_pur,
-                        pr_br,
-                        crossover_weight=crossover_w_rag,
-                    )
-                    for p, pn, bn, sn in zip(
-                        pseudo_recs,
-                        pr_pur_n,
-                        pr_br_n,
-                        pr_spec_n,
-                        strict=True,
-                    ):
-                        rn = rating_to_unit_interval(
-                            p["rating"],
-                            default_on_10_scale=RECOMMENDATION_RATING_DEFAULT_WHEN_MISSING,
-                        )
-                        p["purity_norm"] = pn
-                        p["breadth_norm"] = bn
-                        p["community_spectrum_norm"] = sn
-                        sn_eff, sn_gate = gated_community_spectrum(
-                            float(sn),
-                            float(p["score"]),
-                        )
-                        p["spectrum_matching_gate"] = sn_gate
-                        p["community_spectrum_effective"] = sn_eff
-                        p["rating_norm"] = rn
-                        p["overall_score"] = overall_score(
-                            float(p["score"]),
-                            rn,
-                            sn_eff,
-                            alpha=rag_alpha,
-                            beta=rag_beta,
-                            gamma=rag_gamma,
-                        )
-
-                    _render_filter_cards(
-                        pseudo_recs,
-                        rag_match=rag_match_set,
-                    )
 
     st.markdown("---")
     col_back, col_start = st.columns([1, 1])
