@@ -231,10 +231,10 @@ def main() -> None:
     st.markdown(
         '<div class="profil-benefit">'
         "<strong>Warum ein Profil?</strong> "
-        "Dein Musikgeschmack (gewählte Communities, Genre-Filter, "
+        "Dein Musikgeschmack (Stil-Schwerpunkte, Genre-Filter, "
         "Gewichtungen) wird gespeichert. Beim nächsten Besuch kannst du "
-        "direkt nach neuer Musik stöbern, ohne den Genre- und "
-        "Artist-Filter erneut durchzugehen."
+        "direkt nach neuer Musik stöbern, ohne die Auswahl erneut "
+        "von vorn zu durchlaufen."
         "</div>",
         unsafe_allow_html=True,
     )

@@ -1,4 +1,4 @@
-"""Zusammengefuehrte Community-Auswahl mit Suchfeld und Kategorie-Expandern."""
+"""Feine Stil- und Künstlerauswahl nach Grobkategorien (ohne Suche)."""
 
 from __future__ import annotations
 
@@ -6,12 +6,68 @@ from typing import Any
 
 import streamlit as st
 from pages.page_helpers import (
-    community_display_label,
+    build_community_broad_category_index,
     load_broad_categories_res_10,
     load_communities_res_10,
     load_genre_labels_res_10,
     render_toolbar,
 )
+
+
+def _feinwahl_css() -> None:
+    """Visual alignment with Einstieg/Profil: centered, compact, red accent."""
+    st.markdown(
+        """
+        <style>
+        .feinwahl-hero {
+            text-align: center;
+            padding: 1.1rem 0.75rem 0.35rem 0.75rem;
+        }
+        .feinwahl-eyebrow {
+            font-size: 0.7rem;
+            font-weight: 600;
+            letter-spacing: 0.14em;
+            text-transform: uppercase;
+            color: #dc2626;
+            margin-bottom: 0.4rem;
+        }
+        .feinwahl-title {
+            font-size: 1.5rem;
+            font-weight: 700;
+            letter-spacing: -0.02em;
+            margin-bottom: 0.2rem;
+            color: #111827;
+        }
+        .feinwahl-desc {
+            max-width: 34rem;
+            margin: 0 auto 0.85rem auto;
+            color: #6b7280;
+            font-size: 0.92rem;
+            line-height: 1.58;
+            text-align: center;
+        }
+        .feinwahl-hint {
+            max-width: 34rem;
+            margin: 0 auto 1.1rem auto;
+            background: #fef2f2;
+            border: 1px solid #fecaca;
+            border-radius: 8px;
+            padding: 0.8rem 1rem;
+            font-size: 0.86rem;
+            color: #44403c;
+            line-height: 1.55;
+            text-align: left;
+        }
+        .feinwahl-hint strong { color: #991b1b; }
+        .feinwahl-cta {
+            text-align: center;
+            margin-top: 1.5rem;
+            margin-bottom: 1.5rem;
+        }
+        </style>
+        """,
+        unsafe_allow_html=True,
+    )
 
 
 def _ensure_session_state() -> None:
@@ -21,88 +77,26 @@ def _ensure_session_state() -> None:
         st.session_state["selected_broad_categories"] = set()
 
 
-def _community_matches_search(
-    query: str,
-    genre_label: str,
-    top_artists: list[str],
-) -> bool:
-    """Check if a community matches the search query (case-insensitive)."""
-    q = query.lower()
-    if q in genre_label.lower():
-        return True
-    return any(q in a.lower() for a in top_artists)
-
-
-def _build_community_index(
-    communities: list[dict[str, Any]],
-    genre_labels: dict[str, str],
-    category_mappings: dict[str, list[str]],
-) -> dict[str, list[dict[str, Any]]]:
-    """Group communities by broad category.
-
-    Returns {category_name: [community_info_dicts]}.
-    """
-    index: dict[str, list[dict[str, Any]]] = {}
-    for comm in communities:
-        cid = str(comm.get("id", ""))
-        if not cid:
-            continue
-        genre_label = community_display_label(cid, genre_labels, comm)
-        top_artists = comm.get("top_artists") or []
-        if not isinstance(top_artists, list):
-            top_artists = []
-        cats = category_mappings.get(cid, [])
-        info = {
-            "id": cid,
-            "genre_label": genre_label,
-            "top_artists": [str(a) for a in top_artists[:3]],
-        }
-        if not cats:
-            cats = ["Sonstige"]
-        for cat in cats:
-            index.setdefault(cat, []).append(info)
-    for items in index.values():
-        items.sort(key=lambda x: x["genre_label"].lower())
-    return index
-
-
 def _render_community_list(
     category: str,
     items: list[dict[str, Any]],
-    search_query: str,
     selected: set[str],
     rendered_ids: set[str],
 ) -> set[str]:
-    """Render communities within one category expander. Returns updated set.
+    """Render checkboxes inside one category expander. Returns updated selection.
 
-    Communities already in *rendered_ids* are skipped (they appeared in
-    a previous category due to overlapping broad-category mappings).
+    Rows already in *rendered_ids* are skipped (overlap across categories).
     """
-    visible = [
-        item
-        for item in items
-        if item["id"] not in rendered_ids
-        and (
-            not search_query
-            or _community_matches_search(
-                search_query,
-                item["genre_label"],
-                item["top_artists"],
-            )
-        )
-    ]
+    visible = [item for item in items if item["id"] not in rendered_ids]
     if not visible:
         return selected
 
-    with st.expander(
-        category,
-        expanded=False,
-    ):
+    with st.expander(category, expanded=False):
         for item in visible:
             cid = item["id"]
             rendered_ids.add(cid)
             artists_str = ", ".join(item["top_artists"])
-            label = f"**{item['genre_label']}** -- {artists_str}"
+            label = f"**{item['genre_label']}** - {artists_str}"
             key = f"comm_sel_{cid}"
             checked = st.checkbox(
                 label,
@@ -118,25 +112,40 @@ def _render_community_list(
 
 def main() -> None:
     st.set_page_config(
-        page_title="Plattenradar -- Communities",
+        page_title="Plattenradar -- Stil im Detail",
         page_icon=None,
-        layout="wide",
+        layout="centered",
     )
 
     _ensure_session_state()
     render_toolbar("community_auswahl")
+    _feinwahl_css()
 
-    st.title("Communities auswählen")
     st.markdown(
-        "Wähle die Communities aus, die deinem Musikgeschmack entsprechen. "
-        "Jede Community steht für eine Gruppe verwandter Künstler.",
+        '<div class="feinwahl-hero">'
+        '<p class="feinwahl-eyebrow">Schritt 2 von 3</p>'
+        '<p class="feinwahl-title">Dein Sound im Detail</p>'
+        "</div>",
+        unsafe_allow_html=True,
     )
-
-    search_query = st.text_input(
-        "Suche nach Genre, Künstler oder Stimmung",
-        value="",
-        placeholder='z.B. "Shoegaze", "Radiohead", "melancholisch"',
-        key="community_search",
+    st.markdown(
+        '<p class="feinwahl-desc">'
+        "Hier geht es um die Feinjustierung: Zu jeder groben Richtung von eben "
+        "gibt es konkrete Genre-Bezeichnungen und typische Künstlerinnen "
+        "und Künstler. "
+        "<strong>Mehrfachauswahl ist erwünscht</strong>: je mehr Treffer, "
+        "desto klarer wird dein Profil."
+        "</p>",
+        unsafe_allow_html=True,
+    )
+    st.markdown(
+        '<div class="feinwahl-hint">'
+        "<strong>So gehst du vor:</strong> Klappe die Stilbereiche auf, "
+        "die du auf der vorherigen Seite angekreuzt hast. "
+        "Setze überall ein Häkchen, wo du denkst: "
+        "<em>Das klingt nach mir.</em> Wenn nichts passt, lasse die Zeile leer."
+        "</div>",
+        unsafe_allow_html=True,
     )
 
     communities = load_communities_res_10()
@@ -145,7 +154,7 @@ def main() -> None:
 
     if not communities:
         st.warning(
-            "Keine Communities gefunden. Bitte zuerst "
+            "Keine Stilgruppen in den Daten gefunden. Bitte zuerst "
             "`hatch run graph-build -- --export-communities 10` ausführen.",
         )
     else:
@@ -153,7 +162,7 @@ def main() -> None:
             "selected_broad_categories",
             set(),
         )
-        community_index = _build_community_index(
+        community_index = build_community_broad_category_index(
             communities,
             genre_labels,
             category_mappings,
@@ -176,7 +185,6 @@ def main() -> None:
             selected = _render_community_list(
                 cat,
                 items,
-                search_query,
                 selected,
                 rendered_ids,
             )
@@ -184,18 +192,22 @@ def main() -> None:
         st.session_state["selected_communities"] = selected
 
         if selected:
-            st.success("Deine Auswahl ist aktiv.")
+            st.success("Super: deine Auswahl ist gespeichert. Als Nächstes: Filter.")
         else:
-            st.info("Noch keine Einträge ausgewählt.")
+            st.info(
+                "Noch keine Zeile gewählt. Ohne Auswahl werden die Empfehlungen "
+                "später weniger persönlich."
+            )
 
-    st.markdown("---")
-    col_back, col_next = st.columns([1, 1])
+    st.markdown('<div class="feinwahl-cta">', unsafe_allow_html=True)
+    col_back, col_next = st.columns(2)
     with col_back:
-        if st.button("Zurück zu den Kategorien"):
+        if st.button("Zurück", use_container_width=True):
             st.switch_page("pages/0b_Einstieg.py")
     with col_next:
-        if st.button("Weiter", type="primary"):
+        if st.button("Weiter zu den Filtern", type="primary", use_container_width=True):
             st.switch_page("pages/5_Filter_Flow.py")
+    st.markdown("</div>", unsafe_allow_html=True)
 
 
 if __name__ == "__main__":

@@ -7,19 +7,25 @@ from typing import Any
 
 import streamlit as st
 from pages.page_helpers import (
+    DEFAULT_PLATTENTESTS_RATING_FILTER_MAX,
+    DEFAULT_PLATTENTESTS_RATING_FILTER_MIN,
+    clamp_plattentests_rating_filter_range,
+    clamp_year_filter_bounds,
     community_display_label,
-    format_release_date,
     get_selected_communities,
     load_communities_res_10,
     load_community_memberships,
     load_genre_labels_res_10,
+    max_release_year_from_corpus,
+    min_release_year_from_corpus,
+    recommendation_card_community_tags_html,
+    recommendation_card_meta_parts,
     render_toolbar,
 )
 
 from music_review.config import (
     RECOMMENDATION_DEFAULT_COMMUNITY_CROSSOVER,
     RECOMMENDATION_RATING_DEFAULT_WHEN_MISSING,
-    RECOMMENDATION_SPECTRUM_MATCHING_GATE_HALF_SATURATION,
     REFERENCE_POSITION_W_MIN,
     get_recommendation_overall_weights,
     normalize_overall_weights,
@@ -53,11 +59,16 @@ KEY_RAG_MAX_DISTANCE = "rec_rag_max_distance"
 KEY_FILTER_ADJUST_BUTTON = "rec_filter_adjust_button"
 KEY_START_WORKFLOW_BUTTON = "rec_start_workflow_button"
 KEY_CHAT_MESSAGES = "rec_chat_messages"
+KEY_VISIBLE_COUNT = "rec_visible_count"
+
+CARDS_PER_PAGE = 25
 
 # Freitext-RAG: max. reviews after fusion (N). Top-k per variant must be large
 # enough that fusion can reach N (chunk overlap + strategy A = single variant).
 RAG_FUSION_N_RESULTS = 2500
 RAG_TOP_K_PER_VARIANT = 2500
+# Freitext-RAG: feste Query-Varianten-Strategie (kein UI; nur Backend).
+RAG_FREETEXT_QUERY_STRATEGY = "B"
 
 
 def _recommendations_css() -> None:
@@ -70,7 +81,17 @@ def _recommendations_css() -> None:
             letter-spacing: -0.02em;
             margin-bottom: 0.25rem;
         }
-        .rec-page-desc { color: #6b7280; font-size: 0.9rem; margin-bottom: 1.3rem; }
+        .rec-page-desc {
+            color: #6b7280;
+            font-size: 0.9rem;
+            margin-bottom: 1.3rem;
+        }
+        .rec-sort-section-label {
+            font-size: 0.92rem;
+            font-weight: 650;
+            color: #111827;
+            margin-bottom: 0.55rem;
+        }
         .rec-card {
             background: #fafafa;
             border: 1px solid #e5e7eb;
@@ -80,12 +101,12 @@ def _recommendations_css() -> None:
             box-shadow: 0 1px 2px rgba(15, 23, 42, 0.04);
         }
         .rec-card:hover {
-            border-color: #d1d5db;
-            box-shadow: 0 4px 8px rgba(15, 23, 42, 0.06);
+            border-color: #fca5a5;
+            box-shadow: 0 4px 8px rgba(220, 38, 38, 0.08);
         }
         .rec-card-rag {
-            border: 1px solid #6366f1;
-            background: #eef2ff;
+            border: 1px solid #fca5a5;
+            background: #fef2f2;
         }
         .rec-header {
             margin-bottom: 0.35rem;
@@ -94,24 +115,28 @@ def _recommendations_css() -> None:
             gap: 0.35rem;
             flex-wrap: wrap;
         }
-        .rec-title {
+        a.rec-title,
+        a.rec-title:link,
+        a.rec-title:visited,
+        div[data-testid="stMarkdownContainer"] a.rec-title {
             font-size: 1.05rem;
             font-weight: 600;
             text-decoration: none;
-            color: #111827;
+            color: #111827 !important;
         }
-        .rec-title:hover { text-decoration: underline; color: #1d4ed8; }
+        a.rec-title:hover,
+        div[data-testid="stMarkdownContainer"] a.rec-title:hover {
+            text-decoration: underline;
+            color: #dc2626 !important;
+        }
+        a.rec-title:active,
+        div[data-testid="stMarkdownContainer"] a.rec-title:active {
+            color: #991b1b !important;
+        }
         .rec-meta {
             font-size: 0.8rem;
             color: #6b7280;
             margin-bottom: 0.40rem;
-        }
-        .rec-meta-formula {
-            font-size: 0.76rem;
-            color: #64748b;
-            margin: 0.15rem 0 0.35rem 0;
-            line-height: 1.35;
-            font-variant-numeric: tabular-nums;
         }
         .rec-communities {
             font-size: 0.78rem;
@@ -135,32 +160,34 @@ def _recommendations_css() -> None:
         }
         .rec-rank {
             font-variant-numeric: tabular-nums;
-            color: #9ca3af;
+            color: #dc2626;
             font-size: 0.85rem;
+            font-weight: 600;
             margin-right: 0.75rem;
         }
-        /* Two-pane layout: filter vs. semantic / chat */
         .rec-pane-header {
             margin: -0.15rem 0 0.85rem 0;
             padding: 0.2rem 0 0.85rem 0.85rem;
-            border-bottom: 1px solid rgba(148, 163, 184, 0.4);
+            border-bottom: 1px solid rgba(220, 38, 38, 0.2);
         }
         .rec-pane-header-filter {
-            border-left: 3px solid #64748b;
+            border-left: 3px solid #dc2626;
         }
         .rec-pane-header-semantic {
-            border-left: 3px solid #6366f1;
-            border-bottom-color: rgba(129, 140, 248, 0.35);
+            border-left: 3px solid #7f1d1d;
+            border-bottom-color: rgba(127, 29, 29, 0.2);
         }
         .rec-eyebrow {
             font-size: 0.65rem;
             font-weight: 650;
             letter-spacing: 0.12em;
             text-transform: uppercase;
-            color: #94a3b8;
+            color: #dc2626;
             margin-bottom: 0.28rem;
         }
-        .rec-pane-header-semantic .rec-eyebrow { color: #818cf8; }
+        .rec-pane-header-semantic .rec-eyebrow {
+            color: #991b1b;
+        }
         .rec-pane-title {
             font-size: 1.02rem;
             font-weight: 600;
@@ -178,41 +205,46 @@ def _recommendations_css() -> None:
         .rec-results-divider {
             margin: 1rem 0 0.65rem 0;
             padding-top: 0.85rem;
-            border-top: 1px dashed rgba(100, 116, 139, 0.35);
+            border-top: 1px dashed rgba(220, 38, 38, 0.25);
         }
         .rec-results-label {
             font-size: 0.68rem;
             font-weight: 650;
             letter-spacing: 0.1em;
             text-transform: uppercase;
-            color: #818cf8;
+            color: #dc2626;
             margin-bottom: 0.35rem;
         }
         .rec-results-title {
             font-size: 0.92rem;
             font-weight: 600;
-            color: #312e81;
+            color: #991b1b;
             letter-spacing: -0.01em;
         }
         .rec-callout {
             font-size: 0.84rem;
-            color: #475569;
-            background: #f8fafc;
-            border: 1px solid #e2e8f0;
+            color: #57534e;
+            background: #fafaf9;
+            border: 1px solid #e7e5e4;
             border-radius: 10px;
             padding: 0.75rem 1rem;
             line-height: 1.5;
             margin: 0.35rem 0 0.5rem 0;
         }
         .rec-callout-warn {
-            background: #fffbeb;
-            border-color: #fde68a;
-            color: #92400e;
+            background: #fff1f2;
+            border-color: #fda4af;
+            color: #881337;
         }
         .rec-callout-info {
-            background: #eff6ff;
-            border-color: #bfdbfe;
-            color: #1e40af;
+            background: #fef2f2;
+            border-color: #fecaca;
+            color: #991b1b;
+        }
+        /* Assistant chat avatar: red-tinted instead of default yellow */
+        div[data-testid="chatAvatarIcon-assistant"] {
+            background-color: #fef2f2 !important;
+            color: #991b1b !important;
         }
         </style>
         """,
@@ -258,7 +290,7 @@ def _load_affinities() -> list[dict[str, Any]]:
 def _search_rag_hits(
     query_text: str,
     *,
-    strategy: str = "B",
+    strategy: str = RAG_FREETEXT_QUERY_STRATEGY,
     n_results: int = RAG_FUSION_N_RESULTS,
     top_k_per_variant: int = RAG_TOP_K_PER_VARIANT,
 ) -> list[dict[str, Any]]:
@@ -281,13 +313,22 @@ def _compute_recommendations() -> list[dict[str, Any]]:
     filter_settings: dict[str, Any] = st.session_state.get("filter_settings") or {}
     weights_raw: dict[str, float] = st.session_state.get("community_weights_raw") or {}
 
-    year_min = int(filter_settings.get("year_min", 1990))
-    year_max = int(filter_settings.get("year_max", 2030))
-    rating_min = float(filter_settings.get("rating_min", 0.0))
-    rating_max = float(filter_settings.get("rating_max", 10.0))
+    year_cap = max_release_year_from_corpus()
+    year_floor = min_release_year_from_corpus()
+    year_min, year_max = clamp_year_filter_bounds(
+        filter_settings.get("year_min", year_floor),
+        filter_settings.get("year_max", year_cap),
+        year_cap=year_cap,
+        year_floor=year_floor,
+    )
+    rating_min, rating_max = clamp_plattentests_rating_filter_range(
+        filter_settings.get("rating_min", DEFAULT_PLATTENTESTS_RATING_FILTER_MIN),
+        filter_settings.get("rating_max", DEFAULT_PLATTENTESTS_RATING_FILTER_MAX),
+    )
     score_min = float(filter_settings.get("score_min", 0.0))
     score_max = float(filter_settings.get("score_max", 1.0))
-    sort_mode = str(filter_settings.get("sort_mode", "Deterministisch"))
+    sm_raw = str(filter_settings.get("sort_mode", _SORT_MODE_FIXED))
+    sort_mode = _SORT_MODE_MIGRATION.get(sm_raw, sm_raw)
     serendipity = float(filter_settings.get("serendipity", 0.0))
     crossover_w = float(
         filter_settings.get(
@@ -496,7 +537,7 @@ def _compute_recommendations() -> list[dict[str, Any]]:
     # Immer zuerst nach echtem Gesamtscore; Serendipity mischt die Reihenfolge
     # (Spearman-Rangkorrelation vor/nachher grob ~ 1 - s).
     candidates.sort(key=lambda x: float(x["overall_score"]), reverse=True)
-    if sort_mode == "Serendipity" and serendipity > 0.0:
+    if sort_mode == _SORT_MODE_RANDOM and serendipity > 0.0:
         # Kein fester Seed: bei jedem Neuaufbau der Liste frische Zufallswerte.
         rng = random.Random()
         n = len(candidates)
@@ -514,6 +555,59 @@ def _compute_recommendations() -> list[dict[str, Any]]:
     return candidates
 
 
+_SORT_MODE_FIXED = "Feste Reihenfolge"
+_SORT_MODE_RANDOM = "Mit Zufall"
+
+_SORT_MODE_MIGRATION: dict[str, str] = {
+    "Deterministisch": _SORT_MODE_FIXED,
+    "Serendipity": _SORT_MODE_RANDOM,
+}
+
+
+def _render_sort_settings_and_persist() -> None:
+    """Ranglisten-Modus und Zufallsanteil; merged in ``filter_settings``."""
+    fs: dict[str, Any] = dict(st.session_state.get("filter_settings") or {})
+    with st.container(border=True):
+        st.markdown(
+            '<p class="rec-sort-section-label">Sortierung und Zufall</p>',
+            unsafe_allow_html=True,
+        )
+        col_sort, col_ser = st.columns(2)
+        with col_sort:
+            sm_raw = str(fs.get("sort_mode", _SORT_MODE_FIXED))
+            sm_def = _SORT_MODE_MIGRATION.get(sm_raw, sm_raw)
+            sort_mode = st.selectbox(
+                "Reihenfolge",
+                options=[_SORT_MODE_FIXED, _SORT_MODE_RANDOM],
+                index=0 if sm_def == _SORT_MODE_FIXED else 1,
+                help=(
+                    "Feste Reihenfolge: Alben werden strikt nach "
+                    "Score sortiert. Mit Zufall: Die Liste wird etwas "
+                    "durchgemischt, damit du auch Alben entdeckst, "
+                    "die sonst weiter unten stehen."
+                ),
+            )
+        with col_ser:
+            ser_def = float(fs.get("serendipity", 0.0))
+            serendipity = st.slider(
+                "Zufallsanteil (0 = stabil, 1 = stark gemischt)",
+                min_value=0.0,
+                max_value=1.0,
+                value=ser_def,
+                step=0.1,
+                disabled=(sort_mode != _SORT_MODE_RANDOM),
+                help=(
+                    "Bestimmt, wie stark die Liste durchgemischt wird. "
+                    "0 bedeutet kaum Veränderung, 1 mischt die "
+                    "Reihenfolge fast komplett zufällig durch."
+                ),
+            )
+        fs["sort_mode"] = sort_mode
+        fs["serendipity"] = serendipity
+        fs["rag_query_strategy"] = RAG_FREETEXT_QUERY_STRATEGY
+        st.session_state["filter_settings"] = fs
+
+
 def main() -> None:
     st.set_page_config(
         page_title="Music Review — Empfehlungen",
@@ -529,149 +623,31 @@ def main() -> None:
         unsafe_allow_html=True,
     )
     st.markdown(
-        '<p class="rec-page-desc">Basierend auf deinen gewählten Communities, '
+        '<p class="rec-page-desc">Basierend auf deinen gewählten Stil-Schwerpunkten, '
         "Filtereinstellungen und (optional) deiner Stimmungsbeschreibung.</p>",
         unsafe_allow_html=True,
     )
 
+    _render_sort_settings_and_persist()
     recs = _compute_recommendations()
 
     if not recs:
-        st.warning(
+        st.markdown(
+            '<div class="rec-callout rec-callout-warn">'
             "Es konnten keine passenden Alben auf Basis der aktuellen Auswahl "
             "und Filter gefunden werden. Du kannst die Filter zurücknehmen oder "
-            "andere Communities wählen.",
+            "andere Stil-Schwerpunkte wählen."
+            "</div>",
+            unsafe_allow_html=True,
         )
         if st.button("Zurück zu den Filtern"):
             st.switch_page("pages/5_Filter_Flow.py")
         return
 
-    # Kurze, nachvollziehbare Erklärung der aktuellen Score-Berechnung
-    selected_comms = get_selected_communities()
-    filter_settings: dict[str, Any] = st.session_state.get("filter_settings") or {}
-    weights_raw: dict[str, float] = st.session_state.get("community_weights_raw") or {}
-
-    year_min = int(filter_settings.get("year_min", 1990))
-    year_max = int(filter_settings.get("year_max", 2030))
-    rating_min = float(filter_settings.get("rating_min", 0.0))
-    rating_max = float(filter_settings.get("rating_max", 10.0))
-    score_min = float(filter_settings.get("score_min", 0.0))
-    score_max = float(filter_settings.get("score_max", 1.0))
-    sort_mode = str(filter_settings.get("sort_mode", "Deterministisch"))
-    serendipity = float(filter_settings.get("serendipity", 0.0))
-    crossover_ui = float(
-        filter_settings.get(
-            "community_spectrum_crossover",
-            RECOMMENDATION_DEFAULT_COMMUNITY_CROSSOVER,
-        )
-    )
-    fs_for_weights = st.session_state.get("filter_settings") or {}
-    wa = fs_for_weights.get("overall_weight_alpha")
-    wb = fs_for_weights.get("overall_weight_beta")
-    wc = fs_for_weights.get("overall_weight_gamma")
-    if wa is not None and wb is not None and wc is not None:
-        oa, ob, og = normalize_overall_weights(float(wa), float(wb), float(wc))
-    else:
-        oa, ob, og = get_recommendation_overall_weights()
-
-    with st.expander("Wie werden die Scores berechnet?", expanded=True):
-        st.markdown(
-            "- **`S_a` (Community-Affinität)**:\n"
-            "  `S_a = Summe (Gewicht_c * Affinitaet_c,Album)` ueber gewählte "
-            "Communities\n"
-            "  (Affinitäten aus `album_community_affinities.jsonl`, `res_10`).\n"
-            "- **`rating_norm`**: Plattentests-Rating / 10 (0 bis 1). "
-            f"Ohne Rating: **{RECOMMENDATION_RATING_DEFAULT_WHEN_MISSING:.0f}/10** "
-            "angenommen.\n"
-            "- **Reinheit** `purity_raw`: Anteil von `S_a`, der auf die "
-            "**eine** stärkste gewählte Community entfällt (hoch = blütenrein).\n"
-            "- **Breite** `breadth_raw`: **1 - Gini** ueber positionsgewichtete "
-            "Referenzmasse je **gewaehlter** Community (wie bei Affinitaets-Pipeline: "
-            f"`position_weight`, `w_min={REFERENCE_POSITION_W_MIN}`). "
-            "Referenzen ausserhalb der Auswahl zaehlen nicht. Gleichverteilung der "
-            "Masse -> `breadth_raw` nahe 1; eine Community dominiert -> nahe 0.\n"
-            f"- **Regler lambda (aktuell {crossover_ui:.2f})**: `purity_norm` ist "
-            "min-max ueber die Trefferliste. `breadth_norm` ist **Perzentil-Rang** "
-            "nach `breadth_raw`: Album mit **geringster** Breite in der Liste -> 0, "
-            "**groesster** Breite -> 1. Dann "
-            "`community_spectrum_norm = (1-lambda)*purity_norm + lambda*breadth_norm`. "
-            "**lambda=0** bevorzugt **bluetenreine** Alben; **lambda=1** bevorzugt "
-            "**Cross-Over** (relativ zur aktuellen Liste).\n"
-            f"- **Matching-Kopplung (probeweise)**: Der Spektrum-Term wird mit "
-            f"`g(S_a) = S_a / (S_a + k)` multipliziert, aktuell `k = "
-            f"{RECOMMENDATION_SPECTRUM_MATCHING_GATE_HALF_SATURATION:g}` "
-            f"(bei `S_a = k` ist `g = 0.5`). "
-            "`effektives_Spektrum = community_spectrum_norm * g(S_a)`. "
-            "`k <= 0` in der Config schaltet die Kopplung aus (`g = 1`).\n"
-            "- **Gesamtscore** (alpha, beta, gamma aus den Filtern, vorher auf Summe 1 "
-            "normiert):\n"
-            f"  `overall = {oa:.2f}*S_a + {ob:.2f}*rating_norm + "
-            f"{og:.2f}*effektives_Spektrum`\n"
-            "  **gamma** (normiert) steuert dabei den Anteil des "
-            "Community-Spektrums vs. S_a und Rating.\n"
-            "- **Sortierung**: absteigend nach `overall`. **Serendipity** (Slider "
-            "``s``): zuerst dieselbe Reihenfolge, dann wird mit "
-            "``(1-s) * Rang_norm + s * Zufall`` neu sortiert (aufsteigend). "
-            "``s=0`` unverändert; ``s=1`` fast vollständig zufällige Permutation; "
-            "dazwischen ist die **Spearman-Korrelation** der Plätze vor/nachher "
-            "in etwa **1 - s** (intuitiv: Rest bleibt am Ranking haengen).\n",
-        )
-
-        if selected_comms:
-            # Normierte Gewichte nur zur Anzeige.
-            # Score-Berechnung bleibt bei Roh-Gewichten.
-            comms_disp = load_communities_res_10()
-            genre_disp = load_genre_labels_res_10()
-            comm_by_id_disp: dict[str, dict[str, Any]] = {
-                str(c.get("id")): c for c in comms_disp if c.get("id")
-            }
-            total_w = sum(float(weights_raw.get(cid, 1.0)) for cid in selected_comms)
-            if total_w <= 0:
-                n = len(selected_comms)
-                norm = {cid: 1.0 / n for cid in selected_comms}
-            else:
-                norm = {
-                    cid: float(weights_raw.get(cid, 1.0)) / total_w
-                    for cid in selected_comms
-                }
-
-            weights_lines = []
-            for cid in sorted(selected_comms):
-                w_raw = float(weights_raw.get(cid, 1.0))
-                w_norm = norm[cid]
-                c_disp = comm_by_id_disp.get(cid)
-                name = community_display_label(
-                    cid,
-                    genre_disp,
-                    c_disp if isinstance(c_disp, dict) else None,
-                )
-                weights_lines.append(
-                    f"- **{name}**: Roh-Gewicht **{w_raw:.2f}**, "
-                    f"normiert **{w_norm:.3f}**",
-                )
-            st.markdown("**Aktuelle Gewichte (normiert für Erklärung):**")
-            st.markdown("\n".join(weights_lines))
-        else:
-            st.markdown(
-                "**Aktuelle Gewichte:** Noch keine Communities gewählt "
-                "(Score-Berechnung deaktiviert).",
-            )
-
-        ph = RECOMMENDATION_RATING_DEFAULT_WHEN_MISSING
-        st.markdown(
-            "**Zusätzliche Filter, bevor ein Album angezeigt wird:**\n"
-            f"- Veröffentlichungsjahr: **{year_min}-{year_max}**\n"
-            f"- Rating (effektiv; fehlend = **{ph:.0f}/10**): "
-            f"**{rating_min:.1f}-{rating_max:.1f}**\n"
-            f"- Score-Range (`S_a`): **{score_min:.2f}-{score_max:.2f}**\n"
-            f"- Bluetenrein <-> Cross-Over (lambda): **{crossover_ui:.2f}**\n"
-            f"- Gesamtscore-Gewichte (normiert): alpha={oa:.3f}, beta={ob:.3f}, "
-            f"gamma={og:.3f}\n"
-            f"- Sortierung: **{sort_mode}**"
-            + (f" (Serendipity={serendipity})" if sort_mode == "Serendipity" else ""),
-        )
-
     st.markdown(f"**{len(recs)} Alben entsprechen aktuell deinen Kriterien.**")
+
+    selected_comms = get_selected_communities()
+    weights_raw: dict[str, float] = st.session_state.get("community_weights_raw") or {}
 
     col_left, col_right = st.columns([2, 1], gap="large")
 
@@ -681,10 +657,10 @@ def main() -> None:
         st.markdown(
             '<div class="rec-pane-header rec-pane-header-semantic">'
             '<div class="rec-eyebrow">Semantische Suche</div>'
-            '<div class="rec-pane-title">Feintuning im Dialog</div>'
+            '<div class="rec-pane-title">Finetuning im Dialog</div>'
             '<div class="rec-pane-sub">Beschreibe Stimmung, Klang oder '
             "Inhalte. Unten siehst du die Alben, die semantisch am besten "
-            "passen - unabhaengig von der linken Rangliste.</div>"
+            "passen - unabhängig von der linken Rangliste.</div>"
             "</div>",
             unsafe_allow_html=True,
         )
@@ -744,7 +720,7 @@ def main() -> None:
         free_text = (st.session_state.get("free_text_query") or "").strip()
 
         rag_max_distance_ui = st.slider(
-            "Max. Distanz (Freitext-Ähnlichkeit, niedriger = ähnlicher)",
+            "Ähnlichkeit (niedriger = passender)",
             min_value=0.0,
             max_value=2.0,
             value=1.0,
@@ -759,18 +735,10 @@ def main() -> None:
     max_distance = float(rag_max_distance_ui) if free_text else None
     rag_hits_by_id: dict[int, dict[str, Any]] = {}
     rag_allowed_ids: set[int] = set()
-    rag_strategy = str(
-        (st.session_state.get("filter_settings") or {}).get("rag_query_strategy", "B"),
-    ).upper()
-    if rag_strategy not in {"A", "B", "C"}:
-        rag_strategy = "B"
 
     if free_text:
         try:
-            rag_hits = _search_rag_hits(
-                free_text,
-                strategy=rag_strategy,
-            )
+            rag_hits = _search_rag_hits(free_text)
         except RuntimeError as e:
             if "OPENAI_API_KEY" in str(e):
                 st.error(
@@ -812,126 +780,74 @@ def main() -> None:
                 if float(dist) <= float(max_distance):
                     rag_allowed_ids.add(rid)
 
-    # Kachel-Darstellung (Filtertreffer; ggf. mit Freitext-Hervorhebung)
     def _render_filter_cards(
         rec_list: list[dict[str, Any]],
         *,
         rag_match: set[int],
         rank_start: int = 1,
     ) -> None:
-        num_cols = 1
-        cols = st.columns(num_cols)
         for idx, rec in enumerate(rec_list):
             rank = rank_start + idx
-            col = cols[idx % num_cols]
-            with col:
-                artist = rec.get("artist") or ""
-                album = rec.get("album") or ""
-                url = rec.get("url") or ""
-                rating = rec.get("rating")
-                year = rec.get("year")
-                labels = rec.get("labels") or ""
-                score = float(rec.get("score") or 0.0)
-                overall = float(rec.get("overall_score") or 0.0)
-                spec_raw = float(rec.get("community_spectrum_norm") or 0.0)
-                spec_eff = float(
-                    rec.get("community_spectrum_effective", spec_raw) or 0.0,
+            artist = rec.get("artist") or ""
+            album = rec.get("album") or ""
+            url = rec.get("url") or ""
+            rating = rec.get("rating")
+            year = rec.get("year")
+            labels = rec.get("labels") or ""
+            overall = float(rec.get("overall_score") or 0.0)
+            top_comms = rec.get("top_communities") or []
+
+            is_rag = False
+            hit: dict[str, Any] | None = None
+            if rec.get("review_id") in rag_match:
+                hit = rag_hits_by_id.get(int(rec["review_id"]))
+                if hit and isinstance(hit.get("distance"), (int, float)):
+                    is_rag = True
+
+            snippet_source = rec.get("text") or ""
+            if is_rag and hit:
+                snippet_source = (
+                    hit.get("chunk_text") or hit.get("text") or snippet_source
                 )
-                spec_gate = float(rec.get("spectrum_matching_gate", 1.0) or 1.0)
-                top_comms = rec.get("top_communities") or []
-                rag_distance = None
-                hit: dict[str, Any] | None = None
-                if rec.get("review_id") in rag_match:
-                    hit = rag_hits_by_id.get(int(rec["review_id"]))
-                    if hit and isinstance(hit.get("distance"), (int, float)):
-                        rag_distance = float(hit["distance"])
+            snippet = snippet_source[:260] + (
+                "..." if len(snippet_source) > 260 else ""
+            )
 
-                is_rag = rag_distance is not None
+            title = f"{html.escape(str(artist))} -- {html.escape(str(album))}"
+            if url:
+                la = f'href="{html.escape(url)}" target="_blank" rel="noopener"'
+                title_html = f'<a {la} class="rec-title">{title}</a>'
+            else:
+                title_html = f'<span class="rec-title">{title}</span>'
+            rank_html = (
+                f'<span class="rec-rank" aria-label="Platz {rank}">{rank}.</span>'
+            )
 
-                snippet_source = rec.get("text") or ""
-                if is_rag and hit:
-                    snippet_source = (
-                        hit.get("chunk_text") or hit.get("text") or snippet_source
-                    )
-                snippet = snippet_source[:260] + (
-                    "…" if len(snippet_source) > 260 else ""
+            meta_parts = recommendation_card_meta_parts(
+                rec.get("release_date"),
+                year,
+                rating,
+                overall,
+                labels,
+                default_rating=RECOMMENDATION_RATING_DEFAULT_WHEN_MISSING,
+            )
+            meta_html = html.escape(" · ".join(meta_parts))
+
+            card_cls = "rec-card rec-card-rag" if is_rag else "rec-card"
+            card = f'<div class="{card_cls}">'
+            card += f'<div class="rec-header">{rank_html}{title_html}</div>'
+            if meta_html:
+                card += f'<div class="rec-meta">{meta_html}</div>'
+            if top_comms:
+                card += recommendation_card_community_tags_html(top_comms)
+            if snippet:
+                card += (
+                    '<div class="rec-excerpt">'
+                    f"{html.escape(snippet).replace(chr(10), '<br>')}"
+                    "</div>"
                 )
-
-                header = f"{html.escape(str(artist))} — {html.escape(str(album))}"
-                if url:
-                    link_attrs = (
-                        f'href="{html.escape(url)}" target="_blank" rel="noopener"'
-                    )
-                    header_html = f'<a {link_attrs} class="rec-title">{header}</a>'
-                else:
-                    header_html = f'<span class="rec-title">{header}</span>'
-                rank_html = (
-                    f'<span class="rec-rank" aria-label="Platz {rank}">{rank}.</span>'
-                )
-
-                release_str = format_release_date(rec.get("release_date"), year)
-                if rating is not None:
-                    rating_bit = f"Rating: {float(rating):g}/10"
-                else:
-                    rating_bit = (
-                        f"Rating: {RECOMMENDATION_RATING_DEFAULT_WHEN_MISSING:.0f}/10 "
-                        "(angenommen)"
-                    )
-                core = (
-                    f"{release_str + ' - ' if release_str else ''}"
-                    f"{labels + ' - ' if labels else ''}"
-                    f"{rating_bit} - Gesamt: {overall:.3f} "
-                    f"(Matching-Score: {score:.3f}, "
-                    f"Abdeckungsquantil eff.: {spec_eff:.3f} "
-                    f"[roh {spec_raw:.3f} * g(S_a)={spec_gate:.3f}])"
-                )
-                if is_rag and rag_distance is not None:
-                    core += f" - Freitext-Distanz: {rag_distance:.3f}"
-                meta_html = html.escape(core)
-
-                snippet_html = html.escape(snippet).replace("\n", "<br>")
-
-                card_class = "rec-card rec-card-rag" if is_rag else "rec-card"
-                card = f'<div class="{card_class}">'
-                card += f'<div class="rec-header">{rank_html}{header_html}</div>'
-                if meta_html:
-                    card += f'<div class="rec-meta">{meta_html}</div>'
-                if top_comms:
-                    card += '<div class="rec-communities">'
-                    for tc in top_comms:
-                        label = str(tc.get("label") or "")
-                        aff = float(tc.get("affinity") or 0.0)
-                        if aff >= 0.6:
-                            bg = "#0f766e"
-                            border = "#0f766e"
-                            fg = "#ecfeff"
-                        elif aff >= 0.3:
-                            bg = "#22c55e"
-                            border = "#16a34a"
-                            fg = "#ecfdf3"
-                        elif aff >= 0.1:
-                            bg = "#e0f2fe"
-                            border = "#93c5fd"
-                            fg = "#0f172a"
-                        else:
-                            bg = "#f3f4f6"
-                            border = "#e5e7eb"
-                            fg = "#4b5563"
-
-                        tag_text = f"{label}"
-                        card += (
-                            f'<span class="rec-comm-tag" '
-                            f'style="background-color:{bg};border-color:{border};'
-                            f'color:{fg};">'
-                            f"{html.escape(tag_text)}"
-                            "</span>"
-                        )
-                    card += "</div>"
-                if snippet_html:
-                    card += f'<div class="rec-excerpt">{snippet_html}</div>'
-                card += "</div>"
-
-                st.markdown(card, unsafe_allow_html=True)
+            card += "</div>"
+            st.markdown(card, unsafe_allow_html=True)
 
     filter_review_ids = {
         int(r["review_id"]) for r in recs if r.get("review_id") is not None
@@ -943,22 +859,34 @@ def main() -> None:
 
     chat_top_n = 10
 
-    # Left: full ranking list (filters / profile), visually separate panel.
     with col_left, st.container(border=True):
         st.markdown(
             '<div class="rec-pane-header rec-pane-header-filter">'
             '<div class="rec-eyebrow">Profil &amp; Filter</div>'
             '<div class="rec-pane-title">Rangliste</div>'
             '<div class="rec-pane-sub">Sortierte Empfehlungen aus deinen '
-            "Communities und Filtern. Passt auch der Freitext, wirken die "
-            "Karten etwas hervorgehoben.</div>"
+            "Stil-Schwerpunkten und Filtern. Passt auch der Freitext, wirken "
+            "die Karten etwas hervorgehoben.</div>"
             "</div>",
             unsafe_allow_html=True,
         )
+        visible = int(
+            st.session_state.get(KEY_VISIBLE_COUNT) or CARDS_PER_PAGE,
+        )
+        visible = max(CARDS_PER_PAGE, min(visible, len(recs)))
         _render_filter_cards(
-            recs,
+            recs[:visible],
             rag_match=intersection_ids,
         )
+        if visible < len(recs):
+            remaining = len(recs) - visible
+            batch = min(CARDS_PER_PAGE, remaining)
+            if st.button(
+                f"Mehr anzeigen ({batch} weitere von {remaining})",
+                key="rec_show_more",
+            ):
+                st.session_state[KEY_VISIBLE_COUNT] = visible + batch
+                st.rerun()
 
     # Right column: semantic hits below chat (same bordered panel).
     with results_placeholder.container():
@@ -973,12 +901,11 @@ def main() -> None:
         if not free_text or max_distance is None:
             st.markdown(
                 '<div class="rec-callout rec-callout-info">Schreib eine kurze '
-                "Beschreibung im Chat darueber - dann erscheinen hier die Alben, "
+                "Beschreibung im Chat darüber - dann erscheinen hier die Alben, "
                 "die inhaltlich am besten passen.</div>",
                 unsafe_allow_html=True,
             )
         else:
-            st.caption(f"Aktive Freitext-Variante: **{rag_strategy}**")
             if intersection_ids:
                 st.markdown(
                     '<div class="rec-pane-sub" style="margin:0 0 0.75rem 0;">'
@@ -1003,9 +930,9 @@ def main() -> None:
                 )
             else:
                 st.markdown(
-                    '<div class="rec-callout rec-callout-warn">Keine Ueberschneidung '
+                    '<div class="rec-callout rec-callout-warn">Keine Überschneidung '
                     "mit der linken Rangliste bei aktuellem Distanz-Limit. "
-                    "Darunter: die besten rein semantischen Treffer (ggf. ausserhalb "
+                    "Darunter: die besten rein semantischen Treffer (ggf. außerhalb "
                     "deiner Filter).</div>",
                     unsafe_allow_html=True,
                 )
@@ -1021,7 +948,7 @@ def main() -> None:
                 if not top_hits:
                     st.markdown(
                         '<div class="rec-callout">Kein Treffer innerhalb der '
-                        "gewaehlten Maximal-Distanz. Regler lockern oder Text "
+                        "gewählten Maximal-Distanz. Regler lockern oder Text "
                         "anpassen.</div>",
                         unsafe_allow_html=True,
                     )
@@ -1236,7 +1163,7 @@ def main() -> None:
         if st.button("Filter anpassen", key=KEY_FILTER_ADJUST_BUTTON):
             st.switch_page("pages/5_Filter_Flow.py")
     with col_start:
-        if st.button("Start new workflow", key=KEY_START_WORKFLOW_BUTTON):
+        if st.button("Von vorn beginnen", key=KEY_START_WORKFLOW_BUTTON):
             saved_slug = st.session_state.get(ACTIVE_PROFILE_SESSION_KEY)
             st.cache_data.clear()
             st.cache_resource.clear()

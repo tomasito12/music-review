@@ -152,7 +152,7 @@ def _render_stored_results() -> None:
     ]
     under = sum(1 for d in dists if d <= max_dist)
 
-    st.subheader("Ueberblick (letzte Suche)")
+    st.subheader("Überblick (letzte Suche)")
     m1, m2, m3, m4 = st.columns(4)
     m1.metric("Reviews nach Fusion", len(hits))
     m2.metric(f"Distanz <= {max_dist:.2f}", under)
@@ -194,13 +194,13 @@ def _render_stored_results() -> None:
         st.markdown(
             f"- **Gesamt in `reviews.jsonl`:** **{lc}** Rezensionen mit diesem "
             "Substring im Volltext.\n"
-            f"- **In den ersten {top_n_disp} Eintraegen der semantischen Liste:** "
+            f"- **In den ersten {top_n_disp} Einträgen der semantischen Liste:** "
             f"**{lit}** mit Substring im Volltext (Vergleich Embedding vs. Text)."
             if isinstance(lit, int)
             else (
                 f"- **Gesamt in `reviews.jsonl`:** **{lc}** Rezensionen.\n"
-                "- **Top-N-Vergleich:** Suche erneut mit Haekchen "
-                "'Volltext zaehlen' aktivieren."
+                "- **Top-N-Vergleich:** Suche erneut mit Häkchen "
+                "'Volltext zählen' aktivieren."
             )
         )
 
@@ -242,7 +242,7 @@ def _render_stored_results() -> None:
         st.caption(
             "**semantische_distanz:** L2-Abstand zwischen **einem** Embedding der "
             "Original-Query und allen gespeicherten Vektoren des Reviews (bei Chunks: "
-            "Minimum ueber Chunks). Benoetigt `OPENAI_API_KEY` und den gewaehlten "
+            "Minimum über Chunks). Benötigt `OPENAI_API_KEY` und den gewählten "
             "Chroma-Index. **distanz_fusion:** beste Distanz aus der Fusion-Liste "
             "(mehrere Query-Varianten) — kann von der ersten Spalte abweichen.",
         )
@@ -276,7 +276,7 @@ def _render_stored_results() -> None:
                         )
                 except RuntimeError as err:
                     if "OPENAI_API_KEY" in str(err):
-                        st.error("OPENAI_API_KEY fehlt fuer Embedding der Suchanfrage.")
+                        st.error("OPENAI_API_KEY fehlt für Embedding der Suchanfrage.")
                     else:
                         st.error(f"Distanzberechnung: {err}")
                     comp_dist = {}
@@ -342,29 +342,29 @@ def _render_stored_results() -> None:
 
 def main() -> None:
     st.set_page_config(
-        page_title="Music Review — Freitext-Qualitaet",
+        page_title="Music Review — Freitext-Qualität",
         page_icon=None,
         layout="wide",
     )
 
-    st.title("Freitext-Qualitaet / RAG-Diagnose")
+    st.title("Freitext-Qualität / RAG-Diagnose")
     st.markdown(
         """
 Diese Seite hilft zu verstehen, **warum** die semantische Suche auf der
-Empfehlungsseite oft **weniger Treffer** liefert, als du bei haeufigen
-Woertern im Volltext erwarten wuerdest.
+Empfehlungsseite oft **weniger Treffer** liefert, als du bei häufigen
+Wörtern im Volltext erwarten würdest.
 
 **Wichtig:**
 
-1. **Embeddings sind nicht Volltextsuche.** Aehnlichkeit ist Naehe im
+1. **Embeddings sind nicht Volltextsuche.** Ähnlichkeit ist Nähe im
    Embedding-Raum. Ein Wort kann oft vorkommen, aber **schlecht ranken**.
 2. **Nur Top-K aus der ganzen Datenbank.** Pro Query-Variante nur
    `top_k` Chroma-Treffer; nach Fusion maximal `n_results` Reviews.
-   Alben **ausserhalb** dieser Liste erscheinen nicht.
-3. **Empfehlungsseite zusaetzlich:** Schnittmenge mit gefilterten Alben
+   Alben **außerhalb** dieser Liste erscheinen nicht.
+3. **Empfehlungsseite zusätzlich:** Schnittmenge mit gefilterten Alben
    **und** Schwelle **Max. Distanz**.
 
-**„Chat zuruecksetzen“** leert nur den Freitext im Tab, nicht den Index.
+**„Chat zurücksetzen“** leert nur den Freitext im Tab, nicht den Index.
         """
     )
 
@@ -385,7 +385,7 @@ Woertern im Volltext erwarten wuerdest.
     with st.form(KEY_FORM):
         query = st.text_input(
             "Suchbegriff / Freitext",
-            placeholder="z. B. melancholisch, traurig, gluecklich",
+            placeholder="z. B. melancholisch, traurig, glücklich",
         )
         col_a, col_b, col_c = st.columns(3)
         with col_a:
@@ -415,17 +415,17 @@ Woertern im Volltext erwarten wuerdest.
         )
 
         filter_ids_raw = st.text_area(
-            "Optional: Review-IDs fuer Schnittmenge (Komma-getrennt)",
+            "Optional: Review-IDs für Schnittmenge (Komma-getrennt)",
             placeholder="z. B. 1234, 5678 — leer = keine Schnittmenge",
             height=68,
         )
 
         do_lexical = st.checkbox(
-            "Volltext zaehlen in reviews.jsonl (ein Durchlauf, kann dauern)",
+            "Volltext zählen in reviews.jsonl (ein Durchlauf, kann dauern)",
             value=False,
         )
 
-        submitted = st.form_submit_button("Suche ausfuehren", type="primary")
+        submitted = st.form_submit_button("Suche ausführen", type="primary")
 
     if submitted:
         q = (query or "").strip()
@@ -433,7 +433,7 @@ Woertern im Volltext erwarten wuerdest.
             st.warning("Bitte einen Suchbegriff eingeben.")
         else:
             try:
-                with st.spinner("Chroma-Abfrage laeuft ..."):
+                with st.spinner("Chroma-Abfrage läuft ..."):
                     hits = search_reviews_with_variants(
                         q,
                         strategy=strategy,
@@ -499,7 +499,7 @@ Woertern im Volltext erwarten wuerdest.
                 st.session_state.pop("freitext_debug_lexical_top_n", None)
 
                 if do_lexical:
-                    with st.spinner("Volltext zaehlen ..."):
+                    with st.spinner("Volltext zählen ..."):
                         lc = _lexical_count_corpus(q, max_lines=None)
                     st.session_state["freitext_debug_lexical_count"] = lc
                     if lc >= 0:

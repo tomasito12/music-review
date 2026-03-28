@@ -47,6 +47,10 @@ Music Review is a Python 3.12+ CLI-based data pipeline that scrapes album review
 | Streamlit dashboard | `hatch run dashboard` (browse reviews by artist/album) |
 | Install pre-commit hooks | `hatch run pre-commit install` |
 
+### Streamlit UI (German copy)
+
+User-visible German text in `pages/` and `streamlit_app.py` uses standard orthography (**ä, ö, ü**, **ß**), not ASCII substitutes like `ae`/`oe`/`ue` for those sounds. See `.cursor/rules/german-umlauts-frontend.mdc`.
+
 ### Gotchas
 
 - `musicbrainz_client.py` uses `requests` (via `requests.get`). This is now explicitly listed in `pyproject.toml` dependencies.

@@ -153,7 +153,7 @@ def _load_newest_reviews(n: int) -> list[Review]:
 
 @st.cache_data(ttl=300)
 def _load_all_reviews_for_breadth_norm() -> list[Review]:
-    """Gesamtes Corpus fuer globales Abdeckungs-Perzentil (breadth_norm)."""
+    """Gesamtes Corpus für globales Abdeckungs-Perzentil (breadth_norm)."""
     path = resolve_data_path("data/reviews.jsonl")
     if not path.is_file():
         return []
@@ -285,7 +285,7 @@ def _render_newest_chronological_card(
         card += _rec_top_communities_html(top_comms)
     else:
         card += (
-            '<div class="rec-meta">Keine Stil-Tags fuer dieses Album '
+            '<div class="rec-meta">Keine Stil-Tags für dieses Album '
             "(Zuordnungsdaten fehlen).</div>"
         )
     if snippet_html:
@@ -358,7 +358,7 @@ def _render_newest_scored_card(
         card += _rec_top_communities_html(top_comms)
     else:
         card += (
-            '<div class="rec-meta">Keine Stil-Tags fuer dieses Album '
+            '<div class="rec-meta">Keine Stil-Tags für dieses Album '
             "(Zuordnungsdaten fehlen).</div>"
         )
     if snippet_html:
@@ -384,7 +384,7 @@ def main() -> None:
         '<p class="nw-page-desc">Die zuletzt im lokalen Corpus vorhandenen Alben '
         "(nach interner Reihenfolge der Rezensionen; in der Regel "
         "entspricht das den zuletzt auf plattentests.de hinzugekommenen "
-        "Rezensionen). Die farbigen Tags zeigen die staerksten "
+        "Rezensionen). Die farbigen Tags zeigen die stärksten "
         "Stil-Zuordnungen (Genre-Label oder Schwerpunkt-Künstler, "
         "sofern vorhanden).</p>",
         unsafe_allow_html=True,
@@ -439,8 +439,8 @@ def main() -> None:
         )
     if not reviews:
         st.warning(
-            "Keine Reviews gefunden. Pfad pruefen: `data/reviews.jsonl` "
-            "(ggf. Scraping ausfuehren).",
+            "Keine Reviews gefunden. Pfad prüfen: `data/reviews.jsonl` "
+            "(ggf. Scraping ausführen).",
         )
         return
 

@@ -57,7 +57,7 @@ RECOMMENDATION_OVERALL_BETA: float = 0.25
 RECOMMENDATION_OVERALL_GAMMA: float = 0.25
 # Plattentests rating default on 0-10 scale when missing (scoring and rating filter).
 RECOMMENDATION_RATING_DEFAULT_WHEN_MISSING: float = 7.0
-# Filter slider default: 0 = blütenrein (purity), 1 = genre-übergreifend (breadth).
+# Stil-Präferenz: 0 = ein Stil, 0.5 = ausgewogen, 1 = breite Abdeckung (Finetuning).
 RECOMMENDATION_DEFAULT_COMMUNITY_CROSSOVER: float = 0.5
 # Probeweise: Community-Spektrum-Term wird mit g(S_a) moduliert, g(s)=s/(s+k).
 # Bei S_a == k ist g = 0.5. <= 0 schaltet die Kopplung aus (g = 1).

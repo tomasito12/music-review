@@ -1,3 +1,4 @@
 # Force light theme (disable dark mode as default)
 [theme]
 base = "light"
+primaryColor = "#dc2626"
