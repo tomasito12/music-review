@@ -5,6 +5,7 @@ from __future__ import annotations
 from datetime import date, datetime
 from pathlib import Path
 from types import SimpleNamespace
+from unittest.mock import patch
 
 from pages.page_helpers import (
     OVERALL_WEIGHT_TRADEOFF_RED_DARK,
@@ -34,6 +35,7 @@ from pages.page_helpers import (
     recommendation_flow_shell_css_rules,
     release_year_for_card_meta,
     review_raw_release_year,
+    search_rag_hits_for_dashboard,
     snap_spectrum_crossover,
     spectrum_crossover_option_label,
     spectrum_crossover_semantic_label,
@@ -604,3 +606,21 @@ class TestRecommendationCardCommunityTagsFilteredHighlight:
             filter_selected_community_ids={"c001"},
         )
         assert "rec-comm-tag--filtered" in html
+
+
+class TestSearchRagHitsForDashboard:
+    def test_delegates_to_search_reviews_with_variants(self) -> None:
+        """Semantic search helper forwards to the vector store with strategy B."""
+        fake_hits = [{"review_id": 7, "distance": 0.5}]
+        with patch(
+            "music_review.pipeline.retrieval.vector_store.search_reviews_with_variants",
+            return_value=fake_hits,
+        ) as mocked:
+            search_rag_hits_for_dashboard.clear()
+            out = search_rag_hits_for_dashboard("melodic metal")
+        assert out == fake_hits
+        mocked.assert_called_once()
+        kwargs = mocked.call_args.kwargs
+        assert kwargs["strategy"] == "B"
+        assert kwargs["n_results"] == 2500
+        assert kwargs["top_k_per_variant"] == 2500

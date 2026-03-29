@@ -212,7 +212,7 @@ def build_newest_batch_score_figure(scores: list[float]) -> go.Figure:
     fig.add_vline(
         x=mean_x,
         line=dict(color=_VLINE_COLOR, width=2, dash="dash"),
-        annotation_text="Mittel",
+        annotation_text="Mittelwert",
         annotation_position="top",
         annotation=dict(
             font=dict(size=11, color=_VLINE_COLOR),

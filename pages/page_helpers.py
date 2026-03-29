@@ -161,6 +161,12 @@ YEAR_SLIDER_FALLBACK_FLOOR = 1990
 # Session-State-Schlüssel für das Plattenlabel-Multiselect auf der Filterseite.
 FILTER_PLATTENLABEL_MULTISELECT_KEY = "filter_plattenlabel_multiselect"
 
+# Semantische Freitext-Suche (Expander im Filter-Flow; Treffer auf Empfehlungen).
+SEMANTIC_CHAT_RESET_BUTTON_KEY = "rec_chat_reset_button"
+SEMANTIC_CHAT_INPUT_KEY = "rec_chat_input"
+SEMANTIC_RAG_MAX_DISTANCE_KEY = "rec_rag_max_distance"
+SEMANTIC_CHAT_MESSAGES_KEY = "rec_chat_messages"
+
 # Sammel-Option in der Filter-UI für seltene Plattenlabels.
 PLATTENLABEL_SONSTIGE_UI = "Sonstige"
 
@@ -732,6 +738,9 @@ _REC_FLOW_SHELL_CHAT_AVATAR_CSS = """
         }
 """
 
+# Assistant-Avatar im Finetuning-Expander „Semantische Suche“ (Filter-Flow).
+SEMANTIC_SEARCH_CHAT_AVATAR_CSS = _REC_FLOW_SHELL_CHAT_AVATAR_CSS.strip()
+
 # Shared by Empfehlungen (6) and Neueste Rezensionen (8); keep in sync visually.
 _RECOMMENDATION_FLOW_SHELL_CSS_BASE = """
         .rec-hero {
@@ -966,6 +975,30 @@ def normalize_filter_expander_vspace_gap(gap: str) -> str:
     return gap if gap in _FILTER_EXPANDER_VSPACE_GAPS else "md"
 
 
+@st.cache_data(ttl=3600)
+def search_rag_hits_for_dashboard(
+    query_text: str,
+    *,
+    strategy: str = "B",
+    n_results: int = 2500,
+    top_k_per_variant: int = 2500,
+) -> list[dict[str, Any]]:
+    """Run Chroma semantic search for the dashboard free-text field."""
+    from music_review.pipeline.retrieval.vector_store import (
+        CHUNK_COLLECTION_NAME,
+        search_reviews_with_variants,
+    )
+
+    return search_reviews_with_variants(
+        query_text,
+        strategy=strategy,
+        n_results=n_results,
+        top_k_per_variant=top_k_per_variant,
+        where=None,
+        collection_name=CHUNK_COLLECTION_NAME,
+    )
+
+
 def get_selected_communities() -> set[str]:
     """Return the set of selected community IDs.
 
@@ -1063,6 +1096,8 @@ def _reset_filters() -> None:
     st.session_state["filter_settings"] = {}
     st.session_state["community_weights_raw"] = {}
     st.session_state["free_text_query"] = ""
+    st.session_state.pop(SEMANTIC_CHAT_MESSAGES_KEY, None)
+    st.session_state.pop(SEMANTIC_RAG_MAX_DISTANCE_KEY, None)
     st.session_state.pop(FILTER_PLATTENLABEL_MULTISELECT_KEY, None)
 
 
