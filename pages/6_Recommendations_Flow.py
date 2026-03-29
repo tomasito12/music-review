@@ -6,6 +6,7 @@ from pathlib import Path
 from typing import Any
 
 import streamlit as st
+import streamlit.components.v1 as components
 from pages.page_helpers import (
     DEFAULT_PLATTENTESTS_RATING_FILTER_MAX,
     DEFAULT_PLATTENTESTS_RATING_FILTER_MIN,
@@ -45,6 +46,16 @@ from music_review.dashboard.recommendation_scoring import (
     rating_to_unit_interval,
     serendipity_rank_sort_key,
 )
+from music_review.dashboard.recommendations_flow_pagination import (
+    DEFAULT_RECOMMENDATIONS_PAGE_SIZE,
+    RECOMMENDATIONS_PAGE_SIZE_CHOICES,
+    clamp_recommendation_page,
+    count_albums_on_next_page,
+    parse_page_size_choice,
+    recommendation_page_slice_bounds,
+    recommendation_total_pages,
+    streamlit_parent_scroll_to_anchor_html,
+)
 from music_review.dashboard.user_profile_store import ACTIVE_PROFILE_SESSION_KEY
 from music_review.io.jsonl import iter_jsonl_objects, load_jsonl_as_map
 from music_review.io.reviews_jsonl import load_reviews_from_jsonl
@@ -52,16 +63,50 @@ from music_review.pipeline.retrieval.reference_graph import (
     reference_community_position_masses,
 )
 
+REC_PAGE_SIZE_SELECT_OPTIONS: tuple[str, ...] = (
+    *(str(n) for n in RECOMMENDATIONS_PAGE_SIZE_CHOICES),
+    "Alle",
+)
+REC_PAGE_SIZE_DEFAULT_INDEX = RECOMMENDATIONS_PAGE_SIZE_CHOICES.index(
+    DEFAULT_RECOMMENDATIONS_PAGE_SIZE
+)
+
 # Streamlit widget keys: keep centralized to avoid accidental duplicates.
 KEY_FILTER_ADJUST_BUTTON = "rec_filter_adjust_button"
 KEY_START_WORKFLOW_BUTTON = "rec_start_workflow_button"
-KEY_VISIBLE_COUNT = "rec_visible_count"
+KEY_PAGE_SIZE_PREV = "rec_page_size_prev"
+KEY_REC_PAGE = "rec_results_page_1based"
+KEY_SCROLL_REC_LIST = "rec_scroll_to_list_after_page_change"
+LEGACY_KEY_VISIBLE_COUNT = "rec_visible_count"
 
-CARDS_PER_PAGE = 25
+_REC_LIST_SCROLL_ANCHOR_ID = "music-review-rec-list-top"
+
+
+_REC_PAGE_SIZE_HEADING_CSS = """
+        .rec-sort-section-label.rec-page-size-heading {
+            margin-top: 1.35rem;
+        }
+        .rec-list-scroll-anchor {
+            scroll-margin-top: 1rem;
+        }
+"""
 
 
 def _recommendations_css() -> None:
-    inject_recommendation_flow_shell_css(include_chat_avatar_style=False)
+    inject_recommendation_flow_shell_css(
+        include_chat_avatar_style=False,
+        extra_rules=_REC_PAGE_SIZE_HEADING_CSS,
+    )
+
+
+def _inject_scroll_to_recommendation_list() -> None:
+    """Nach Seitenwechsel zum Anfang der Ergebnisliste scrollen."""
+    components.html(
+        streamlit_parent_scroll_to_anchor_html(
+            anchor_element_id=_REC_LIST_SCROLL_ANCHOR_ID,
+        ),
+        height=0,
+    )
 
 
 @st.cache_data(ttl=3600)
@@ -360,48 +405,50 @@ _SORT_MODE_MIGRATION: dict[str, str] = {
 }
 
 
-def _render_sort_settings_and_persist() -> None:
-    """Ranglisten-Modus und Zufallsanteil; merged in ``filter_settings``."""
+def _render_sort_settings_widgets_and_persist() -> None:
+    """Ranglisten-Modus und Zufallsanteil; schreibt in ``filter_settings``.
+
+    Erwartet einen umgebenden Container (z. B. ``st.container(border=True)``).
+    """
     fs: dict[str, Any] = dict(st.session_state.get("filter_settings") or {})
-    with st.container(border=True):
-        st.markdown(
-            '<p class="rec-sort-section-label">Sortierung und Zufall</p>',
-            unsafe_allow_html=True,
+    st.markdown(
+        '<p class="rec-sort-section-label">Sortierung und Zufall</p>',
+        unsafe_allow_html=True,
+    )
+    col_sort, col_ser = st.columns(2)
+    with col_sort:
+        sm_raw = str(fs.get("sort_mode", _SORT_MODE_FIXED))
+        sm_def = _SORT_MODE_MIGRATION.get(sm_raw, sm_raw)
+        sort_mode = st.selectbox(
+            "Reihenfolge",
+            options=[_SORT_MODE_FIXED, _SORT_MODE_RANDOM],
+            index=0 if sm_def == _SORT_MODE_FIXED else 1,
+            help=(
+                "Feste Reihenfolge: Alben werden strikt nach "
+                "Score sortiert. Mit Zufall: Die Liste wird etwas "
+                "durchgemischt, damit du auch Alben entdeckst, "
+                "die sonst weiter unten stehen."
+            ),
         )
-        col_sort, col_ser = st.columns(2)
-        with col_sort:
-            sm_raw = str(fs.get("sort_mode", _SORT_MODE_FIXED))
-            sm_def = _SORT_MODE_MIGRATION.get(sm_raw, sm_raw)
-            sort_mode = st.selectbox(
-                "Reihenfolge",
-                options=[_SORT_MODE_FIXED, _SORT_MODE_RANDOM],
-                index=0 if sm_def == _SORT_MODE_FIXED else 1,
-                help=(
-                    "Feste Reihenfolge: Alben werden strikt nach "
-                    "Score sortiert. Mit Zufall: Die Liste wird etwas "
-                    "durchgemischt, damit du auch Alben entdeckst, "
-                    "die sonst weiter unten stehen."
-                ),
-            )
-        with col_ser:
-            ser_def = float(fs.get("serendipity", 0.0))
-            serendipity = st.slider(
-                "Zufallsanteil (0 = stabil, 1 = stark gemischt)",
-                min_value=0.0,
-                max_value=1.0,
-                value=ser_def,
-                step=0.1,
-                disabled=(sort_mode != _SORT_MODE_RANDOM),
-                help=(
-                    "Bestimmt, wie stark die Liste durchgemischt wird. "
-                    "0 bedeutet kaum Veränderung, 1 mischt die "
-                    "Reihenfolge fast komplett zufällig durch."
-                ),
-            )
-        fs["sort_mode"] = sort_mode
-        fs["serendipity"] = serendipity
-        fs["rag_query_strategy"] = "B"
-        st.session_state["filter_settings"] = fs
+    with col_ser:
+        ser_def = float(fs.get("serendipity", 0.0))
+        serendipity = st.slider(
+            "Zufallsanteil (0 = stabil, 1 = stark gemischt)",
+            min_value=0.0,
+            max_value=1.0,
+            value=ser_def,
+            step=0.1,
+            disabled=(sort_mode != _SORT_MODE_RANDOM),
+            help=(
+                "Bestimmt, wie stark die Liste durchgemischt wird. "
+                "0 bedeutet kaum Veränderung, 1 mischt die "
+                "Reihenfolge fast komplett zufällig durch."
+            ),
+        )
+    fs["sort_mode"] = sort_mode
+    fs["serendipity"] = serendipity
+    fs["rag_query_strategy"] = "B"
+    st.session_state["filter_settings"] = fs
 
 
 def main() -> None:
@@ -424,23 +471,55 @@ def main() -> None:
         unsafe_allow_html=True,
     )
 
-    _render_sort_settings_and_persist()
-    recs = _compute_recommendations()
+    with st.container(border=True):
+        _render_sort_settings_widgets_and_persist()
+        recs = _compute_recommendations()
 
-    if not recs:
+        if not recs:
+            st.markdown(
+                '<div class="rec-callout rec-callout-warn">'
+                "Es konnten keine passenden Alben auf Basis der aktuellen Auswahl "
+                "und Filter gefunden werden. Du kannst die Filter zurücknehmen oder "
+                "andere Stil-Schwerpunkte wählen."
+                "</div>",
+                unsafe_allow_html=True,
+            )
+            if st.button("Zurück zu den Filtern"):
+                st.switch_page("pages/5_Filter_Flow.py")
+            return
+
         st.markdown(
-            '<div class="rec-callout rec-callout-warn">'
-            "Es konnten keine passenden Alben auf Basis der aktuellen Auswahl "
-            "und Filter gefunden werden. Du kannst die Filter zurücknehmen oder "
-            "andere Stil-Schwerpunkte wählen."
-            "</div>",
+            '<p class="rec-sort-section-label rec-page-size-heading">'
+            "Anzahl der gleichzeitig angezeigten Alben</p>",
             unsafe_allow_html=True,
         )
-        if st.button("Zurück zu den Filtern"):
-            st.switch_page("pages/5_Filter_Flow.py")
-        return
+        size_label = st.selectbox(
+            "Alben pro Ladung",
+            options=REC_PAGE_SIZE_SELECT_OPTIONS,
+            index=REC_PAGE_SIZE_DEFAULT_INDEX,
+            key="rec_page_size_select",
+            label_visibility="collapsed",
+        )
+        st.markdown(f"{len(recs)} Alben entsprechen aktuell deinen Kriterien.")
+    page_size = parse_page_size_choice(size_label)
+    prev_ps: int | None = st.session_state.get(KEY_PAGE_SIZE_PREV)
+    if prev_ps != page_size:
+        st.session_state.pop(KEY_REC_PAGE, None)
+        st.session_state.pop(LEGACY_KEY_VISIBLE_COUNT, None)
+    st.session_state[KEY_PAGE_SIZE_PREV] = page_size
 
-    st.markdown(f"**{len(recs)} Alben entsprechen aktuell deinen Kriterien.**")
+    if (
+        KEY_REC_PAGE not in st.session_state
+        and LEGACY_KEY_VISIBLE_COUNT in st.session_state
+        and page_size is not None
+        and page_size > 0
+    ):
+        legacy_raw = st.session_state.get(LEGACY_KEY_VISIBLE_COUNT)
+        if isinstance(legacy_raw, (int, float)):
+            legacy_vis = int(legacy_raw)
+            migrated = max(1, (legacy_vis + page_size - 1) // page_size)
+            st.session_state[KEY_REC_PAGE] = migrated
+        st.session_state.pop(LEGACY_KEY_VISIBLE_COUNT, None)
 
     selected_comms = get_selected_communities()
 
@@ -504,22 +583,58 @@ def main() -> None:
             st.markdown(card, unsafe_allow_html=True)
 
     # ------------------------------------------------------------------
-    # Rangliste (filter-based ranking)
+    # Rangliste (filter-based ranking), seitenweise
     # ------------------------------------------------------------------
-    visible = int(
-        st.session_state.get(KEY_VISIBLE_COUNT) or CARDS_PER_PAGE,
-    )
-    visible = max(CARDS_PER_PAGE, min(visible, len(recs)))
-    _render_filter_cards(recs[:visible])
-    if visible < len(recs):
-        remaining = len(recs) - visible
-        batch = min(CARDS_PER_PAGE, remaining)
-        if st.button(
-            f"Mehr anzeigen ({batch} weitere von {remaining})",
-            key="rec_show_more",
-        ):
-            st.session_state[KEY_VISIBLE_COUNT] = visible + batch
-            st.rerun()
+    if page_size is None:
+        _render_filter_cards(recs)
+    else:
+        total_pages = recommendation_total_pages(total=len(recs), page_size=page_size)
+        raw_page = st.session_state.get(KEY_REC_PAGE)
+        page_one = int(raw_page) if raw_page is not None else 1
+        page_one = clamp_recommendation_page(page_one, total_pages)
+        st.session_state[KEY_REC_PAGE] = page_one
+        start_idx, end_idx = recommendation_page_slice_bounds(
+            page_one_based=page_one,
+            page_size=page_size,
+            total=len(recs),
+        )
+        st.markdown(
+            f'<div id="{html.escape(_REC_LIST_SCROLL_ANCHOR_ID)}" '
+            'class="rec-list-scroll-anchor"></div>',
+            unsafe_allow_html=True,
+        )
+        _render_filter_cards(
+            recs[start_idx:end_idx],
+            rank_start=start_idx + 1,
+        )
+        if st.session_state.pop(KEY_SCROLL_REC_LIST, False):
+            _inject_scroll_to_recommendation_list()
+        st.caption(f"Seite {page_one} von {total_pages}")
+        prev_col, next_col = st.columns(2)
+        with prev_col:
+            if page_one > 1 and st.button(
+                "Vorherige Seite",
+                key="rec_page_prev",
+            ):
+                st.session_state[KEY_REC_PAGE] = page_one - 1
+                st.session_state[KEY_SCROLL_REC_LIST] = True
+                st.rerun()
+        with next_col:
+            if page_one < total_pages:
+                n_next = count_albums_on_next_page(
+                    current_page_one_based=page_one,
+                    page_size=page_size,
+                    total=len(recs),
+                )
+                next_page_num = page_one + 1
+                if st.button(
+                    "Zeige nächste "
+                    f"{n_next} Alben (Seite {next_page_num} von {total_pages})",
+                    key="rec_page_next",
+                ):
+                    st.session_state[KEY_REC_PAGE] = next_page_num
+                    st.session_state[KEY_SCROLL_REC_LIST] = True
+                    st.rerun()
 
     st.markdown("---")
     col_back, col_start = st.columns([1, 1])
