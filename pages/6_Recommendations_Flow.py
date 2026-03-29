@@ -749,7 +749,10 @@ def main() -> None:
             if meta_html:
                 card += f'<div class="rec-meta">{meta_html}</div>'
             if top_comms:
-                card += recommendation_card_community_tags_html(top_comms)
+                card += recommendation_card_community_tags_html(
+                    top_comms,
+                    filter_selected_community_ids=selected_comms,
+                )
             if snippet:
                 card += (
                     '<div class="rec-excerpt">'

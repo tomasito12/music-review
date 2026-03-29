@@ -320,7 +320,7 @@ def render_genres_page(records: list[dict[str, Any]]) -> None:
         {"genre": genre, "albums": count} for genre, count in genre_counts.most_common()
     ]
     st.markdown("**Genre counts (filtered)**")
-    st.dataframe(genre_rows, use_container_width=True)
+    st.dataframe(genre_rows, width="stretch")
 
     album_rows: list[dict[str, Any]] = []
     for rec in filtered:
@@ -334,7 +334,7 @@ def render_genres_page(records: list[dict[str, Any]]) -> None:
             },
         )
     st.markdown("**Albums (filtered)**")
-    st.dataframe(album_rows, use_container_width=True)
+    st.dataframe(album_rows, width="stretch")
 
 
 def render_artists_page(records: list[dict[str, Any]]) -> None:
@@ -375,7 +375,7 @@ def render_artists_page(records: list[dict[str, Any]]) -> None:
         )
 
     rows.sort(key=lambda r: (-(r["albums"] or 0), r["artist"].lower()))
-    st.dataframe(rows, use_container_width=True)
+    st.dataframe(rows, width="stretch")
 
 
 def render_authors_page(records: list[dict[str, Any]]) -> None:
@@ -423,7 +423,7 @@ def render_authors_page(records: list[dict[str, Any]]) -> None:
         )
 
     rows.sort(key=lambda r: (-(r["reviews"] or 0), r["author"].lower()))
-    st.dataframe(rows, use_container_width=True)
+    st.dataframe(rows, width="stretch")
 
 
 def render_years_page(records: list[dict[str, Any]]) -> None:
@@ -454,7 +454,7 @@ def render_years_page(records: list[dict[str, Any]]) -> None:
             },
         )
 
-    st.dataframe(rows, use_container_width=True)
+    st.dataframe(rows, width="stretch")
 
 
 def _recommendations_css() -> None:
@@ -791,7 +791,7 @@ def render_communities_page() -> None:
             }
         )
 
-    st.dataframe(rows, use_container_width=True, hide_index=True)
+    st.dataframe(rows, width="stretch", hide_index=True)
 
     # --- Album → community affinities ---
     @st.cache_data(ttl=3600)
@@ -876,7 +876,7 @@ def render_communities_page() -> None:
             }
         )
 
-    st.dataframe(table_rows, use_container_width=True, hide_index=True)
+    st.dataframe(table_rows, width="stretch", hide_index=True)
 
     # --- Simple recommendations based on liked communities ---
     st.subheader("Pick communities you like")
@@ -1153,7 +1153,7 @@ def render_communities_page() -> None:
                         "Review": obj.get("url", ""),
                     }
                 )
-            st.dataframe(rec_rows, use_container_width=True, hide_index=True)
+            st.dataframe(rec_rows, width="stretch", hide_index=True)
 
             # Optional free-text search (RAG) restricted to the filtered albums
             # Controls for free-text search (RAG) restricted to the filtered albums

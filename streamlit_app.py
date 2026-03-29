@@ -99,7 +99,7 @@ def main() -> None:
     )
 
     st.markdown('<div class="welcome-cta">', unsafe_allow_html=True)
-    if st.button("Weiter", type="primary", use_container_width=True):
+    if st.button("Weiter", type="primary", width="stretch"):
         st.switch_page("pages/0_Profil.py")
     st.markdown("</div>", unsafe_allow_html=True)
 

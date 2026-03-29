@@ -129,7 +129,7 @@ def _render_active_profile() -> None:
         if st.button(
             "Abmelden",
             key=KEY_PROFILE_SIGN_OUT,
-            use_container_width=True,
+            width="stretch",
         ):
             st.session_state.pop(ACTIVE_PROFILE_SESSION_KEY, None)
             st.rerun()
@@ -188,7 +188,7 @@ def _render_profile_choices() -> None:
         if st.button(
             "Ohne Profil weiter",
             key="profil_page_skip",
-            use_container_width=True,
+            width="stretch",
         ):
             st.session_state.pop(ACTIVE_PROFILE_SESSION_KEY, None)
             st.session_state["flow_mode"] = None
@@ -246,7 +246,7 @@ def main() -> None:
         _render_profile_choices()
 
     st.markdown('<div class="profil-cta">', unsafe_allow_html=True)
-    if st.button("Weiter", type="primary", use_container_width=True):
+    if st.button("Weiter", type="primary", width="stretch"):
         active_slug = st.session_state.get(ACTIVE_PROFILE_SESSION_KEY)
         if active_slug and get_selected_communities():
             st.switch_page("pages/8_Neueste_Rezensionen.py")

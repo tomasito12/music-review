@@ -11,17 +11,29 @@ SCORE_HIST_NUM_BINS = 8
 
 # Caption thresholds (share of albums with score >= 0.5, and median).
 _CAPTION_HIGH_SHARE = 0.55
-_CAPTION_LOW_SHARE = 0.38
 _CAPTION_HIGH_MEDIAN = 0.48
-_CAPTION_LOW_MEDIAN = 0.42
 
-# Bar colours (light rose to deep red by relative height).
+# Bar colours: links (niedrige Scores) hell, rechts (hohe Scores) intensiv.
 _COLOR_LIGHT = "#fecaca"
-_COLOR_MID = "#f87171"
 _COLOR_DEEP = "#b91c1c"
 
-_CHART_HEIGHT_PX = 190
+_CHART_HEIGHT_PX = 292
 _VLINE_COLOR = "#991b1b"
+
+# Kurztext unter dem Histogramm (Seite rendert ihn als HTML-Absatz); Skala 0/1.
+NEWEST_BATCH_SCORE_SCALE_EXPLANATION = (
+    "Ein Score von 0 bedeutet, dass für das Album keine der von dir "
+    "präferierten Stil-Richtungen enthalten sind. "
+    "Ein Score von 1 bedeutet, dass das Album ausschließlich von dir "
+    "präferierte Stil-Richtungen aufweist."
+)
+
+_X_AXIS_BOTTOM_MARGIN = 88
+
+
+def newest_batch_score_scale_explanation() -> str:
+    """Kurzer Hilfetext zur Bedeutung der Scores 0 und 1 unter dem Diagramm."""
+    return NEWEST_BATCH_SCORE_SCALE_EXPLANATION
 
 
 def _clamp_unit_interval(values: list[float]) -> list[float]:
@@ -45,22 +57,32 @@ def _bin_counts(values: list[float], nbins: int) -> list[int]:
     return counts
 
 
-def _bar_colours(counts: list[int]) -> list[str]:
-    if not counts:
+def _hex_to_rgb(color_hex: str) -> tuple[int, int, int]:
+    h = color_hex.removeprefix("#")
+    return (int(h[0:2], 16), int(h[2:4], 16), int(h[4:6], 16))
+
+
+def _rgb_to_hex(r: int, g: int, b: int) -> str:
+    return f"#{r:02x}{g:02x}{b:02x}"
+
+
+def _lerp_hex(light: str, deep: str, t: float) -> str:
+    t_clamped = max(0.0, min(1.0, t))
+    r0, g0, b0 = _hex_to_rgb(light)
+    r1, g1, b1 = _hex_to_rgb(deep)
+    r = round(r0 + (r1 - r0) * t_clamped)
+    g = round(g0 + (g1 - g0) * t_clamped)
+    b = round(b0 + (b1 - b0) * t_clamped)
+    return _rgb_to_hex(r, g, b)
+
+
+def _bar_colours_by_score_position(nbins: int) -> list[str]:
+    """Colour ramp by bin position: left light, right deep red."""
+    if nbins < 1:
         return []
-    peak = max(counts)
-    if peak <= 0:
-        return [_COLOR_LIGHT for _ in counts]
-    out: list[str] = []
-    for c in counts:
-        t = c / peak
-        if t < 0.34:
-            out.append(_COLOR_LIGHT)
-        elif t < 0.67:
-            out.append(_COLOR_MID)
-        else:
-            out.append(_COLOR_DEEP)
-    return out
+    if nbins == 1:
+        return [_COLOR_DEEP]
+    return [_lerp_hex(_COLOR_LIGHT, _COLOR_DEEP, i / (nbins - 1)) for i in range(nbins)]
 
 
 def _bin_centers(nbins: int) -> list[float]:
@@ -68,17 +90,19 @@ def _bin_centers(nbins: int) -> list[float]:
     return [w * (i + 0.5) for i in range(nbins)]
 
 
-def _bin_ticktexts(nbins: int) -> list[str]:
-    """German decimal comma, short range labels per bin."""
+def _bin_axis_and_hover_labels(nbins: int) -> tuple[list[str], list[str]]:
+    """Achsen-Ticks mit HTML-Zeilenumbruch (Plotly: ``<br>``); Hover-Text einzeilig."""
     w = 1.0 / nbins
-    texts: list[str] = []
+    axis_labels: list[str] = []
+    hover_labels: list[str] = []
     for i in range(nbins):
         a = i * w
         b = (i + 1) * w if i < nbins - 1 else 1.0
-        texts.append(
-            f"{a:.2f}".replace(".", ",") + " - " + f"{b:.2f}".replace(".", ","),
-        )
-    return texts
+        a_s = f"{a:.2f}"
+        b_s = f"{b:.2f}"
+        axis_labels.append(f"{a_s} -<br>{b_s}")
+        hover_labels.append(f"{a_s} - {b_s}")
+    return axis_labels, hover_labels
 
 
 def newest_batch_score_caption(scores: list[float]) -> str:
@@ -96,15 +120,7 @@ def newest_batch_score_caption(scores: list[float]) -> str:
             "In diesem Ausschnitt passen viele der neuesten Alben gut zu deinem Profil "
             "(eher dicht an deinen Präferenzen)."
         )
-    if share <= _CAPTION_LOW_SHARE or med < _CAPTION_LOW_MEDIAN:
-        return (
-            "In diesem Ausschnitt liegen die neuesten Alben überwiegend weiter weg von "
-            "deinem Profil (eher durchmischt)."
-        )
-    return (
-        "In diesem Ausschnitt mischt sich Passendes mit weniger Passendem — ein "
-        "typischer Querschnitt der neuesten Alben zu deinem Profil."
-    )
+    return ""
 
 
 def build_newest_batch_score_figure(scores: list[float]) -> go.Figure:
@@ -112,19 +128,24 @@ def build_newest_batch_score_figure(scores: list[float]) -> go.Figure:
     clamped = _clamp_unit_interval(scores)
     nbins = SCORE_HIST_NUM_BINS
     centers = _bin_centers(nbins)
-    ticktext = _bin_ticktexts(nbins)
+    ticktext_axis, ticktext_hover = _bin_axis_and_hover_labels(nbins)
 
     if not clamped:
         fig = go.Figure()
         fig.update_layout(
             height=_CHART_HEIGHT_PX,
-            margin=dict(l=40, r=16, t=28, b=48),
+            margin=dict(l=40, r=16, t=20, b=_X_AXIS_BOTTOM_MARGIN),
             paper_bgcolor="rgba(0,0,0,0)",
             plot_bgcolor="rgba(254,242,242,0.55)",
             xaxis=dict(
-                title="Passung (Score)",
+                title=dict(text=""),
                 range=[-0.05, 1.05],
                 showgrid=True,
+                showticklabels=True,
+                tickmode="array",
+                tickvals=centers,
+                ticktext=ticktext_axis,
+                tickangle=0,
                 gridcolor="rgba(220,38,38,0.12)",
                 zeroline=False,
             ),
@@ -138,7 +159,7 @@ def build_newest_batch_score_figure(scores: list[float]) -> go.Figure:
         return fig
 
     counts = _bin_counts(clamped, nbins)
-    colours = _bar_colours(counts)
+    colours = _bar_colours_by_score_position(nbins)
     mean_x = float(statistics.mean(clamped))
 
     widths = [1.0 / nbins * 0.82] * nbins
@@ -155,9 +176,37 @@ def build_newest_batch_score_figure(scores: list[float]) -> go.Figure:
                     cornerradius=4,
                 ),
                 hovertemplate=("Bereich: %{customdata}<br>Anzahl: %{y}<extra></extra>"),
-                customdata=ticktext,
+                customdata=ticktext_hover,
             ),
         ],
+    )
+
+    fig.update_layout(
+        height=_CHART_HEIGHT_PX,
+        margin=dict(l=44, r=20, t=20, b=_X_AXIS_BOTTOM_MARGIN),
+        paper_bgcolor="rgba(0,0,0,0)",
+        plot_bgcolor="rgba(254,242,242,0.55)",
+        bargap=0.08,
+        showlegend=False,
+        xaxis=dict(
+            title=dict(text=""),
+            range=[-0.05, 1.05],
+            showticklabels=True,
+            tickmode="array",
+            tickvals=centers,
+            ticktext=ticktext_axis,
+            tickangle=0,
+            showgrid=True,
+            gridcolor="rgba(220,38,38,0.12)",
+            zeroline=False,
+        ),
+        yaxis=dict(
+            title="Anzahl Alben",
+            rangemode="tozero",
+            showgrid=True,
+            gridcolor="rgba(220,38,38,0.08)",
+            zeroline=False,
+        ),
     )
 
     fig.add_vline(
@@ -169,33 +218,6 @@ def build_newest_batch_score_figure(scores: list[float]) -> go.Figure:
             font=dict(size=11, color=_VLINE_COLOR),
             bgcolor="rgba(255,255,255,0.85)",
             borderpad=4,
-        ),
-    )
-
-    fig.update_layout(
-        height=_CHART_HEIGHT_PX,
-        margin=dict(l=44, r=20, t=32, b=52),
-        paper_bgcolor="rgba(0,0,0,0)",
-        plot_bgcolor="rgba(254,242,242,0.55)",
-        bargap=0.08,
-        showlegend=False,
-        xaxis=dict(
-            title="Passung (Score)",
-            range=[-0.05, 1.05],
-            tickmode="array",
-            tickvals=centers,
-            ticktext=ticktext,
-            tickangle=-35,
-            showgrid=True,
-            gridcolor="rgba(220,38,38,0.12)",
-            zeroline=False,
-        ),
-        yaxis=dict(
-            title="Anzahl Alben",
-            rangemode="tozero",
-            showgrid=True,
-            gridcolor="rgba(220,38,38,0.08)",
-            zeroline=False,
         ),
     )
     return fig

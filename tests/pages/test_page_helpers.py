@@ -29,6 +29,7 @@ from pages.page_helpers import (
     overall_weights_tradeoff_bar_html,
     plattenlabel_album_count_buckets_from_reviews_jsonl,
     plattenlabel_filter_passes,
+    recommendation_card_community_tags_html,
     recommendation_card_meta_parts,
     recommendation_flow_shell_css_rules,
     release_year_for_card_meta,
@@ -560,3 +561,46 @@ class TestRecommendationFlowShellCssRules:
         extra = "        .x-test { z: 1; }"
         css = recommendation_flow_shell_css_rules(extra_rules=extra)
         assert ".x-test" in css
+
+    def test_includes_filtered_comm_tag_selector(self) -> None:
+        css = recommendation_flow_shell_css_rules()
+        assert "rec-comm-tag--filtered" in css
+        assert "box-shadow" in css
+
+
+class TestRecommendationCardCommunityTagsFilteredHighlight:
+    def test_adds_filtered_class_when_id_in_filter_set(self) -> None:
+        tags = [
+            {"id": "C001", "label": "Indie", "affinity": 0.5},
+            {"id": "C002", "label": "Jazz", "affinity": 0.2},
+        ]
+        html = recommendation_card_community_tags_html(
+            tags,
+            filter_selected_community_ids={"C001"},
+        )
+        assert "rec-comm-tag--filtered" in html
+        assert html.count("rec-comm-tag--filtered") == 1
+
+    def test_no_filtered_class_when_id_not_selected(self) -> None:
+        tags = [{"id": "C099", "label": "Noise", "affinity": 0.4}]
+        html = recommendation_card_community_tags_html(
+            tags,
+            filter_selected_community_ids={"C001"},
+        )
+        assert "rec-comm-tag--filtered" not in html
+
+    def test_empty_filter_does_not_highlight(self) -> None:
+        tags = [{"id": "C001", "label": "Pop", "affinity": 0.6}]
+        html = recommendation_card_community_tags_html(
+            tags,
+            filter_selected_community_ids=set(),
+        )
+        assert "rec-comm-tag--filtered" not in html
+
+    def test_matches_filter_id_casefold_and_trimmed(self) -> None:
+        tags = [{"id": " C001 ", "label": "Dream Pop", "affinity": 0.55}]
+        html = recommendation_card_community_tags_html(
+            tags,
+            filter_selected_community_ids={"c001"},
+        )
+        assert "rec-comm-tag--filtered" in html

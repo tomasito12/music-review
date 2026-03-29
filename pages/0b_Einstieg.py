@@ -133,7 +133,7 @@ def main() -> None:
             st.caption("Ausgewählt: " + ", ".join(sorted(selected)))
 
     st.markdown('<div class="einstieg-cta">', unsafe_allow_html=True)
-    if st.button("Weiter zu Schritt 2", type="primary", use_container_width=True):
+    if st.button("Weiter zu Schritt 2", type="primary", width="stretch"):
         st.switch_page("pages/1_Community_Auswahl.py")
     st.markdown("</div>", unsafe_allow_html=True)
 

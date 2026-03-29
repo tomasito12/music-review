@@ -210,7 +210,7 @@ def _render_stored_results() -> None:
             st.write(f"{label}: **{cnt}**")
 
     with st.expander("Query-Varianten und Chroma-Roh-Treffer pro Variante"):
-        st.dataframe(variant_stats, use_container_width=True, hide_index=True)
+        st.dataframe(variant_stats, width="stretch", hide_index=True)
 
     st.subheader("Top-Treffer")
     rows: list[dict[str, Any]] = []
@@ -233,7 +233,7 @@ def _render_stored_results() -> None:
                 "url": h.get("url"),
             },
         )
-    st.dataframe(rows, use_container_width=True, hide_index=True)
+    st.dataframe(rows, width="stretch", hide_index=True)
     st.caption(f"Gespeicherte Abfrage: {q!r}")
 
     q_strip = str(params.get("query", "")).strip()
@@ -335,7 +335,7 @@ def _render_stored_results() -> None:
             f"**Alle Substring-Treffer** (sortiert nach `semantische_distanz`, "
             f"max. {cap} Zeilen)",
         )
-        st.dataframe(rows_all[:cap], use_container_width=True, hide_index=True)
+        st.dataframe(rows_all[:cap], width="stretch", hide_index=True)
         if len(rows_all) > cap:
             st.caption(f"… und {len(rows_all) - cap} weitere Zeilen nicht angezeigt.")
 

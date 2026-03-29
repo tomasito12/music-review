@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import json
 import math
-from collections.abc import Mapping
+from collections.abc import Collection, Mapping
 from datetime import datetime
 from pathlib import Path
 from typing import Any
@@ -680,21 +680,43 @@ def recommendation_card_meta_parts(
 
 def recommendation_card_community_tags_html(
     top_comms: list[dict[str, Any]],
+    *,
+    filter_selected_community_ids: Collection[str] | None = None,
 ) -> str:
-    """Build genre-tag pill HTML for a recommendation card (red tones)."""
+    """Build genre-tag pill HTML for a recommendation card (red tones).
+
+    Tags whose community ``id`` is in ``filter_selected_community_ids`` get a
+    a soft black double ring (class ``rec-comm-tag--filtered``); affinity
+    colours on the pill stay unchanged.
+    """
     import html as _html
+
+    def _normalize_comm_id(raw: Any) -> str:
+        """Normalize community IDs for robust matching across cases/whitespace."""
+        return str(raw).strip().casefold()
+
+    highlight: set[str] | None = None
+    if filter_selected_community_ids:
+        highlight = {_normalize_comm_id(x) for x in filter_selected_community_ids}
 
     out = '<div class="rec-communities">'
     for tc in top_comms:
         label = str(tc.get("label") or "")
         aff = float(tc.get("affinity") or 0.0)
+        cid_raw = tc.get("id")
+        cid = _normalize_comm_id(cid_raw) if cid_raw is not None else ""
         bg, border, fg = RECOMMENDATION_CARD_TAG_COLORS[-1][1:]
         for threshold, t_bg, t_border, t_fg in RECOMMENDATION_CARD_TAG_COLORS:
             if aff >= threshold:
                 bg, border, fg = t_bg, t_border, t_fg
                 break
+        filtered_cls = (
+            " rec-comm-tag--filtered"
+            if highlight is not None and cid and cid in highlight
+            else ""
+        )
         out += (
-            f'<span class="rec-comm-tag" '
+            f'<span class="rec-comm-tag{filtered_cls}" '
             f'style="background-color:{bg};border-color:{border};'
             f'color:{fg};">'
             f"{_html.escape(label)}</span>"
@@ -803,6 +825,10 @@ _RECOMMENDATION_FLOW_SHELL_CSS_BASE = """
             border: 1px solid transparent;
             font-size: 0.78rem;
             white-space: nowrap;
+        }
+        .rec-comm-tag.rec-comm-tag--filtered {
+            box-shadow: 0 0 0 1px rgba(0, 0, 0, 0.22),
+                0 0 0 3px rgba(0, 0, 0, 0.06);
         }
         .rec-excerpt {
             font-size: 0.86rem;
@@ -1067,7 +1093,7 @@ def render_toolbar(page_key: str) -> None:
             if st.button(
                 "Anmelden",
                 key=f"tb_{page_key}_login",
-                use_container_width=True,
+                width="stretch",
             ):
                 st.switch_page("pages/0_Profil.py")
 

@@ -27,8 +27,8 @@ from music_review.config import (
 )
 from music_review.dashboard.neueste_batch_score_chart import (
     build_newest_batch_score_figure,
-    newest_batch_score_caption,
     newest_batch_score_chart_config,
+    newest_batch_score_scale_explanation,
 )
 from music_review.dashboard.preference_ranking import (
     global_breadth_norm_by_review_id,
@@ -55,6 +55,21 @@ _NEWEST_EXTRA_CSS = """
             padding: 0;
             line-height: 0;
             font-size: 0;
+        }
+        [data-testid="element-container"]:has([data-testid="stPlotlyChart"]) {
+            margin-bottom: 0 !important;
+            padding-bottom: 0 !important;
+        }
+        [data-testid="stPlotlyChart"] {
+            margin-bottom: 0 !important;
+            padding-bottom: 0 !important;
+        }
+        div[data-testid="stMarkdownContainer"] p.rec-newest-score-explain {
+            color: rgba(49, 51, 63, 0.66);
+            font-size: 0.875rem;
+            line-height: 1.45;
+            margin: -2rem 0 0.65rem 0 !important;
+            padding: 0 !important;
         }
 """
 
@@ -173,6 +188,7 @@ def _render_newest_card(
     top_comms: list[dict[str, Any]],
     *,
     overall_score: float | None = None,
+    filter_selected_community_ids: set[str] | frozenset[str] | None = None,
 ) -> None:
     """Same card markup as ``6_Recommendations_Flow._render_filter_cards``."""
     artist = review.artist or ""
@@ -210,7 +226,10 @@ def _render_newest_card(
     if meta_html:
         card += f'<div class="rec-meta">{meta_html}</div>'
     if top_comms:
-        card += recommendation_card_community_tags_html(top_comms)
+        card += recommendation_card_community_tags_html(
+            top_comms,
+            filter_selected_community_ids=filter_selected_community_ids,
+        )
     if snippet:
         card += (
             '<div class="rec-excerpt">'
@@ -235,18 +254,10 @@ def main() -> None:
 
     selected_comms = get_selected_communities()
 
-    hero_html = (
-        '<div class="rec-hero"><p class="rec-page-title">Neueste Rezensionen</p>'
+    st.markdown(
+        '<div class="rec-hero"><p class="rec-page-title">Neueste Rezensionen</p></div>',
+        unsafe_allow_html=True,
     )
-    if selected_comms:
-        hero_html += (
-            '<div id="rec-page-desc-wrap">'
-            '<p class="rec-page-desc">Die Reihenfolge richtet sich nach '
-            "deinen gespeicherten Präferenzen."
-            "</p></div>"
-        )
-    hero_html += "</div>"
-    st.markdown(hero_html, unsafe_allow_html=True)
 
     ranked_rows: list[dict[str, Any]] | None = None
     reviews: list[Review] = []
@@ -254,7 +265,7 @@ def main() -> None:
     with st.container(border=True):
         st.markdown(
             '<p class="rec-sort-section-label">'
-            "Anzahl der zuletzt rezensierten Alben</p>",
+            "Angezeigte Anzahl der zuletzt rezensierten Alben</p>",
             unsafe_allow_html=True,
         )
         n_show = st.slider(
@@ -265,54 +276,59 @@ def main() -> None:
             label_visibility="collapsed",
         )
 
-        reviews = _load_newest_reviews(n_show)
-        if selected_comms:
-            filter_settings: dict[str, Any] = (
-                st.session_state.get("filter_settings") or {}
-            )
-            weights_raw: dict[str, float] = (
-                st.session_state.get("community_weights_raw") or {}
-            )
-            aff_map_full = _load_affinity_by_review_id()
-            memberships = load_community_memberships()
-            weights_key = tuple(
-                (str(k), float(v)) for k, v in sorted(weights_raw.items())
-            )
-            breadth_norm_global = _cached_global_breadth_norm_map(
-                tuple(sorted(selected_comms)),
-                weights_key,
-            )
-            ranked_rows = preference_ranked_rows(
-                reviews,
-                affinity_by_review_id=aff_map_full,
-                memberships=memberships,
-                selected_comms=selected_comms,
-                weights_raw=weights_raw,
-                filter_settings=filter_settings,
-                apply_serendipity=False,
-                global_breadth_norm_by_review_id=breadth_norm_global or None,
-            )
+    reviews = _load_newest_reviews(n_show)
+    if selected_comms:
+        filter_settings: dict[str, Any] = st.session_state.get("filter_settings") or {}
+        weights_raw: dict[str, float] = (
+            st.session_state.get("community_weights_raw") or {}
+        )
+        aff_map_full = _load_affinity_by_review_id()
+        memberships = load_community_memberships()
+        weights_key = tuple((str(k), float(v)) for k, v in sorted(weights_raw.items()))
+        breadth_norm_global = _cached_global_breadth_norm_map(
+            tuple(sorted(selected_comms)),
+            weights_key,
+        )
+        ranked_rows = preference_ranked_rows(
+            reviews,
+            affinity_by_review_id=aff_map_full,
+            memberships=memberships,
+            selected_comms=selected_comms,
+            weights_raw=weights_raw,
+            filter_settings=filter_settings,
+            apply_serendipity=False,
+            global_breadth_norm_by_review_id=breadth_norm_global or None,
+        )
 
-        if not reviews:
+    if not reviews:
+        st.markdown(
+            '<div class="rec-callout rec-callout-warn">'
+            "Keine Reviews gefunden. Pfad prüfen: <code>data/reviews.jsonl</code> "
+            "(ggf. Scraping ausführen)."
+            "</div>",
+            unsafe_allow_html=True,
+        )
+        return
+
+    if ranked_rows is not None:
+        with st.container(border=True):
+            scores = [float(r["overall_score"]) for r in ranked_rows]
             st.markdown(
-                '<div class="rec-callout rec-callout-warn">'
-                "Keine Reviews gefunden. Pfad prüfen: <code>data/reviews.jsonl</code> "
-                "(ggf. Scraping ausführen)."
-                "</div>",
+                '<p class="rec-sort-section-label">'
+                "Wie gut passen die neuesten Alben zu deinen präferierten Musik-Stilen?"
+                "</p>",
                 unsafe_allow_html=True,
             )
-            return
-
-        if ranked_rows is not None:
-            scores = [float(r["overall_score"]) for r in ranked_rows]
             st.plotly_chart(
                 build_newest_batch_score_figure(scores),
-                use_container_width=True,
+                width="stretch",
                 config=newest_batch_score_chart_config(),
             )
-            cap = newest_batch_score_caption(scores)
-            if cap:
-                st.caption(cap)
+            _scale_txt = html.escape(newest_batch_score_scale_explanation())
+            st.markdown(
+                f'<p class="rec-newest-score-explain">{_scale_txt}</p>',
+                unsafe_allow_html=True,
+            )
 
     aff_map = _load_affinity_top_map(top_k=5)
     genre_labels = load_genre_labels_res_10()
@@ -350,6 +366,7 @@ def main() -> None:
                 rank,
                 top,
                 overall_score=float(row["overall_score"]),
+                filter_selected_community_ids=selected_comms,
             )
     else:
         for i, review in enumerate(reviews):
@@ -360,7 +377,12 @@ def main() -> None:
                 genre_labels,
                 comm_by_id,
             )
-            _render_newest_card(review, rank, top)
+            _render_newest_card(
+                review,
+                rank,
+                top,
+                filter_selected_community_ids=selected_comms,
+            )
 
 
 main()

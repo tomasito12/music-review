@@ -500,7 +500,7 @@ def main() -> None:
                     if st.button(
                         "Alle Plattenlabels abwählen",
                         key="filter_plattenlabel_clear",
-                        use_container_width=True,
+                        width="stretch",
                     ):
                         st.session_state[ms_key] = []
                         st.rerun()
@@ -508,7 +508,7 @@ def main() -> None:
                     if st.button(
                         "Alle Plattenlabels auswählen",
                         key="filter_plattenlabel_fill",
-                        use_container_width=True,
+                        width="stretch",
                     ):
                         st.session_state[ms_key] = list(ui_options)
                         st.rerun()
@@ -761,13 +761,13 @@ def main() -> None:
     st.markdown('<div class="filter-cta">', unsafe_allow_html=True)
     col_back, col_next = st.columns(2)
     with col_back:
-        if st.button("Zurück", use_container_width=True):
+        if st.button("Zurück", width="stretch"):
             st.switch_page("pages/1_Community_Auswahl.py")
     with col_next:
         if st.button(
             "Empfehlungen anzeigen",
             type="primary",
-            use_container_width=True,
+            width="stretch",
         ):
             st.switch_page("pages/6_Recommendations_Flow.py")
     st.markdown("</div>", unsafe_allow_html=True)

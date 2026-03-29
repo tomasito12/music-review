@@ -202,10 +202,10 @@ def main() -> None:
     st.markdown('<div class="feinwahl-cta">', unsafe_allow_html=True)
     col_back, col_next = st.columns(2)
     with col_back:
-        if st.button("Zurück", use_container_width=True):
+        if st.button("Zurück", width="stretch"):
             st.switch_page("pages/0b_Einstieg.py")
     with col_next:
-        if st.button("Weiter zu den Filtern", type="primary", use_container_width=True):
+        if st.button("Weiter zu den Filtern", type="primary", width="stretch"):
             st.switch_page("pages/5_Filter_Flow.py")
     st.markdown("</div>", unsafe_allow_html=True)
 
