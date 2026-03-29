@@ -9,7 +9,6 @@ from pages.page_helpers import (
     DEFAULT_PLATTENTESTS_RATING_FILTER_MAX,
     DEFAULT_PLATTENTESTS_RATING_FILTER_MIN,
     FILTER_PLATTENLABEL_MULTISELECT_KEY,
-    PLATTENLABEL_FREQUENT_MIN_REVIEW_SHARE,
     PLATTENLABEL_SONSTIGE_UI,
     SPECTRUM_CROSSOVER_STOPS,
     STYLE_MATCH_FILTER_PERCENT_STEP,
@@ -465,98 +464,70 @@ def main() -> None:
             ui_options.append(PLATTENLABEL_SONSTIGE_UI)
         ms_key = FILTER_PLATTENLABEL_MULTISELECT_KEY
         opts_set = set(ui_options)
-        if all_concrete:
-            st.markdown(
-                '<div class="filter-section accent-filter">'
-                '<p class="filter-section-label">Plattenlabel (Expertenfilter)</p>',
-                unsafe_allow_html=True,
-            )
-            _filter_vertical_space("sm")
-            st.markdown(
-                '<p class="filter-section-caption filter-section-caption--lead">'
-                "Nur Alben, die mindestens eines der gewählten Labels tragen, "
-                "erscheinen in den Empfehlungen. Hat ein Album mehrere Labels, "
-                "reicht ein Treffer. Alben ohne Label-Eintrag bleiben sichtbar, "
-                "solange nicht alle konkreten Labels abgewählt sind. "
-                "Einzeln gelistet sind nur sehr häufige Labels (Anteil "
-                f"mindestens "
-                f"{int(PLATTENLABEL_FREQUENT_MIN_REVIEW_SHARE * 100)}&nbsp;% "
-                "aller Reviews); alle anderen sind unter "
-                f"„{PLATTENLABEL_SONSTIGE_UI}“ gebündelt. "
-                f"Ist „{PLATTENLABEL_SONSTIGE_UI}“ aktiv, gelten alle "
-                "selteneren Labels als ausgewählt."
-                "</p>",
-                unsafe_allow_html=True,
-            )
-            if ms_key not in st.session_state:
-                prev_sel = existing_settings.get("plattenlabel_selection")
-                if isinstance(prev_sel, list):
-                    prev_set = {x for x in prev_sel if x in all_concrete}
-                    if prev_sel == []:
-                        st.session_state[ms_key] = []
-                    elif prev_set:
-                        st.session_state[ms_key] = collapse_plattenlabel_ui_selection(
-                            prev_set,
-                            freq_labels,
-                            rare_labels,
-                        )
+        with st.expander("Plattenlabel (Expertenfilter)", expanded=False):
+            if all_concrete:
+                if ms_key not in st.session_state:
+                    prev_sel = existing_settings.get("plattenlabel_selection")
+                    if isinstance(prev_sel, list):
+                        prev_set = {x for x in prev_sel if x in all_concrete}
+                        if prev_sel == []:
+                            st.session_state[ms_key] = []
+                        elif prev_set:
+                            st.session_state[ms_key] = (
+                                collapse_plattenlabel_ui_selection(
+                                    prev_set,
+                                    freq_labels,
+                                    rare_labels,
+                                )
+                            )
+                        else:
+                            st.session_state[ms_key] = list(ui_options)
                     else:
                         st.session_state[ms_key] = list(ui_options)
+                prev_ms = list(st.session_state[ms_key])
+                pruned_ms = [x for x in prev_ms if x in opts_set]
+                if pruned_ms:
+                    st.session_state[ms_key] = pruned_ms
+                elif not prev_ms:
+                    st.session_state[ms_key] = []
                 else:
                     st.session_state[ms_key] = list(ui_options)
-            prev_ms = list(st.session_state[ms_key])
-            pruned_ms = [x for x in prev_ms if x in opts_set]
-            if pruned_ms:
-                st.session_state[ms_key] = pruned_ms
-            elif not prev_ms:
-                st.session_state[ms_key] = []
+
+                # Buttons vor dem Multiselect: sonst ist der Widget-Key gesperrt
+                # und Session-State darf nicht mehr gesetzt werden.
+                col_pl_off, col_pl_on = st.columns(2)
+                with col_pl_off:
+                    if st.button(
+                        "Alle Plattenlabels abwählen",
+                        key="filter_plattenlabel_clear",
+                        use_container_width=True,
+                    ):
+                        st.session_state[ms_key] = []
+                        st.rerun()
+                with col_pl_on:
+                    if st.button(
+                        "Alle Plattenlabels auswählen",
+                        key="filter_plattenlabel_fill",
+                        use_container_width=True,
+                    ):
+                        st.session_state[ms_key] = list(ui_options)
+                        st.rerun()
+
+                st.multiselect(
+                    "Plattenlabel auswählen",
+                    options=ui_options,
+                    key=ms_key,
+                    help=(
+                        f"„{PLATTENLABEL_SONSTIGE_UI}“ schließt alle selteneren Labels "
+                        "ein. Standard: alle Optionen aktiv (= kein Ausschluss). "
+                        "„Alle abwählen“: nur noch Alben ohne Label-Eintrag."
+                    ),
+                )
             else:
-                st.session_state[ms_key] = list(ui_options)
-
-            # Buttons vor dem Multiselect: sonst ist der Widget-Key gesperrt
-            # und Session-State darf nicht mehr gesetzt werden.
-            col_pl_off, col_pl_on = st.columns(2)
-            with col_pl_off:
-                if st.button(
-                    "Alle Plattenlabels abwählen",
-                    key="filter_plattenlabel_clear",
-                    use_container_width=True,
-                ):
-                    st.session_state[ms_key] = []
-                    st.rerun()
-            with col_pl_on:
-                if st.button(
-                    "Alle Plattenlabels auswählen",
-                    key="filter_plattenlabel_fill",
-                    use_container_width=True,
-                ):
-                    st.session_state[ms_key] = list(ui_options)
-                    st.rerun()
-
-            st.multiselect(
-                "Plattenlabel auswählen",
-                options=ui_options,
-                default=st.session_state[ms_key],
-                key=ms_key,
-                help=(
-                    f"„{PLATTENLABEL_SONSTIGE_UI}“ schließt alle selteneren Labels "
-                    "ein. Standard: alle Optionen aktiv (= kein Ausschluss). "
-                    "„Alle abwählen“: nur noch Alben ohne Label-Eintrag."
-                ),
-            )
-            st.markdown("</div>", unsafe_allow_html=True)
-        else:
-            st.markdown(
-                '<div class="filter-section accent-filter">'
-                '<p class="filter-section-label">Plattenlabel (Expertenfilter)</p>',
-                unsafe_allow_html=True,
-            )
-            _filter_vertical_space("sm")
-            st.caption(
-                "In der Rezensionen-Datei sind keine Plattenlabels hinterlegt; "
-                "dieser Filter steht nicht zur Verfügung."
-            )
-            st.markdown("</div>", unsafe_allow_html=True)
+                st.caption(
+                    "In der Rezensionen-Datei sind keine Plattenlabels hinterlegt; "
+                    "dieser Filter steht nicht zur Verfügung."
+                )
 
     st.markdown('<div style="margin-top:1rem;"></div>', unsafe_allow_html=True)
 

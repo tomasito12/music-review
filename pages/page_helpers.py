@@ -164,9 +164,9 @@ FILTER_PLATTENLABEL_MULTISELECT_KEY = "filter_plattenlabel_multiselect"
 # Sammel-Option in der Filter-UI für seltene Plattenlabels.
 PLATTENLABEL_SONSTIGE_UI = "Sonstige"
 
-# Mindestanteil aller Reviews, in denen ein Label vorkommen muss, damit es
-# einzeln wählbar ist (sonst nur über „Sonstige“).
-PLATTENLABEL_FREQUENT_MIN_REVIEW_SHARE = 0.8
+# Plattenlabels mit mehr als so vielen Alben erscheinen einzeln in der Filter-UI;
+# alle anderen laufen über „Sonstige“ (streng: ``Anzahl Alben >`` dieser Schwelle).
+PLATTENLABEL_INDIVIDUAL_LIST_MIN_ALBUMS = 50
 
 
 def clamp_plattentests_rating_filter_range(
@@ -488,53 +488,74 @@ def unique_plattenlabels_from_reviews_jsonl(path: Path) -> list[str]:
     return sorted(labels)
 
 
-def plattenlabel_frequency_buckets_from_reviews_jsonl(
+def _plattenlabel_row_sets_and_album_index(
     path: Path,
-    *,
-    min_share: float = PLATTENLABEL_FREQUENT_MIN_REVIEW_SHARE,
-) -> tuple[list[str], list[str], int]:
-    """Split labels into frequent vs rare by share of reviews (one hit per review).
-
-    A label is *frequent* if it appears on at least ``min_share`` of all
-    reviews (counting each review at most once per label). Remaining labels
-    are *rare* and are grouped in the UI under ``PLATTENLABEL_SONSTIGE_UI``.
-
-    Returns ``(frequent_sorted, rare_sorted, n_reviews)``.
-    """
-    n_reviews = 0
-    label_counts: dict[str, int] = {}
+) -> tuple[list[frozenset[str]], dict[str, set[int]], int]:
+    """Build per-row label sets and label -> album index sets from reviews JSONL."""
+    row_label_sets: list[frozenset[str]] = []
     for obj in iter_jsonl_objects(path, log_errors=False):
         if not isinstance(obj, dict):
             continue
-        n_reviews += 1
         raw = obj.get("labels")
-        if not isinstance(raw, list):
-            continue
         seen_in_row: set[str] = set()
-        for lab in raw:
-            s = str(lab).strip()
-            if not s or s in seen_in_row:
-                continue
-            seen_in_row.add(s)
-            label_counts[s] = label_counts.get(s, 0) + 1
+        if isinstance(raw, list):
+            for lab in raw:
+                s = str(lab).strip()
+                if s and s not in seen_in_row:
+                    seen_in_row.add(s)
+        row_label_sets.append(frozenset(seen_in_row))
+
+    n_reviews = len(row_label_sets)
+    label_to_album_indices: dict[str, set[int]] = {}
+    for i, labs in enumerate(row_label_sets):
+        for lab in labs:
+            label_to_album_indices.setdefault(lab, set()).add(i)
+    return row_label_sets, label_to_album_indices, n_reviews
+
+
+def plattenlabel_album_count_buckets_from_reviews_jsonl(
+    path: Path,
+    *,
+    min_albums_exclusive: int = PLATTENLABEL_INDIVIDUAL_LIST_MIN_ALBUMS,
+) -> tuple[list[str], list[str], int]:
+    """Split labels into individual list vs „Sonstige“ by album count.
+
+    Alben = Zeilen in ``reviews.jsonl``. Pro Album werden doppelte
+    Label-Strings in einer Zeile nur einmal gezählt (EU/US-Mehrfachlabels).
+
+    Ein Label ist einzeln wählbar, wenn es auf **mehr als**
+    ``min_albums_exclusive`` Alben vorkommt. Übrige Labels sind „selten“ und
+    werden alphabetisch sortiert für die UI-Logik unter „Sonstige“.
+
+    Rückgabe: ``(frequent_by_count_then_name, rare_sorted_a_z, n_reviews)``.
+    """
+    _, label_to_album_indices, n_reviews = _plattenlabel_row_sets_and_album_index(
+        path,
+    )
     if n_reviews == 0:
         return [], [], 0
-    cutoff = float(min_share) * float(n_reviews)
-    frequent: list[str] = []
-    rare: list[str] = []
-    for lab in sorted(label_counts.keys()):
-        if float(label_counts[lab]) >= cutoff:
-            frequent.append(lab)
-        else:
-            rare.append(lab)
+
+    if not label_to_album_indices:
+        return [], [], n_reviews
+
+    threshold = int(min_albums_exclusive)
+    sorted_by_freq = sorted(
+        label_to_album_indices.keys(),
+        key=lambda lab: (-len(label_to_album_indices[lab]), lab),
+    )
+    frequent = [
+        lab for lab in sorted_by_freq if len(label_to_album_indices[lab]) > threshold
+    ]
+    frequent_set = frozenset(frequent)
+    rare = sorted(lab for lab in label_to_album_indices if lab not in frequent_set)
     return frequent, rare, n_reviews
 
 
 @st.cache_data(ttl=3600)
 def load_plattenlabel_filter_buckets() -> tuple[list[str], list[str], int]:
-    """Cached frequent/rare Plattenlabel buckets from ``data/reviews.jsonl``."""
+    """Cached head/tail Plattenlabel buckets from ``data/reviews.jsonl``."""
     p = Path(resolve_data_path("data/reviews.jsonl"))
-    return plattenlabel_frequency_buckets_from_reviews_jsonl(p)
+    return plattenlabel_album_count_buckets_from_reviews_jsonl(p)
 
 
 def expand_plattenlabel_ui_selection(
@@ -638,6 +659,7 @@ def recommendation_card_meta_parts(
     labels: str,
     *,
     default_rating: float = 5.0,
+    include_overall_score: bool = True,
 ) -> list[str]:
     """Build simplified meta-line segments for a recommendation card."""
     parts: list[str] = []
@@ -648,7 +670,8 @@ def recommendation_card_meta_parts(
         parts.append(f"Rating {float(rating):g}/10")
     else:
         parts.append(f"Rating {default_rating:.0f}/10 (angenommen)")
-    parts.append(f"Score {overall:.2f}")
+    if include_overall_score:
+        parts.append(f"Score {overall:.2f}")
     label_plain = labels.strip()
     if label_plain:
         parts.append(f"Plattenlabel: {label_plain}")
@@ -680,6 +703,235 @@ def recommendation_card_community_tags_html(
     return out
 
 
+_REC_FLOW_SHELL_CHAT_AVATAR_CSS = """
+        div[data-testid="chatAvatarIcon-assistant"] {
+            background-color: #fef2f2 !important;
+            color: #991b1b !important;
+        }
+"""
+
+# Shared by Empfehlungen (6) and Neueste Rezensionen (8); keep in sync visually.
+_RECOMMENDATION_FLOW_SHELL_CSS_BASE = """
+        .rec-hero {
+            text-align: center;
+            padding: 0.5rem 0 0.15rem 0;
+        }
+        .rec-page-title {
+            font-size: 1.6rem;
+            font-weight: 650;
+            letter-spacing: -0.02em;
+            margin-bottom: 0.25rem;
+        }
+        div[data-testid="stMarkdownContainer"] #rec-page-desc-wrap {
+            text-align: center !important;
+            width: 100% !important;
+            box-sizing: border-box;
+            margin: 0 0 1.3rem 0 !important;
+        }
+        div[data-testid="stMarkdownContainer"] #rec-page-desc-wrap .rec-page-desc {
+            color: #6b7280;
+            font-size: 0.9rem;
+            max-width: 34rem;
+            margin: 0 auto !important;
+            text-align: center !important;
+            line-height: 1.55;
+        }
+        .rec-sort-section-label {
+            font-size: 0.92rem;
+            font-weight: 650;
+            color: #111827;
+            margin-bottom: 0.55rem;
+        }
+        .rec-card {
+            background: #fafafa;
+            border: 1px solid #e5e7eb;
+            border-radius: 10px;
+            padding: 1rem 1.2rem;
+            margin-bottom: 1rem;
+            box-shadow: 0 1px 2px rgba(15, 23, 42, 0.04);
+        }
+        .rec-card:hover {
+            border-color: #fca5a5;
+            box-shadow: 0 4px 8px rgba(220, 38, 38, 0.08);
+        }
+        .rec-card-rag {
+            border: 1px solid #fca5a5;
+            background: #fef2f2;
+        }
+        .rec-header {
+            margin-bottom: 0.35rem;
+            display: flex;
+            align-items: center;
+            gap: 0.35rem;
+            flex-wrap: wrap;
+        }
+        a.rec-title,
+        a.rec-title:link,
+        a.rec-title:visited,
+        div[data-testid="stMarkdownContainer"] a.rec-title {
+            font-size: 1.08rem;
+            font-weight: 600;
+            text-decoration: none;
+            color: #1f2937 !important;
+            letter-spacing: -0.01em;
+        }
+        a.rec-title:hover,
+        div[data-testid="stMarkdownContainer"] a.rec-title:hover {
+            text-decoration: underline;
+            color: #dc2626 !important;
+        }
+        a.rec-title:active,
+        div[data-testid="stMarkdownContainer"] a.rec-title:active {
+            color: #991b1b !important;
+        }
+        .rec-meta {
+            font-size: 0.8rem;
+            color: #6b7280;
+            margin-bottom: 0.40rem;
+        }
+        .rec-communities {
+            font-size: 0.78rem;
+            color: #4b5563;
+            margin-bottom: 0.35rem;
+        }
+        .rec-comm-tag {
+            display: inline-flex;
+            align-items: center;
+            padding: 0.10rem 0.45rem;
+            margin: 0 0.25rem 0.25rem 0;
+            border-radius: 999px;
+            border: 1px solid transparent;
+            font-size: 0.78rem;
+            white-space: nowrap;
+        }
+        .rec-excerpt {
+            font-size: 0.86rem;
+            line-height: 1.5;
+            color: #4b5563;
+        }
+        .rec-rank {
+            font-variant-numeric: tabular-nums;
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            min-width: 1.8rem;
+            height: 1.45rem;
+            padding: 0 0.4rem;
+            border-radius: 6px;
+            background: #fef2f2;
+            border: 1px solid #fecaca;
+            color: #991b1b;
+            font-size: 0.78rem;
+            font-weight: 700;
+            margin-right: 0.55rem;
+            flex-shrink: 0;
+        }
+        .rec-pane-header {
+            margin: -0.15rem 0 0.85rem 0;
+            padding: 0.2rem 0 0.85rem 0.85rem;
+            border-bottom: 1px solid rgba(220, 38, 38, 0.2);
+        }
+        .rec-pane-header-filter {
+            border-left: 3px solid #dc2626;
+        }
+        .rec-pane-header-semantic {
+            border-left: 3px solid #7f1d1d;
+            border-bottom-color: rgba(127, 29, 29, 0.2);
+        }
+        .rec-eyebrow {
+            font-size: 0.65rem;
+            font-weight: 650;
+            letter-spacing: 0.12em;
+            text-transform: uppercase;
+            color: #dc2626;
+            margin-bottom: 0.28rem;
+        }
+        .rec-pane-header-semantic .rec-eyebrow {
+            color: #991b1b;
+        }
+        .rec-pane-title {
+            font-size: 1.02rem;
+            font-weight: 600;
+            letter-spacing: -0.02em;
+            color: #0f172a;
+            line-height: 1.3;
+        }
+        .rec-pane-sub {
+            font-size: 0.8rem;
+            color: #64748b;
+            margin-top: 0.45rem;
+            line-height: 1.45;
+        }
+        .rec-results-divider {
+            margin: 1rem 0 0.65rem 0;
+            padding-top: 0.85rem;
+            border-top: 1px dashed rgba(220, 38, 38, 0.25);
+        }
+        .rec-results-label {
+            font-size: 0.68rem;
+            font-weight: 650;
+            letter-spacing: 0.1em;
+            text-transform: uppercase;
+            color: #dc2626;
+            margin-bottom: 0.35rem;
+        }
+        .rec-results-title {
+            font-size: 0.92rem;
+            font-weight: 600;
+            color: #991b1b;
+            letter-spacing: -0.01em;
+        }
+        .rec-callout {
+            font-size: 0.84rem;
+            color: #57534e;
+            background: #fafaf9;
+            border: 1px solid #e7e5e4;
+            border-radius: 10px;
+            padding: 0.75rem 1rem;
+            line-height: 1.5;
+            margin: 0.35rem 0 0.5rem 0;
+        }
+        .rec-callout-warn {
+            background: #fff1f2;
+            border-color: #fda4af;
+            color: #881337;
+        }
+        .rec-callout-info {
+            background: #fef2f2;
+            border-color: #fecaca;
+            color: #991b1b;
+        }
+"""
+
+
+def recommendation_flow_shell_css_rules(
+    *,
+    include_chat_avatar_style: bool = False,
+    extra_rules: str = "",
+) -> str:
+    """Return CSS rules for the shared recommendation / newest-reviews card shell."""
+    parts: list[str] = [_RECOMMENDATION_FLOW_SHELL_CSS_BASE.strip()]
+    if include_chat_avatar_style:
+        parts.append(_REC_FLOW_SHELL_CHAT_AVATAR_CSS.strip())
+    extra = extra_rules.strip()
+    if extra:
+        parts.append(extra)
+    return "\n".join(parts)
+
+
+def inject_recommendation_flow_shell_css(
+    *,
+    include_chat_avatar_style: bool = False,
+    extra_rules: str = "",
+) -> None:
+    """Inject shared shell styles into the active Streamlit page."""
+    rules = recommendation_flow_shell_css_rules(
+        include_chat_avatar_style=include_chat_avatar_style,
+        extra_rules=extra_rules,
+    )
+    st.markdown(f"<style>\n{rules}\n</style>", unsafe_allow_html=True)
+
+
 _FILTER_EXPANDER_VSPACE_GAPS = frozenset({"sm", "md", "lg", "xl"})
 
 
@@ -701,6 +953,23 @@ def get_selected_communities() -> set[str]:
     artist_comms = st.session_state.get("artist_flow_selected_communities") or set()
     genre_comms = st.session_state.get("genre_flow_selected_communities") or set()
     return {str(c) for c in artist_comms} | {str(c) for c in genre_comms}
+
+
+def release_year_for_card_meta(review: Any) -> int | None:
+    """Calendar year for recommendation-style meta (``release_year`` or date)."""
+    ry = getattr(review, "release_year", None)
+    if ry is not None:
+        try:
+            return int(ry)
+        except (TypeError, ValueError):
+            pass
+    rd = getattr(review, "release_date", None)
+    if rd is not None and hasattr(rd, "year"):
+        try:
+            return int(rd.year)
+        except (TypeError, ValueError):
+            pass
+    return None
 
 
 def format_release_date(value: Any, release_year: Any) -> str:

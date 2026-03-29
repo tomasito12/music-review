@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from datetime import date, datetime
 from pathlib import Path
+from types import SimpleNamespace
 
 from pages.page_helpers import (
     OVERALL_WEIGHT_TRADEOFF_RED_DARK,
@@ -26,8 +27,11 @@ from pages.page_helpers import (
     normalize_filter_expander_vspace_gap,
     overall_weights_display_percents,
     overall_weights_tradeoff_bar_html,
+    plattenlabel_album_count_buckets_from_reviews_jsonl,
     plattenlabel_filter_passes,
-    plattenlabel_frequency_buckets_from_reviews_jsonl,
+    recommendation_card_meta_parts,
+    recommendation_flow_shell_css_rules,
+    release_year_for_card_meta,
     review_raw_release_year,
     snap_spectrum_crossover,
     spectrum_crossover_option_label,
@@ -38,34 +42,88 @@ from pages.page_helpers import (
 )
 
 
-class TestPlattenlabelFrequencyBuckets:
-    def test_frequent_at_least_80_percent(self, tmp_path: Path) -> None:
+class TestPlattenlabelAlbumCountBuckets:
+    def test_individual_only_if_more_than_threshold(self, tmp_path: Path) -> None:
         p = tmp_path / "reviews.jsonl"
-        lines = []
-        for i in range(10):
-            lab = "Common" if i < 8 else "Rare"
-            lines.append(f'{{"id": {i}, "labels": ["{lab}"]}}\n')
+        lines = [f'{{"id": {i}, "labels": ["A"]}}\n' for i in range(3)]
+        lines += [f'{{"id": {i}, "labels": ["B"]}}\n' for i in range(3, 5)]
         p.write_text("".join(lines), encoding="utf-8")
-        freq, rare, n = plattenlabel_frequency_buckets_from_reviews_jsonl(
+        freq, rare, n = plattenlabel_album_count_buckets_from_reviews_jsonl(
             p,
-            min_share=0.8,
+            min_albums_exclusive=2,
         )
-        assert n == 10
-        assert freq == ["Common"]
-        assert rare == ["Rare"]
+        assert n == 5
+        assert freq == ["A"]
+        assert rare == ["B"]
 
-    def test_counts_once_per_review(self, tmp_path: Path) -> None:
+    def test_exactly_threshold_is_sonstige(self, tmp_path: Path) -> None:
         p = tmp_path / "reviews.jsonl"
-        p.write_text(
-            '{"id": 1, "labels": ["X", "X", "X"]}\n{"id": 2, "labels": ["X"]}\n',
-            encoding="utf-8",
-        )
-        freq, rare, n = plattenlabel_frequency_buckets_from_reviews_jsonl(
+        lines = [f'{{"id": {i}, "labels": ["X"]}}\n' for i in range(2)]
+        p.write_text("".join(lines), encoding="utf-8")
+        freq, rare, n = plattenlabel_album_count_buckets_from_reviews_jsonl(
             p,
-            min_share=0.8,
+            min_albums_exclusive=2,
         )
         assert n == 2
-        assert freq == ["X"]
+        assert freq == []
+        assert rare == ["X"]
+
+    def test_default_threshold_fifty_one_albums(self, tmp_path: Path) -> None:
+        p = tmp_path / "reviews.jsonl"
+        lines = [f'{{"id": {i}, "labels": ["Heavy"]}}\n' for i in range(51)]
+        p.write_text("".join(lines), encoding="utf-8")
+        freq, rare, n = plattenlabel_album_count_buckets_from_reviews_jsonl(p)
+        assert n == 51
+        assert freq == ["Heavy"]
+        assert rare == []
+
+    def test_default_fifty_exactly_is_sonstige(self, tmp_path: Path) -> None:
+        p = tmp_path / "reviews.jsonl"
+        lines = [f'{{"id": {i}, "labels": ["Edge"]}}\n' for i in range(50)]
+        p.write_text("".join(lines), encoding="utf-8")
+        freq, rare, n = plattenlabel_album_count_buckets_from_reviews_jsonl(p)
+        assert n == 50
+        assert freq == []
+        assert rare == ["Edge"]
+
+    def test_frequent_sorted_by_count_then_name(self, tmp_path: Path) -> None:
+        p = tmp_path / "reviews.jsonl"
+        lines = [f'{{"id": {i}, "labels": ["Hi"]}}\n' for i in range(5)]
+        lines += [f'{{"id": {i}, "labels": ["Lo"]}}\n' for i in range(5, 8)]
+        p.write_text("".join(lines), encoding="utf-8")
+        freq, rare, n = plattenlabel_album_count_buckets_from_reviews_jsonl(
+            p,
+            min_albums_exclusive=2,
+        )
+        assert n == 8
+        assert freq == ["Hi", "Lo"]
+        assert rare == []
+
+    def test_dedupes_labels_within_one_review(self, tmp_path: Path) -> None:
+        p = tmp_path / "reviews.jsonl"
+        lines = ['{"id": 0, "labels": ["Z", "Z"]}\n']
+        lines += [f'{{"id": {i}, "labels": ["Z"]}}\n' for i in range(1, 4)]
+        p.write_text("".join(lines), encoding="utf-8")
+        freq, rare, n = plattenlabel_album_count_buckets_from_reviews_jsonl(
+            p,
+            min_albums_exclusive=2,
+        )
+        assert n == 4
+        assert freq == ["Z"]
+        assert rare == []
+
+    def test_multi_label_album_each_label_counted(self, tmp_path: Path) -> None:
+        p = tmp_path / "reviews.jsonl"
+        p.write_text(
+            '{"id": 0, "labels": ["EU_Label", "US_Label"]}\n',
+            encoding="utf-8",
+        )
+        freq, rare, n = plattenlabel_album_count_buckets_from_reviews_jsonl(
+            p,
+            min_albums_exclusive=0,
+        )
+        assert n == 1
+        assert freq == ["EU_Label", "US_Label"]
         assert rare == []
 
 
@@ -441,3 +499,64 @@ class TestOverallWeightsTradeoffBarHtml:
         assert OVERALL_WEIGHT_TRADEOFF_RED_LIGHT in html
         assert OVERALL_WEIGHT_TRADEOFF_RED_MID in html
         assert OVERALL_WEIGHT_TRADEOFF_RED_DARK in html
+
+
+class TestReleaseYearForCardMeta:
+    def test_prefers_release_year_attribute(self) -> None:
+        r = SimpleNamespace(release_year=2019, release_date=date(2020, 1, 1))
+        assert release_year_for_card_meta(r) == 2019
+
+    def test_falls_back_to_date_year(self) -> None:
+        r = SimpleNamespace(release_year=None, release_date=date(2021, 6, 15))
+        assert release_year_for_card_meta(r) == 2021
+
+    def test_returns_none_when_missing(self) -> None:
+        r = SimpleNamespace(release_year=None, release_date=None)
+        assert release_year_for_card_meta(r) is None
+
+
+class TestRecommendationCardMetaPartsIncludeOverallScore:
+    def test_omits_score_line_when_disabled(self) -> None:
+        parts = recommendation_card_meta_parts(
+            None,
+            2020,
+            7.0,
+            0.99,
+            "Indie",
+            include_overall_score=False,
+        )
+        assert not any(p.startswith("Score ") for p in parts)
+        assert any("Plattenlabel" in p for p in parts)
+
+    def test_rating_only_when_no_score_no_labels(self) -> None:
+        parts = recommendation_card_meta_parts(
+            None,
+            None,
+            8.0,
+            0.0,
+            "",
+            include_overall_score=False,
+        )
+        assert len(parts) == 1
+        assert "8/10" in parts[0]
+
+
+class TestRecommendationFlowShellCssRules:
+    def test_includes_hero_card_and_callout_selectors(self) -> None:
+        css = recommendation_flow_shell_css_rules()
+        assert ".rec-hero" in css
+        assert ".rec-card" in css
+        assert ".rec-callout-info" in css
+
+    def test_chat_avatar_block_only_when_requested(self) -> None:
+        base = recommendation_flow_shell_css_rules()
+        assert "chatAvatarIcon-assistant" not in base
+        with_avatar = recommendation_flow_shell_css_rules(
+            include_chat_avatar_style=True,
+        )
+        assert "chatAvatarIcon-assistant" in with_avatar
+
+    def test_appends_extra_rules(self) -> None:
+        extra = "        .x-test { z: 1; }"
+        css = recommendation_flow_shell_css_rules(extra_rules=extra)
+        assert ".x-test" in css
