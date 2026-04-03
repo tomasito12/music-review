@@ -3,19 +3,21 @@
 from __future__ import annotations
 
 import html
-import random
-import secrets
-from pathlib import Path
 from typing import Any
 
 import streamlit as st
+from pages.neueste_reviews_pool import (
+    RECENT_DEFAULT,
+    RES_KEY,
+    ensure_neueste_session_defaults,
+    fetch_newest_reviews_pool,
+)
 from pages.page_helpers import (
     community_display_label,
     format_record_labels_for_card,
     get_selected_communities,
     inject_recommendation_flow_shell_css,
     load_communities_res_10,
-    load_community_memberships,
     load_genre_labels_res_10,
     recommendation_card_community_tags_html,
     recommendation_card_meta_parts,
@@ -32,30 +34,8 @@ from music_review.dashboard.neueste_batch_score_chart import (
     newest_batch_score_chart_config,
     newest_batch_score_scale_explanation,
 )
-from music_review.dashboard.newest_spotify_playlist import (
-    PlaylistCandidate,
-    build_album_weights,
-    build_playlist_candidates,
-    resolve_track_uri_strict,
-)
-from music_review.dashboard.preference_ranking import (
-    global_breadth_norm_by_review_id,
-    preference_ranked_rows,
-)
 from music_review.domain.models import Review
-from music_review.integrations.spotify_client import (
-    SpotifyAuthConfig,
-    SpotifyClient,
-    SpotifyConfigError,
-    SpotifyToken,
-)
 from music_review.io.jsonl import iter_jsonl_objects
-from music_review.io.reviews_jsonl import load_reviews_from_jsonl
-
-RECENT_DEFAULT = 20
-RES_KEY = "res_10"
-SPOTIFY_TOKEN_KEY = "spotify_token"
-NEWEST_SPOTIFY_PREVIEW_KEY = "newest_spotify_preview"
 
 _NEWEST_EXTRA_CSS = """
         span.rec-title {
@@ -94,14 +74,6 @@ def _newest_css() -> None:
     inject_recommendation_flow_shell_css(extra_rules=_NEWEST_EXTRA_CSS)
 
 
-def _ensure_session_state() -> None:
-    """Minimal defaults for Profilleiste und Präferenz-Sortierung (wie Filter Flow)."""
-    if "filter_settings" not in st.session_state:
-        st.session_state["filter_settings"] = {}
-    if "community_weights_raw" not in st.session_state:
-        st.session_state["community_weights_raw"] = {}
-
-
 @st.cache_data(ttl=3600)
 def _load_affinity_top_map(*, top_k: int = 5) -> dict[int, list[tuple[str, float]]]:
     path = resolve_data_path("data/album_community_affinities.jsonl")
@@ -126,58 +98,6 @@ def _load_affinity_top_map(*, top_k: int = 5) -> dict[int, list[tuple[str, float
         items.sort(key=lambda t: t[1], reverse=True)
         result[review_id] = items[:top_k]
     return result
-
-
-@st.cache_data(ttl=300)
-def _load_newest_reviews(n: int) -> list[Review]:
-    path = resolve_data_path("data/reviews.jsonl")
-    if not path.is_file():
-        return []
-    reviews = load_reviews_from_jsonl(path)
-    reviews.sort(key=lambda r: int(r.id), reverse=True)
-    return reviews[: max(1, n)]
-
-
-@st.cache_data(ttl=300)
-def _load_all_reviews_for_breadth_norm() -> list[Review]:
-    """Gesamtes Corpus für globales Abdeckungs-Perzentil (breadth_norm)."""
-    path = resolve_data_path("data/reviews.jsonl")
-    if not path.is_file():
-        return []
-    return load_reviews_from_jsonl(path)
-
-
-@st.cache_data(ttl=300)
-def _cached_global_breadth_norm_map(
-    selected_key: tuple[str, ...],
-    weights_key: tuple[tuple[str, float], ...],
-) -> dict[int, float]:
-    all_rev = _load_all_reviews_for_breadth_norm()
-    if not all_rev:
-        return {}
-    memberships = load_community_memberships()
-    weights = {k: float(v) for k, v in weights_key}
-    return global_breadth_norm_by_review_id(
-        all_rev,
-        memberships=memberships,
-        selected_comms=set(selected_key),
-        weights_raw=weights,
-    )
-
-
-@st.cache_data(ttl=3600)
-def _load_affinity_by_review_id() -> dict[int, dict[str, Any]]:
-    path = Path(resolve_data_path("data/album_community_affinities.jsonl"))
-    if not path.is_file():
-        return {}
-    out: dict[int, dict[str, Any]] = {}
-    for obj in iter_jsonl_objects(path, log_errors=False):
-        if not isinstance(obj, dict):
-            continue
-        rid = obj.get("review_id")
-        if isinstance(rid, int):
-            out[rid] = obj
-    return out
 
 
 def _top_communities_display(
@@ -256,276 +176,13 @@ def _render_newest_card(
     st.markdown(card, unsafe_allow_html=True)
 
 
-def _stored_spotify_token() -> SpotifyToken | None:
-    raw = st.session_state.get(SPOTIFY_TOKEN_KEY)
-    if not isinstance(raw, dict):
-        return None
-    try:
-        return SpotifyToken(
-            access_token=str(raw["access_token"]),
-            token_type=str(raw.get("token_type", "Bearer")),
-            expires_at=raw["expires_at"],
-            refresh_token=raw.get("refresh_token"),
-            scope=raw.get("scope"),
-        )
-    except Exception:
-        return None
-
-
-def _store_spotify_token(token: SpotifyToken) -> None:
-    st.session_state[SPOTIFY_TOKEN_KEY] = {
-        "access_token": token.access_token,
-        "token_type": token.token_type,
-        "expires_at": token.expires_at,
-        "refresh_token": token.refresh_token,
-        "scope": token.scope,
-    }
-
-
-def _ensure_valid_spotify_token(
-    client: SpotifyClient,
-    token: SpotifyToken,
-) -> SpotifyToken:
-    """Return a usable token and refresh it when required."""
-    if not token.is_expired():
-        return token
-    if not token.refresh_token:
-        raise RuntimeError(
-            "Die Spotify-Sitzung ist abgelaufen. Bitte erneut auf "
-            "„Mit Spotify verbinden“ klicken."
-        )
-    refreshed = client.refresh_access_token(refresh_token=token.refresh_token)
-    _store_spotify_token(refreshed)
-    return refreshed
-
-
-def _token_declares_spotify_scope(token: SpotifyToken, scope: str) -> bool:
-    """Return True if the granted scope string from Spotify lists ``scope``."""
-    granted = {s for s in (token.scope or "").split() if s}
-    return scope in granted
-
-
-def _render_playlist_preview_table(items: list[PlaylistCandidate]) -> None:
-    rows: list[dict[str, Any]] = []
-    for idx, item in enumerate(items, start=1):
-        rows.append(
-            {
-                "#": idx,
-                "Künstler": item.artist,
-                "Album": item.album,
-                "Song": item.track_title,
-                "Quelle": (
-                    "Highlight" if item.source_kind == "highlight" else "Tracklist"
-                ),
-                "Spotify URI": item.spotify_uri,
-            }
-        )
-    st.dataframe(rows, width="stretch", hide_index=True)
-
-
-def _render_spotify_playlist_builder(
-    *,
-    reviews: list[Review],
-    ranked_rows: list[dict[str, Any]] | None,
-) -> None:
-    with st.expander("Spotify-Playlist aus den neuesten Rezensionen", expanded=False):
-        st.caption(
-            "Erzeuge eine zufällige Playlist auf Basis der aktuell "
-            "angezeigten neuesten Rezensionen."
-        )
-        st.caption(
-            "Gewichtung: Pro Slot wird ein Album mit Zurücklegen gezogen; "
-            "die Wahrscheinlichkeiten verhalten sich wie die angezeigten "
-            "Scores (jeder Score geteilt durch die Summe aller Scores im Pool). "
-            "Pro Album werden zuerst zufällig Anspieltipps genutzt, danach "
-            "übrige Titel. Wenn Spotify einen Titel nicht eindeutig findet, "
-            "wird er übersprungen und neu gezogen; Alben mit zuverlässigeren "
-            "Treffern können deshalb in der fertigen Liste häufiger vorkommen."
-        )
-        if not reviews:
-            st.info("Keine Rezensionen verfügbar.")
-            return
-
-        max_pool = len(reviews)
-        target_count = st.slider(
-            "Zielanzahl Songs",
-            min_value=5,
-            max_value=50,
-            value=min(30, max(5, max_pool)),
-            step=1,
-        )
-        pool_count = st.slider(
-            "Wie viele der angezeigten neuesten Rezensionen berücksichtigen",
-            min_value=1,
-            max_value=max_pool,
-            value=max_pool,
-            step=1,
-        )
-        playlist_name = st.text_input(
-            "Name der Spotify-Playlist",
-            value="Neueste Rezensionen",
-        )
-        make_playlist_public = st.checkbox(
-            "Playlist öffentlich machen",
-            value=False,
-            key="newest-spotify-playlist-public",
-        )
-
-        token = _stored_spotify_token()
-        if token is None:
-            st.info(
-                "Bitte zuerst auf der Seite „Spotify-Playlists“ verbinden, "
-                "damit eine Playlist gespeichert werden kann."
-            )
-            if st.button(
-                "Zur Spotify-Seite wechseln",
-                key="newest-spotify-switch-page",
-            ):
-                st.switch_page("pages/9_Spotify_Playlists.py")
-            return
-
-        pool_reviews = reviews[:pool_count]
-        pool_rows = ranked_rows[:pool_count] if ranked_rows else None
-        chosen_reviews, weights = build_album_weights(pool_reviews, pool_rows)
-        client: SpotifyClient | None = None
-        config_error: str | None = None
-        try:
-            client = SpotifyClient(SpotifyAuthConfig.from_env())
-        except SpotifyConfigError as exc:
-            config_error = str(exc)
-
-        col_generate, col_regenerate = st.columns(2)
-        if config_error:
-            st.error(f"Spotify-Konfiguration fehlt: {config_error}")
-            return
-        assert client is not None
-
-        with col_generate:
-            generate_clicked = st.button(
-                "Vorschau erzeugen",
-                type="primary",
-                key="newest-spotify-generate",
-                width="stretch",
-            )
-        with col_regenerate:
-            regenerate_clicked = st.button(
-                "Nochmal erzeugen",
-                key="newest-spotify-regenerate",
-                width="stretch",
-            )
-
-        scope_check_token = _stored_spotify_token()
-        if (
-            scope_check_token is not None
-            and not make_playlist_public
-            and not _token_declares_spotify_scope(
-                scope_check_token,
-                "playlist-modify-private",
-            )
-        ):
-            st.warning(
-                "Für eine private Playlist braucht Spotify das OAuth-Scope "
-                "„playlist-modify-private“. Ohne dieses Recht antwortet die API "
-                "oft mit 403 Forbidden. Bitte Verbindung trennen und erneut "
-                "verbinden, und in der `.env` sicherstellen, dass "
-                "`SPOTIFY_SCOPES` dieses Scope enthält."
-            )
-        if (
-            scope_check_token is not None
-            and make_playlist_public
-            and not _token_declares_spotify_scope(
-                scope_check_token,
-                "playlist-modify-public",
-            )
-        ):
-            st.warning(
-                "Für eine öffentliche Playlist braucht Spotify das Scope "
-                "„playlist-modify-public“. Bitte Verbindung erneuern oder "
-                "`SPOTIFY_SCOPES` in der `.env` prüfen."
-            )
-
-        if generate_clicked or regenerate_clicked:
-            rng = random.Random(secrets.randbits(64))
-            with st.spinner("Playlist-Vorschau wird erzeugt..."):
-                token_for_search = _ensure_valid_spotify_token(client, token)
-                preview = build_playlist_candidates(
-                    reviews=chosen_reviews,
-                    weights=weights,
-                    target_count=target_count,
-                    rng=rng,
-                    resolve_fn=lambda *, artist, track_title: resolve_track_uri_strict(
-                        client,
-                        token_for_search,
-                        artist=artist,
-                        track_title=track_title,
-                    ),
-                )
-            st.session_state[NEWEST_SPOTIFY_PREVIEW_KEY] = preview
-
-        preview_items_any = st.session_state.get(NEWEST_SPOTIFY_PREVIEW_KEY)
-        preview_items = preview_items_any if isinstance(preview_items_any, list) else []
-        valid_preview_items = [
-            x for x in preview_items if isinstance(x, PlaylistCandidate)
-        ]
-        if valid_preview_items:
-            _render_playlist_preview_table(valid_preview_items)
-            if len(valid_preview_items) < target_count:
-                st.warning(
-                    "Es konnten nicht genug eindeutige Spotify-Treffer "
-                    "gefunden werden. "
-                    f"Gefunden: {len(valid_preview_items)} von {target_count}."
-                )
-            if st.button(
-                "Als Spotify-Playlist speichern",
-                key="newest-spotify-save",
-                width="stretch",
-            ):
-                try:
-                    with st.spinner("Spotify-Playlist wird gespeichert..."):
-                        token_for_save = _ensure_valid_spotify_token(client, token)
-                        playlist = client.create_playlist(
-                            name=playlist_name.strip() or "Neueste Rezensionen",
-                            description=(
-                                "Automatisch erstellt aus den neuesten Rezensionen "
-                                "in Music Review."
-                            ),
-                            public=make_playlist_public,
-                            token=token_for_save,
-                        )
-                        uris = [item.spotify_uri for item in valid_preview_items]
-                        for idx in range(0, len(uris), 100):
-                            client.add_tracks_to_playlist(
-                                playlist_id=playlist.id,
-                                track_uris=uris[idx : idx + 100],
-                                token=token_for_save,
-                            )
-                    st.success("Spotify-Playlist erfolgreich gespeichert.")
-                except RuntimeError as exc:
-                    st.error(
-                        "Spotify-Playlist konnte nicht gespeichert werden. "
-                        "Bitte Spotify-Verbindung prüfen und erneut versuchen."
-                    )
-                    st.caption(f"Technische Details: {exc}")
-                    detail = str(exc)
-                    if "403" in detail or "forbidden" in detail.casefold():
-                        st.caption(
-                            "Hinweis: HTTP 403 bei Spotify bedeutet oft fehlende "
-                            "OAuth-Berechtigungen (z. B. private Playlist ohne "
-                            "„playlist-modify-private“). Verbindung trennen, "
-                            "`.env`/`SPOTIFY_SCOPES` prüfen, erneut verbinden, "
-                            "oder die Option „Playlist öffentlich machen“ testen."
-                        )
-        else:
-            st.caption("Noch keine Vorschau erzeugt.")
-
-
 def main() -> None:
     st.set_page_config(
         page_title="Music Review — Neueste Rezensionen",
         page_icon=None,
         layout="centered",
     )
-    _ensure_session_state()
+    ensure_neueste_session_defaults()
     # Styles vor der Toolbar: Profilleiste oben, Hero direkt unter dem Trennstrich
     # (gleiches Muster wie pages/5_Filter_Flow.py).
     _newest_css()
@@ -537,9 +194,6 @@ def main() -> None:
         '<div class="rec-hero"><p class="rec-page-title">Neueste Rezensionen</p></div>',
         unsafe_allow_html=True,
     )
-
-    ranked_rows: list[dict[str, Any]] | None = None
-    reviews: list[Review] = []
 
     with st.container(border=True):
         st.markdown(
@@ -555,29 +209,7 @@ def main() -> None:
             label_visibility="collapsed",
         )
 
-    reviews = _load_newest_reviews(n_show)
-    if selected_comms:
-        filter_settings: dict[str, Any] = st.session_state.get("filter_settings") or {}
-        weights_raw: dict[str, float] = (
-            st.session_state.get("community_weights_raw") or {}
-        )
-        aff_map_full = _load_affinity_by_review_id()
-        memberships = load_community_memberships()
-        weights_key = tuple((str(k), float(v)) for k, v in sorted(weights_raw.items()))
-        breadth_norm_global = _cached_global_breadth_norm_map(
-            tuple(sorted(selected_comms)),
-            weights_key,
-        )
-        ranked_rows = preference_ranked_rows(
-            reviews,
-            affinity_by_review_id=aff_map_full,
-            memberships=memberships,
-            selected_comms=selected_comms,
-            weights_raw=weights_raw,
-            filter_settings=filter_settings,
-            apply_serendipity=False,
-            global_breadth_norm_by_review_id=breadth_norm_global or None,
-        )
+    reviews, ranked_rows = fetch_newest_reviews_pool(n_show)
 
     if not reviews:
         st.markdown(
@@ -662,8 +294,6 @@ def main() -> None:
                 top,
                 filter_selected_community_ids=selected_comms,
             )
-
-    _render_spotify_playlist_builder(reviews=reviews, ranked_rows=ranked_rows)
 
 
 main()

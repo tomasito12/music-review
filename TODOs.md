@@ -44,6 +44,10 @@ Now (high impact):
 
 - `- [ ] api-resilience: Einheitliche Retry/Backoff/Timeout-Policy für OpenAI/MusicBrainz/Scraper + Fehlerklassifikation`
 
+- `- [ ] spotify-search-cache-trim: Spotify-Suche entlasten — weniger Query-Varianten, aggressiveres Caching von Suchergebnissen (429 / App-Rate-Limits bei vielen Nutzern)`
+
+- `- [ ] spotify-playlist-regenerate-hint: Streamlit-Hinweis bei Plattenradar — Nutzer auf mäßiges „Nochmal erzeugen“ hinweisen (viele API-Calls pro Playlist; gemeinsame App-Quota)`
+
 - `- [ ] typed-settings-validation: Zentrales typisiertes Settings-Modell mit Startup-Validierung (fail fast bei Fehlkonfiguration)`
 
 Next (productization):

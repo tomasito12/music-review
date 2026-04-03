@@ -5,6 +5,14 @@ from dataclasses import asdict
 from typing import Any
 
 import streamlit as st
+from pages.neueste_reviews_pool import (
+    RECENT_DEFAULT,
+    ensure_neueste_session_defaults,
+    fetch_newest_reviews_pool,
+)
+from pages.neueste_spotify_playlist_section import (
+    render_neueste_spotify_playlist_section,
+)
 
 from music_review.integrations.spotify_client import (
     SpotifyAuthConfig,
@@ -327,6 +335,36 @@ def main() -> None:
     )
     client = _load_client()
     token = _render_connection_section(client)
+    st.markdown("---")
+
+    ensure_neueste_session_defaults()
+    st.subheader("Playlist aus neuesten Rezensionen")
+    st.caption(
+        "Gleicher Datenpool und Gewichtung wie auf der Seite „Neueste Rezensionen“ "
+        "(Community-Auswahl über die Toolbar auf anderen Seiten)."
+    )
+    with st.container(border=True):
+        n_show = st.slider(
+            "Wie viele der neuesten Alben einbeziehen",
+            min_value=5,
+            max_value=50,
+            value=RECENT_DEFAULT,
+            step=1,
+            key="spotify-page-neueste-n-show",
+            label_visibility="visible",
+        )
+    reviews, ranked_rows = fetch_newest_reviews_pool(n_show)
+    if not reviews:
+        st.info(
+            "Keine Rezensionen im lokalen Corpus. Pfad prüfen: data/reviews.jsonl "
+            "(ggf. Scraping ausführen)."
+        )
+    else:
+        render_neueste_spotify_playlist_section(
+            reviews=reviews,
+            ranked_rows=ranked_rows,
+        )
+
     st.markdown("---")
     if client is not None:
         _render_search_section(client, token)
