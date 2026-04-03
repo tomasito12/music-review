@@ -62,6 +62,8 @@ Next (productization):
 
 - `- [ ] secrets-hygiene: Secret-Handling härten (Leak-Prüfung, Logging-Schutz, pre-commit secret scan)`
 
+- `- [ ] spotify-byo-developer-app: Eigene Spotify-App pro Nutzer — Anleitung (Developer Dashboard: App anlegen, Redirect URI); Nutzer gibt Client-ID (und ggf. Client Secret / Redirect) im UI ein; OAuth + Playlist-API nutzt dann deren App statt der Projekt-Default-App → umgeht Development-Allowlist (max. 5 Nutzer) und das Fehlen von Extended Quota für Privatpersonen`
+
 Later (larger initiatives):
 
 - `- [ ] artifact-versioning-reproducibility: Versionierung für Daten-/Modell-Artefakte + reproduzierbare One-Command-Pipeline`
