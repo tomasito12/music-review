@@ -11,15 +11,38 @@ import urllib.parse
 from collections.abc import Mapping
 from dataclasses import dataclass
 from datetime import UTC, datetime, timedelta
-from os import getenv
+from os import getcwd, getenv
+from pathlib import Path
 from typing import Any, Final
 
 import requests
+
+# Import config to trigger `.env` loading via its side effects.
+from music_review import config as _config  # noqa: F401
 
 LOGGER: Final = logging.getLogger(__name__)
 
 SPOTIFY_AUTH_BASE_URL: Final = "https://accounts.spotify.com"
 SPOTIFY_API_BASE_URL: Final = "https://api.spotify.com/v1"
+
+
+def _spotify_api_error_message(response: requests.Response) -> str:
+    """Build a short error string from a failed Spotify Web API response."""
+    raw = (response.text or "").strip()
+    status = int(response.status_code)
+    try:
+        parsed: Any = response.json()
+    except ValueError:
+        return f"Spotify API HTTP {status}: {raw[:800]}"
+    if isinstance(parsed, dict):
+        err = parsed.get("error")
+        if isinstance(err, dict):
+            msg = err.get("message")
+            if isinstance(msg, str) and msg.strip():
+                return f"Spotify API HTTP {status}: {msg.strip()}"
+        if isinstance(err, str) and err.strip():
+            return f"Spotify API HTTP {status}: {err.strip()}"
+    return f"Spotify API HTTP {status}: {raw[:800]}"
 
 
 class SpotifyConfigError(RuntimeError):
@@ -50,7 +73,39 @@ class SpotifyAuthConfig:
         - ``SPOTIFY_SCOPES`` (optional, space-separated)
         - ``SPOTIFY_CLIENT_SECRET`` (optional, only used for some flows)
         """
-        client_id = (getenv("SPOTIFY_CLIENT_ID") or "").strip()
+        client_id_raw = getenv("SPOTIFY_CLIENT_ID")
+        if not client_id_raw:
+            # Basic fallback: load required Spotify vars from a local .env file
+            # in the current working directory if present. This keeps behavior
+            # predictable even when python-dotenv is unavailable.
+            env_path = Path(getcwd()) / ".env"
+            if env_path.is_file():
+                try:
+                    for line in env_path.read_text(encoding="utf-8").splitlines():
+                        stripped = line.strip()
+                        if not stripped or stripped.startswith("#"):
+                            continue
+                        if "=" not in stripped:
+                            continue
+                        key, value = stripped.split("=", 1)
+                        key = key.strip()
+                        value = value.strip().strip('"').strip("'")
+                        if key in {
+                            "SPOTIFY_CLIENT_ID",
+                            "SPOTIFY_CLIENT_SECRET",
+                            "SPOTIFY_REDIRECT_URI",
+                            "SPOTIFY_SCOPES",
+                        } and not getenv(key):
+                            # Avoid importing dotenv; set only if unset.
+                            import os
+
+                            os.environ[key] = value
+                except Exception:
+                    # Fallback loading must not break the caller.
+                    pass
+            client_id_raw = getenv("SPOTIFY_CLIENT_ID")
+
+        client_id = (client_id_raw or "").strip()
         redirect_uri = (getenv("SPOTIFY_REDIRECT_URI") or "").strip()
         scopes_raw = (getenv("SPOTIFY_SCOPES") or "").strip()
         client_secret = (getenv("SPOTIFY_CLIENT_SECRET") or "").strip() or None
@@ -190,19 +245,23 @@ class SpotifyClient:
         self,
         *,
         state: str,
-        code_challenge: str,
+        code_challenge: str | None = None,
         code_challenge_method: str = "S256",
     ) -> str:
-        """Return the URL to start the Spotify OAuth flow with PKCE enabled."""
+        """Return the URL to start the Spotify OAuth flow.
+
+        When ``code_challenge`` is provided, PKCE parameters are included.
+        """
         params = {
             "client_id": self._config.client_id,
             "response_type": "code",
             "redirect_uri": self._config.redirect_uri,
             "scope": " ".join(self._config.scopes),
             "state": state,
-            "code_challenge": code_challenge,
-            "code_challenge_method": code_challenge_method,
         }
+        if code_challenge:
+            params["code_challenge"] = code_challenge
+            params["code_challenge_method"] = code_challenge_method
         query = urllib.parse.urlencode(params)
         return f"{SPOTIFY_AUTH_BASE_URL}/authorize?{query}"
 
@@ -213,7 +272,7 @@ class SpotifyClient:
         self,
         *,
         code: str,
-        code_verifier: str,
+        code_verifier: str | None = None,
     ) -> SpotifyToken:
         """Exchange an authorization code for an access/refresh token pair."""
         data = {
@@ -221,8 +280,9 @@ class SpotifyClient:
             "code": code,
             "redirect_uri": self._config.redirect_uri,
             "client_id": self._config.client_id,
-            "code_verifier": code_verifier,
         }
+        if code_verifier:
+            data["code_verifier"] = code_verifier
         headers: dict[str, str] = {}
         if self._config.client_secret:
             # Some environments still prefer basic auth with client secret.
@@ -314,6 +374,7 @@ class SpotifyClient:
             LOGGER.warning("Spotify API rate limit hit; Retry-After=%s", retry_after)
             raise RuntimeError("Spotify rate limit exceeded; please try again later")
         if not response.ok:
+            detail = _spotify_api_error_message(response)
             LOGGER.error(
                 "Spotify API error %s for %s %s: %s",
                 response.status_code,
@@ -321,7 +382,7 @@ class SpotifyClient:
                 path,
                 response.text,
             )
-            raise RuntimeError("Spotify API request failed")
+            raise RuntimeError(detail)
         parsed = response.json()
         if not isinstance(parsed, dict):
             raise RuntimeError("Unexpected Spotify API response shape")
@@ -448,20 +509,19 @@ class SpotifyClient:
     def create_playlist(
         self,
         *,
-        user_id: str,
         name: str,
         public: bool,
         token: SpotifyToken,
         description: str | None = None,
     ) -> SpotifyPlaylist:
-        """Create a new playlist for the given user."""
+        """Create a new playlist for the current user (OAuth token owner)."""
         payload: dict[str, Any] = {
             "name": name,
             "public": bool(public),
         }
         if description:
             payload["description"] = description
-        path = f"/users/{urllib.parse.quote(user_id)}/playlists"
+        path = "/me/playlists"
         data = self._request(
             "POST",
             path,
@@ -499,7 +559,8 @@ class SpotifyClient:
         if not track_uris:
             return
         payload = {"uris": list(track_uris)}
-        path = f"/playlists/{urllib.parse.quote(playlist_id)}/tracks"
+        # Development-mode apps (post Feb 2026 migration) must use /items, not /tracks.
+        path = f"/playlists/{urllib.parse.quote(playlist_id)}/items"
         self._request(
             "POST",
             path,

@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from datetime import UTC, datetime, timedelta
+from pathlib import Path
 from typing import Any
 from unittest.mock import MagicMock, patch
 
@@ -31,9 +32,15 @@ def _sample_token_payload() -> dict[str, Any]:
 
 def test_spotify_auth_config_from_env_missing_client_id(
     monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
 ) -> None:
     monkeypatch.delenv("SPOTIFY_CLIENT_ID", raising=False)
-    monkeypatch.setenv("SPOTIFY_REDIRECT_URI", "http://localhost/callback")
+    monkeypatch.delenv("SPOTIFY_REDIRECT_URI", raising=False)
+    monkeypatch.delenv("SPOTIFY_CLIENT_SECRET", raising=False)
+    monkeypatch.delenv("SPOTIFY_SCOPES", raising=False)
+    # Do not read the real project .env (it may define Spotify keys).
+    (tmp_path / ".env").write_text("# empty for test\n", encoding="utf-8")
+    monkeypatch.chdir(tmp_path)
     with pytest.raises(SpotifyConfigError):
         SpotifyAuthConfig.from_env()
 
@@ -149,6 +156,26 @@ def test_refresh_access_token_preserves_refresh_when_missing(
 
     token = client.refresh_access_token("keep-me")
     assert token.refresh_token == "keep-me"
+
+
+@patch("music_review.integrations.spotify_client.requests.request")
+def test_request_forbidden_includes_spotify_message(mock_req: MagicMock) -> None:
+    cfg = SpotifyAuthConfig(
+        client_id="cid",
+        redirect_uri="http://localhost/callback",
+        scopes=("playlist-modify-public",),
+    )
+    client = SpotifyClient(cfg)
+    mock_resp = MagicMock()
+    mock_resp.status_code = 403
+    mock_resp.ok = False
+    mock_resp.text = '{"error":{"status":403,"message":"Forbidden"}}'
+    mock_resp.json.return_value = {"error": {"status": 403, "message": "Forbidden"}}
+    mock_req.return_value = mock_resp
+
+    token = SpotifyToken.from_token_response(_sample_token_payload())
+    with pytest.raises(RuntimeError, match="Forbidden"):
+        client.search_tracks(query="test", limit=5, token=token)
 
 
 @patch("music_review.integrations.spotify_client.requests.request")
@@ -269,7 +296,6 @@ def test_create_playlist_and_add_tracks(mock_req: MagicMock) -> None:
     mock_req.side_effect = [mock_create, mock_add]
 
     playlist = client.create_playlist(
-        user_id="user1",
         name="My Playlist",
         public=True,
         token=token,
@@ -286,3 +312,10 @@ def test_create_playlist_and_add_tracks(mock_req: MagicMock) -> None:
     )
 
     assert mock_req.call_count == 2
+    create_kw = mock_req.call_args_list[0].kwargs
+    assert "/me/playlists" in str(create_kw.get("url", ""))
+    add_kw = mock_req.call_args_list[1].kwargs
+    add_url = str(add_kw.get("url", ""))
+    assert "/playlists/" in add_url
+    assert "/items" in add_url
+    assert "/tracks" not in add_url

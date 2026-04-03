@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import secrets
 from dataclasses import asdict
 from typing import Any
 
@@ -10,7 +11,6 @@ from music_review.integrations.spotify_client import (
     SpotifyClient,
     SpotifyPlaylist,
     SpotifyToken,
-    generate_pkce_pair,
 )
 
 """Spotify playlist helper page.
@@ -22,7 +22,6 @@ session state so the flow is suitable for multiple users on the same app.
 
 
 SPOTIFY_AUTH_STATE_KEY = "spotify_auth_state"
-SPOTIFY_CODE_VERIFIER_KEY = "spotify_code_verifier"
 SPOTIFY_TOKEN_KEY = "spotify_token"
 SPOTIFY_SEARCH_RESULTS_KEY = "spotify_search_results_tracks"
 SPOTIFY_SELECTED_URIS_KEY = "spotify_selected_track_uris"
@@ -63,16 +62,34 @@ def _store_token(token: SpotifyToken) -> None:
     st.session_state[SPOTIFY_TOKEN_KEY] = asdict(token)
 
 
+def _query_param_single(raw: Any) -> str | None:
+    """Normalize Streamlit query param value to a single string."""
+    if raw is None:
+        return None
+    if isinstance(raw, list):
+        if not raw:
+            return None
+        return str(raw[0])
+    return str(raw)
+
+
+def _clear_oauth_query_params() -> None:
+    """Remove OAuth callback params so reruns do not re-trigger a failed check."""
+    for key in ("code", "state", "error", "error_description"):
+        if key in st.query_params:
+            del st.query_params[key]
+
+
 def _handle_oauth_callback(client: SpotifyClient) -> None:
     """Handle OAuth callback parameters present in the page URL."""
     params = st.query_params
-    code = params.get("code")
-    state = params.get("state")
+    code = _query_param_single(params.get("code"))
+    state = _query_param_single(params.get("state"))
     if not code or not state:
         return
     expected_state = st.session_state.get(SPOTIFY_AUTH_STATE_KEY)
-    code_verifier = st.session_state.get(SPOTIFY_CODE_VERIFIER_KEY)
-    if not expected_state or not code_verifier or state != expected_state:
+    if isinstance(expected_state, str) and expected_state and state != expected_state:
+        _clear_oauth_query_params()
         st.error(
             "Sicherheitsüberprüfung für den Spotify-Login fehlgeschlagen. "
             "Bitte den Verbindungsaufbau erneut starten.",
@@ -81,10 +98,10 @@ def _handle_oauth_callback(client: SpotifyClient) -> None:
     with st.spinner("Spotify-Verbindung wird hergestellt …"):
         try:
             token = client.exchange_code_for_token(
-                code=str(code),
-                code_verifier=str(code_verifier),
+                code=code,
             )
         except Exception as exc:
+            _clear_oauth_query_params()
             st.error(
                 "Spotify-Token konnte nicht abgerufen werden. "
                 "Bitte versuche es später erneut.",
@@ -93,7 +110,7 @@ def _handle_oauth_callback(client: SpotifyClient) -> None:
             return
     _store_token(token)
     st.session_state.pop(SPOTIFY_AUTH_STATE_KEY, None)
-    st.session_state.pop(SPOTIFY_CODE_VERIFIER_KEY, None)
+    _clear_oauth_query_params()
     st.success("Du bist jetzt mit Spotify verbunden.")
 
 
@@ -118,19 +135,14 @@ def _render_connection_section(client: SpotifyClient | None) -> SpotifyToken | N
                 st.session_state.pop(SPOTIFY_SEARCH_RESULTS_KEY, None)
                 st.session_state.pop(SPOTIFY_SELECTED_URIS_KEY, None)
                 st.session_state.pop(SPOTIFY_LAST_PLAYLIST_KEY, None)
-                st.experimental_rerun()
+                st.rerun()
         return token
 
     if st.button("Mit Spotify verbinden", type="primary"):
-        state = st.session_state.get(SPOTIFY_AUTH_STATE_KEY)
-        if not isinstance(state, str) or not state:
-            state = client.__class__.__name__
-            st.session_state[SPOTIFY_AUTH_STATE_KEY] = state
-        code_verifier, code_challenge = generate_pkce_pair()
-        st.session_state[SPOTIFY_CODE_VERIFIER_KEY] = code_verifier
+        state = secrets.token_urlsafe(32)
+        st.session_state[SPOTIFY_AUTH_STATE_KEY] = state
         auth_url = client.build_authorize_url(
             state=str(state),
-            code_challenge=code_challenge,
         )
         st.markdown(
             f"[Zum Spotify-Login wechseln]({auth_url})",
@@ -259,9 +271,7 @@ def _render_playlist_section(client: SpotifyClient, token: SpotifyToken | None) 
             return
         with st.spinner("Playlist wird in Spotify erstellt …"):
             try:
-                user_id = client.get_current_user_id(token=token)
                 playlist: SpotifyPlaylist = client.create_playlist(
-                    user_id=user_id,
                     name=playlist_name.strip(),
                     public=make_public,
                     token=token,
@@ -326,4 +336,3 @@ def main() -> None:
 
 if __name__ == "__main__":
     main()
-
