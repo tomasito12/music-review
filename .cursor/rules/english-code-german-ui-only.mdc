@@ -1,0 +1,34 @@
+---
+description: English identifiers, docstrings, and comments; German only for user-visible Streamlit copy
+alwaysApply: true
+---
+
+# Code Language: English; German Only for UI Copy
+
+- **Identifiers** (functions, methods, variables, classes, modules): English, following project style (e.g. `snake_case` in Python).
+- **Docstrings and comments**: English everywhere (`src/`, `tests/`, `scripts/`, `pages/`). They are for maintainers, not end users.
+- **Logs and internal messages**: English unless a product requirement explicitly says otherwise.
+
+**German is allowed** only for **user-visible** strings in the German Streamlit UI: labels, titles, help text, button captions, placeholders, and errors shown to users in `pages/` and `streamlit_app.py`. For spelling (umlauts, ß), follow the project rule for German frontend copy.
+
+Do not mix German into names or documentation “because the feature is German-facing”; keep implementation language English and localize only the strings the user reads.
+
+## Examples
+
+```python
+# Good (library or pipeline code)
+def fetch_latest_reviews(limit: int) -> list[dict[str, object]]:
+    """Return the most recently scraped reviews, at most ``limit`` items."""
+```
+
+```python
+# Good (Streamlit page: English names, German user strings)
+st.subheader("Neueste Rezensionen")
+artist_query = st.text_input("Künstler")
+```
+
+```python
+# Bad
+def hole_neueste_rezensionen(grenze: int) -> list[dict[str, object]]:
+    """Holt die neuesten Rezensionen bis zur Grenze."""
+```
