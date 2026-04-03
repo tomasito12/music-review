@@ -68,12 +68,6 @@ def _ensure_session_state() -> None:
 
 
 def main() -> None:
-    st.set_page_config(
-        page_title="Plattenradar -- Einstieg",
-        page_icon=None,
-        layout="centered",
-    )
-
     _ensure_session_state()
     render_toolbar("einstieg")
     _einstieg_css()
@@ -133,8 +127,11 @@ def main() -> None:
             st.caption("Ausgewählt: " + ", ".join(sorted(selected)))
 
     st.markdown('<div class="einstieg-cta">', unsafe_allow_html=True)
-    if st.button("Weiter zu Schritt 2", type="primary", width="stretch"):
-        st.switch_page("pages/1_Community_Auswahl.py")
+    st.page_link(
+        "pages/1_Community_Auswahl.py",
+        label="Weiter zu Schritt 2",
+        use_container_width=True,
+    )
     st.markdown("</div>", unsafe_allow_html=True)
 
 

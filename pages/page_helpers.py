@@ -13,9 +13,15 @@ import streamlit as st
 
 from music_review.config import resolve_data_path
 from music_review.dashboard.user_profile_store import (
+    ACTIVE_PROFILE_COOKIE_NAME,
     ACTIVE_PROFILE_SESSION_KEY,
+    ProfileHydrationResult,
+    apply_profile_to_session,
     build_profile_payload,
     default_profiles_dir,
+    ensure_active_profile_hydrated,
+    load_profile,
+    normalize_profile_slug,
     save_profile,
 )
 from music_review.io.jsonl import iter_jsonl_objects
@@ -1101,35 +1107,111 @@ def _reset_filters() -> None:
     st.session_state.pop(FILTER_PLATTENLABEL_MULTISELECT_KEY, None)
 
 
-def render_toolbar(page_key: str) -> None:
-    """Compact profile/action bar at the top of every flow page."""
-    active = st.session_state.get(ACTIVE_PROFILE_SESSION_KEY)
+# CookieManager uses a fixed element key; only one instance per session.
+_PROFILE_COOKIE_MANAGER_STATE_KEY = "_mr_profile_cookie_manager_singleton"
 
+
+def profile_cookie_manager() -> Any:
+    """Shared CookieManager so the component is not instantiated twice in one run."""
+    import extra_streamlit_components as stx
+
+    existing = st.session_state.get(_PROFILE_COOKIE_MANAGER_STATE_KEY)
+    if existing is not None:
+        return existing
+    cm = stx.CookieManager(key="mr_profile_cookie_mgr")
+    st.session_state[_PROFILE_COOKIE_MANAGER_STATE_KEY] = cm
+    return cm
+
+
+def persist_active_profile_slug_cookie(slug: str) -> None:
+    """Remember the active profile slug in the browser (same-site lax, 180 days)."""
+    try:
+        safe = normalize_profile_slug(slug)
+    except ValueError:
+        return
+    cm = profile_cookie_manager()
+    cm.set(
+        ACTIVE_PROFILE_COOKIE_NAME,
+        safe,
+        key="mr_cookie_set_profile",
+        max_age=60.0 * 60 * 24 * 180,
+        same_site="lax",
+    )
+
+
+def clear_active_profile_slug_cookie() -> None:
+    """Remove client-side profile slug (call on logout or invalid profile file)."""
+    cm = profile_cookie_manager()
+    cm.delete(ACTIVE_PROFILE_COOKIE_NAME, key="mr_cookie_del_profile")
+
+
+def restore_active_profile_from_cookie_if_needed() -> None:
+    """If server session lost the slug, restore login from cookie + JSON on disk."""
+    if st.session_state.get(ACTIVE_PROFILE_SESSION_KEY):
+        return
+    cm = profile_cookie_manager()
+    raw = cm.get(ACTIVE_PROFILE_COOKIE_NAME)
+    if not isinstance(raw, str) or not raw.strip():
+        return
+    try:
+        slug = normalize_profile_slug(raw)
+    except ValueError:
+        cm.delete(ACTIVE_PROFILE_COOKIE_NAME, key="mr_cookie_del_bad_slug")
+        return
+    profiles_dir = default_profiles_dir()
+    data = load_profile(profiles_dir, slug)
+    if data is None:
+        cm.delete(ACTIVE_PROFILE_COOKIE_NAME, key="mr_cookie_del_orphan")
+        return
+    st.session_state[ACTIVE_PROFILE_SESSION_KEY] = slug
+    apply_profile_to_session(st.session_state, data)
+
+
+def bootstrap_profile_session() -> None:
+    """Restore profile from cookie and re-hydrate from disk (entrypoint only)."""
+    restore_active_profile_from_cookie_if_needed()
+    res = ensure_active_profile_hydrated(st.session_state)
+    if res == ProfileHydrationResult.CLEARED_MISSING_PROFILE_FILE:
+        clear_active_profile_slug_cookie()
+        st.warning(
+            "Gespeichertes Profil wurde nicht gefunden. "
+            "Die Anmeldung wurde zurückgesetzt (Cookie entfernt).",
+        )
+
+
+def render_profile_sidebar() -> None:
+    """Profile status and actions in the sidebar (entrypoint; runs every rerun)."""
+    res = ensure_active_profile_hydrated(st.session_state)
+    if res == ProfileHydrationResult.CLEARED_MISSING_PROFILE_FILE:
+        clear_active_profile_slug_cookie()
+
+    st.sidebar.markdown("### Profil")
+    active = st.session_state.get(ACTIVE_PROFILE_SESSION_KEY)
     if active:
-        cols = st.columns([2, 1, 1, 1])
-        with cols[0]:
-            st.caption(f"Angemeldet als **{active}**")
-        with cols[1]:
-            if st.button("Speichern", key=f"tb_{page_key}_save"):
+        st.sidebar.caption(f"Angemeldet als **{active}**")
+        b1, b2, b3 = st.sidebar.columns(3)
+        with b1:
+            if st.button("Speichern", key="sb_prof_save"):
                 save_current_profile_to_disk()
-        with cols[2]:
-            if st.button("Reset", key=f"tb_{page_key}_reset"):
+        with b2:
+            if st.button("Reset", key="sb_prof_reset"):
                 _reset_filters()
                 st.rerun()
-        with cols[3]:
-            if st.button("Abmelden", key=f"tb_{page_key}_logout"):
+        with b3:
+            if st.button("Abmelden", key="sb_prof_logout"):
                 st.session_state.pop(ACTIVE_PROFILE_SESSION_KEY, None)
+                clear_active_profile_slug_cookie()
                 st.rerun()
     else:
-        col_status, col_login = st.columns([5, 1])
-        with col_status:
-            st.caption("Kein Profil aktiv")
-        with col_login:
-            if st.button(
-                "Anmelden",
-                key=f"tb_{page_key}_login",
-                width="stretch",
-            ):
-                st.switch_page("pages/0_Profil.py")
+        st.sidebar.caption("Kein Profil aktiv")
+        st.sidebar.page_link(
+            "pages/0_Profil.py",
+            label="Anmelden",
+            use_container_width=True,
+        )
 
+
+def render_toolbar(page_key: str) -> None:
+    """Top-of-page separator; profile controls live in the entrypoint sidebar."""
+    _ = page_key
     st.markdown("---")

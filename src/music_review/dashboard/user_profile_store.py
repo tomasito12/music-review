@@ -10,6 +10,7 @@ import json
 import re
 from collections.abc import Mapping, MutableMapping
 from datetime import UTC, datetime
+from enum import Enum, auto
 from pathlib import Path
 from typing import Any
 
@@ -19,7 +20,18 @@ SCHEMA_VERSION = 1
 MAX_SLUG_LEN = 48
 # Shared session_state key for signed-in profile (used by Streamlit pages).
 ACTIVE_PROFILE_SESSION_KEY = "active_profile_slug"
+# Browser cookie for remembering the last profile slug (client persistence).
+ACTIVE_PROFILE_COOKIE_NAME = "mr_active_profile_slug"
 _SLUG_PATTERN = re.compile(r"^[a-z0-9][a-z0-9_-]*$")
+
+
+class ProfileHydrationResult(Enum):
+    """Outcome of syncing session profile fields from on-disk JSON."""
+
+    NO_ACTIVE_SLUG = auto()
+    HYDRATED = auto()
+    CLEARED_MISSING_PROFILE_FILE = auto()
+    CLEARED_INVALID_SLUG = auto()
 
 
 def default_profiles_dir() -> Path:
@@ -193,3 +205,40 @@ def apply_profile_to_session(
     fm = data.get("flow_mode")
     if fm is None or isinstance(fm, str):
         session["flow_mode"] = fm
+
+
+def ensure_active_profile_hydrated(
+    session: MutableMapping[str, Any],
+    *,
+    profiles_dir: Path | None = None,
+) -> ProfileHydrationResult:
+    """Re-load profile JSON into the session when ``ACTIVE_PROFILE_SESSION_KEY`` is set.
+
+    Keeps communities, filters, and weights in sync with disk on every page run so a
+    partial ``session_state`` loss (multipage navigation) does not leave the user
+    signed in with empty preferences.
+
+    Returns:
+        What happened: no slug, successful hydrate, or slug removed (missing file
+        or invalid slug in session).
+    """
+    raw_slug = session.get(ACTIVE_PROFILE_SESSION_KEY)
+    if raw_slug is None or not isinstance(raw_slug, str) or not raw_slug.strip():
+        return ProfileHydrationResult.NO_ACTIVE_SLUG
+
+    try:
+        safe_slug = normalize_profile_slug(raw_slug)
+    except ValueError:
+        session.pop(ACTIVE_PROFILE_SESSION_KEY, None)
+        return ProfileHydrationResult.CLEARED_INVALID_SLUG
+
+    base = profiles_dir if profiles_dir is not None else default_profiles_dir()
+    data = load_profile(base, safe_slug)
+    if data is None:
+        session.pop(ACTIVE_PROFILE_SESSION_KEY, None)
+        return ProfileHydrationResult.CLEARED_MISSING_PROFILE_FILE
+
+    if safe_slug != raw_slug:
+        session[ACTIVE_PROFILE_SESSION_KEY] = safe_slug
+    apply_profile_to_session(session, data)
+    return ProfileHydrationResult.HYDRATED

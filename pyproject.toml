@@ -29,7 +29,8 @@ dependencies = [
   "python-dotenv",
   "musicbrainzngs",
   "requests",
-  "streamlit>=1.40",
+    "extra-streamlit-components>=0.1.70",
+    "streamlit>=1.50",
 ]
 
 [project.optional-dependencies]

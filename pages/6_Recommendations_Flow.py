@@ -56,7 +56,12 @@ from music_review.dashboard.recommendations_flow_pagination import (
     recommendation_total_pages,
     streamlit_parent_scroll_to_anchor_html,
 )
-from music_review.dashboard.user_profile_store import ACTIVE_PROFILE_SESSION_KEY
+from music_review.dashboard.user_profile_store import (
+    ACTIVE_PROFILE_SESSION_KEY,
+    apply_profile_to_session,
+    default_profiles_dir,
+    load_profile,
+)
 from music_review.io.jsonl import iter_jsonl_objects, load_jsonl_as_map
 from music_review.io.reviews_jsonl import load_reviews_from_jsonl
 from music_review.pipeline.retrieval.reference_graph import (
@@ -72,7 +77,6 @@ REC_PAGE_SIZE_DEFAULT_INDEX = RECOMMENDATIONS_PAGE_SIZE_CHOICES.index(
 )
 
 # Streamlit widget keys: keep centralized to avoid accidental duplicates.
-KEY_FILTER_ADJUST_BUTTON = "rec_filter_adjust_button"
 KEY_START_WORKFLOW_BUTTON = "rec_start_workflow_button"
 KEY_PAGE_SIZE_PREV = "rec_page_size_prev"
 KEY_REC_PAGE = "rec_results_page_1based"
@@ -452,12 +456,6 @@ def _render_sort_settings_widgets_and_persist() -> None:
 
 
 def main() -> None:
-    st.set_page_config(
-        page_title="Music Review — Empfehlungen",
-        page_icon=None,
-        layout="centered",
-    )
-
     render_toolbar("recommendations")
     _recommendations_css()
 
@@ -484,8 +482,11 @@ def main() -> None:
                 "</div>",
                 unsafe_allow_html=True,
             )
-            if st.button("Zurück zu den Filtern"):
-                st.switch_page("pages/5_Filter_Flow.py")
+            st.page_link(
+                "pages/5_Filter_Flow.py",
+                label="Zurück zu den Filtern",
+                use_container_width=True,
+            )
             return
 
         st.markdown(
@@ -639,8 +640,11 @@ def main() -> None:
     st.markdown("---")
     col_back, col_start = st.columns([1, 1])
     with col_back:
-        if st.button("Filter anpassen", key=KEY_FILTER_ADJUST_BUTTON):
-            st.switch_page("pages/5_Filter_Flow.py")
+        st.page_link(
+            "pages/5_Filter_Flow.py",
+            label="Filter anpassen",
+            use_container_width=True,
+        )
     with col_start:
         if st.button("Von vorn beginnen", key=KEY_START_WORKFLOW_BUTTON):
             saved_slug = st.session_state.get(ACTIVE_PROFILE_SESSION_KEY)
@@ -649,6 +653,9 @@ def main() -> None:
             st.session_state.clear()
             if saved_slug is not None:
                 st.session_state[ACTIVE_PROFILE_SESSION_KEY] = saved_slug
+                loaded = load_profile(default_profiles_dir(), str(saved_slug))
+                if loaded is not None:
+                    apply_profile_to_session(st.session_state, loaded)
             st.switch_page("pages/0b_Einstieg.py")
 
 

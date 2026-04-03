@@ -321,15 +321,8 @@ def _render_style_weights(
 
 
 def main() -> None:
-    st.set_page_config(
-        page_title="Plattenradar -- Finetuning",
-        page_icon=None,
-        layout="centered",
-    )
-
     _ensure_session_state()
-    # Styles vor der Toolbar: so liegt der Hero direkt unter der Leiste wie
-    # auf Schritt 1/2 (kein zusätzlicher Markdown-Block zwischen --- und Hero).
+    # Styles vor dem oberen Trennstrich: Hero direkt unter --- wie auf Schritt 1/2.
     _filter_css()
     render_toolbar("filter_flow")
 
@@ -855,15 +848,17 @@ def main() -> None:
     st.markdown('<div class="filter-cta">', unsafe_allow_html=True)
     col_back, col_next = st.columns(2)
     with col_back:
-        if st.button("Zurück", width="stretch"):
-            st.switch_page("pages/1_Community_Auswahl.py")
+        st.page_link(
+            "pages/1_Community_Auswahl.py",
+            label="Zurück",
+            use_container_width=True,
+        )
     with col_next:
-        if st.button(
-            "Empfehlungen anzeigen",
-            type="primary",
-            width="stretch",
-        ):
-            st.switch_page("pages/6_Recommendations_Flow.py")
+        st.page_link(
+            "pages/6_Recommendations_Flow.py",
+            label="Empfehlungen anzeigen",
+            use_container_width=True,
+        )
     st.markdown("</div>", unsafe_allow_html=True)
 
 

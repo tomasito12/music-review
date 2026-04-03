@@ -6,6 +6,7 @@ from pathlib import Path
 from typing import Any, cast
 
 import streamlit as st
+from pages.page_helpers import render_toolbar
 
 from music_review.config import resolve_data_path
 from music_review.io.jsonl import iter_jsonl_objects
@@ -341,11 +342,7 @@ def _render_stored_results() -> None:
 
 
 def main() -> None:
-    st.set_page_config(
-        page_title="Music Review — Freitext-Qualität",
-        page_icon=None,
-        layout="wide",
-    )
+    render_toolbar("freitext_qualitaet")
 
     st.title("Freitext-Qualität / RAG-Diagnose")
     st.markdown(

@@ -13,6 +13,7 @@ from pages.neueste_reviews_pool import (
 from pages.neueste_spotify_playlist_section import (
     render_neueste_spotify_playlist_section,
 )
+from pages.page_helpers import render_toolbar
 
 from music_review.integrations.spotify_client import (
     SpotifyAuthConfig,
@@ -317,11 +318,8 @@ def _render_playlist_section(client: SpotifyClient, token: SpotifyToken | None) 
 
 
 def main() -> None:
-    st.set_page_config(
-        page_title="Spotify-Playlists",
-        layout="centered",
-        page_icon=None,
-    )
+    render_toolbar("spotify_playlists")
+
     st.markdown(
         "<h1 style='text-align:center;'>Spotify-Playlists</h1>",
         unsafe_allow_html=True,
@@ -341,7 +339,8 @@ def main() -> None:
     st.subheader("Playlist aus neuesten Rezensionen")
     st.caption(
         "Gleicher Datenpool und Gewichtung wie auf der Seite „Neueste Rezensionen“ "
-        "(Community-Auswahl über die Toolbar auf anderen Seiten)."
+        "(Community-Auswahl über die Profilleiste in der Seitenleiste oder auf "
+        "den anderen Seiten)."
     )
     with st.container(border=True):
         n_show = st.slider(

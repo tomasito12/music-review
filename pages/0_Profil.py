@@ -5,7 +5,11 @@ from __future__ import annotations
 from typing import Any
 
 import streamlit as st
-from pages.page_helpers import get_selected_communities
+from pages.page_helpers import (
+    clear_active_profile_slug_cookie,
+    get_selected_communities,
+    persist_active_profile_slug_cookie,
+)
 
 from music_review.dashboard.user_profile_store import (
     ACTIVE_PROFILE_SESSION_KEY,
@@ -88,6 +92,7 @@ def _sign_in(profiles_dir: Any, slug: str) -> None:
         return
     apply_profile_to_session(st.session_state, data)
     st.session_state[ACTIVE_PROFILE_SESSION_KEY] = safe
+    persist_active_profile_slug_cookie(safe)
     st.rerun()
 
 
@@ -115,6 +120,7 @@ def _create_new(profiles_dir: Any, name_raw: str) -> None:
     )
     save_profile(profiles_dir, slug, payload)
     st.session_state[ACTIVE_PROFILE_SESSION_KEY] = slug
+    persist_active_profile_slug_cookie(slug)
     st.rerun()
 
 
@@ -132,6 +138,7 @@ def _render_active_profile() -> None:
             width="stretch",
         ):
             st.session_state.pop(ACTIVE_PROFILE_SESSION_KEY, None)
+            clear_active_profile_slug_cookie()
             st.rerun()
 
 
@@ -191,17 +198,12 @@ def _render_profile_choices() -> None:
             width="stretch",
         ):
             st.session_state.pop(ACTIVE_PROFILE_SESSION_KEY, None)
+            clear_active_profile_slug_cookie()
             st.session_state["flow_mode"] = None
             st.switch_page("pages/0b_Einstieg.py")
 
 
 def main() -> None:
-    st.set_page_config(
-        page_title="Plattenradar -- Profil",
-        page_icon=None,
-        layout="centered",
-    )
-
     if "flow_mode" not in st.session_state:
         st.session_state["flow_mode"] = None
 
@@ -237,6 +239,12 @@ def main() -> None:
         "von vorn zu durchlaufen."
         "</div>",
         unsafe_allow_html=True,
+    )
+
+    st.caption(
+        "Damit die Anmeldung beim Wechseln der Seiten zuverlässig bleibt, "
+        "speichert dein Browser den Profilnamen als Cookie (SameSite Lax). "
+        "Abmelden oder „Ohne Profil weiter“ entfernt ihn wieder.",
     )
 
     active = st.session_state.get(ACTIVE_PROFILE_SESSION_KEY)

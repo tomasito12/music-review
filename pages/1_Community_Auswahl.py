@@ -111,12 +111,6 @@ def _render_community_list(
 
 
 def main() -> None:
-    st.set_page_config(
-        page_title="Plattenradar -- Stil im Detail",
-        page_icon=None,
-        layout="centered",
-    )
-
     _ensure_session_state()
     render_toolbar("community_auswahl")
     _feinwahl_css()
@@ -202,11 +196,17 @@ def main() -> None:
     st.markdown('<div class="feinwahl-cta">', unsafe_allow_html=True)
     col_back, col_next = st.columns(2)
     with col_back:
-        if st.button("Zurück", width="stretch"):
-            st.switch_page("pages/0b_Einstieg.py")
+        st.page_link(
+            "pages/0b_Einstieg.py",
+            label="Zurück",
+            use_container_width=True,
+        )
     with col_next:
-        if st.button("Weiter zu den Filtern", type="primary", width="stretch"):
-            st.switch_page("pages/5_Filter_Flow.py")
+        st.page_link(
+            "pages/5_Filter_Flow.py",
+            label="Weiter zu den Filtern",
+            use_container_width=True,
+        )
     st.markdown("</div>", unsafe_allow_html=True)
 
 

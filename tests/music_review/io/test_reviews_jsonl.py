@@ -8,7 +8,9 @@ from pathlib import Path
 from music_review.domain.models import Review, Track
 from music_review.io.reviews_jsonl import (
     load_reviews_from_jsonl,
+    max_review_id_in_jsonl,
     review_from_raw,
+    review_line_count_and_max_id,
     review_to_raw,
     save_reviews_to_jsonl,
 )
@@ -137,3 +139,35 @@ def test_load_and_save_reviews_roundtrip(tmp_path: Path) -> None:
     )
     assert len(loaded[0].tracklist) == 1 and loaded[0].tracklist[0].title == "Song"
     assert loaded[1].id == 2 and loaded[1].artist == "C"
+
+
+def test_review_line_count_and_max_id_counts_and_peak(tmp_path: Path) -> None:
+    path = tmp_path / "r.jsonl"
+    path.write_text(
+        '{"id": 3, "x": 1}\n{"id": 10, "x": 2}\n{"id": 7}\n',
+        encoding="utf-8",
+    )
+    n, peak = review_line_count_and_max_id(path)
+    assert n == 3
+    assert peak == 10
+
+
+def test_review_line_count_and_max_id_skips_lines_without_id(tmp_path: Path) -> None:
+    path = tmp_path / "r.jsonl"
+    path.write_text('{"id": 1}\n{"no": "id"}\n', encoding="utf-8")
+    n, peak = review_line_count_and_max_id(path)
+    assert n == 1
+    assert peak == 1
+
+
+def test_review_line_count_and_max_id_missing_file(tmp_path: Path) -> None:
+    n, peak = review_line_count_and_max_id(tmp_path / "missing.jsonl")
+    assert n == 0
+    assert peak is None
+
+
+def test_max_review_id_in_jsonl_matches_peak_of_count_helper(tmp_path: Path) -> None:
+    path = tmp_path / "r.jsonl"
+    path.write_text('{"id": 2}\n{"id": 9}\n{"id": 5}\n', encoding="utf-8")
+    assert max_review_id_in_jsonl(path) == 9
+    assert max_review_id_in_jsonl(tmp_path / "none.jsonl") is None

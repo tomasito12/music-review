@@ -177,14 +177,9 @@ def _render_newest_card(
 
 
 def main() -> None:
-    st.set_page_config(
-        page_title="Music Review — Neueste Rezensionen",
-        page_icon=None,
-        layout="centered",
-    )
     ensure_neueste_session_defaults()
-    # Styles vor der Toolbar: Profilleiste oben, Hero direkt unter dem Trennstrich
-    # (gleiches Muster wie pages/5_Filter_Flow.py).
+    # Styles vor dem oberen Trennstrich (Profil in der Seitenleiste; gleiches Muster
+    # wie pages/5_Filter_Flow.py).
     _newest_css()
     render_toolbar("neueste")
 

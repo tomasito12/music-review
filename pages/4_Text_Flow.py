@@ -10,12 +10,6 @@ def _ensure_session_state() -> None:
 
 
 def main() -> None:
-    st.set_page_config(
-        page_title="Music Review — Freitext",
-        page_icon=None,
-        layout="wide",
-    )
-
     _ensure_session_state()
     render_toolbar("text_flow")
 
@@ -44,11 +38,17 @@ def main() -> None:
     st.markdown("---")
     col_back, col_next = st.columns([1, 1])
     with col_back:
-        if st.button("Zur Startseite"):
-            st.switch_page("pages/0b_Einstieg.py")
+        st.page_link(
+            "pages/0b_Einstieg.py",
+            label="Zur Startseite",
+            use_container_width=True,
+        )
     with col_next:
-        if st.button("Weiter"):
-            st.switch_page("pages/5_Filter_Flow.py")
+        st.page_link(
+            "pages/5_Filter_Flow.py",
+            label="Weiter",
+            use_container_width=True,
+        )
 
 
 if __name__ == "__main__":

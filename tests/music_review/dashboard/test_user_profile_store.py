@@ -8,9 +8,12 @@ from pathlib import Path
 import pytest
 
 from music_review.dashboard.user_profile_store import (
+    ACTIVE_PROFILE_SESSION_KEY,
     SCHEMA_VERSION,
+    ProfileHydrationResult,
     apply_profile_to_session,
     build_profile_payload,
+    ensure_active_profile_hydrated,
     list_profile_slugs,
     load_profile,
     normalize_profile_slug,
@@ -90,6 +93,51 @@ def test_apply_profile_to_session_with_selected_communities() -> None:
     assert session["filter_settings"] == {"sort_mode": "Deterministisch"}
     assert session["community_weights_raw"] == {"10": 1.0}
     assert session["flow_mode"] == "artists"
+
+
+def test_ensure_active_profile_hydrated_no_slug() -> None:
+    session: dict[str, object] = {}
+    assert (
+        ensure_active_profile_hydrated(session, profiles_dir=Path("/nope"))
+        == ProfileHydrationResult.NO_ACTIVE_SLUG
+    )
+
+
+def test_ensure_active_profile_hydrated_loads_from_disk(tmp_path: Path) -> None:
+    payload = build_profile_payload(
+        profile_slug="ada",
+        flow_mode="combined",
+        selected_communities={"7", "8"},
+        filter_settings={"year_min": 2000},
+        community_weights_raw={"7": 0.25},
+    )
+    save_profile(tmp_path, "ada", payload)
+    session: dict[str, object] = {ACTIVE_PROFILE_SESSION_KEY: "ada"}
+    assert ensure_active_profile_hydrated(session, profiles_dir=tmp_path) == (
+        ProfileHydrationResult.HYDRATED
+    )
+    assert session[ACTIVE_PROFILE_SESSION_KEY] == "ada"
+    assert session["selected_communities"] == {"7", "8"}
+    assert session["filter_settings"] == {"year_min": 2000}
+    assert session["community_weights_raw"] == {"7": 0.25}
+
+
+def test_ensure_active_profile_hydrated_missing_file_clears_slug(
+    tmp_path: Path,
+) -> None:
+    session: dict[str, object] = {ACTIVE_PROFILE_SESSION_KEY: "ghost"}
+    assert ensure_active_profile_hydrated(session, profiles_dir=tmp_path) == (
+        ProfileHydrationResult.CLEARED_MISSING_PROFILE_FILE
+    )
+    assert ACTIVE_PROFILE_SESSION_KEY not in session
+
+
+def test_ensure_active_profile_hydrated_invalid_slug_clears_key() -> None:
+    session: dict[str, object] = {ACTIVE_PROFILE_SESSION_KEY: "!!!"}
+    assert ensure_active_profile_hydrated(session, profiles_dir=Path("/nope")) == (
+        ProfileHydrationResult.CLEARED_INVALID_SLUG
+    )
+    assert ACTIVE_PROFILE_SESSION_KEY not in session
 
 
 def test_apply_profile_to_session_legacy_fallback() -> None:
