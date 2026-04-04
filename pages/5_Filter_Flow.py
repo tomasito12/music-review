@@ -1,4 +1,4 @@
-"""Filter und Gewichte (Schritt 3 von 3) -- zentriertes Karten-Layout."""
+"""Filter und Gewichte (Schritt 3 von 4) -- zentriertes Karten-Layout."""
 
 from __future__ import annotations
 
@@ -30,6 +30,7 @@ from pages.page_helpers import (
     min_release_year_from_corpus,
     normalize_filter_expander_vspace_gap,
     overall_weights_tradeoff_bar_html,
+    refresh_taste_wizard_after_filter_save,
     render_toolbar,
     snap_spectrum_crossover,
     spectrum_crossover_option_label,
@@ -332,7 +333,7 @@ def main() -> None:
     # ── Hero ──────────────────────────────────────────────────────
     st.markdown(
         '<div class="filter-hero">'
-        '<p class="filter-eyebrow">Schritt 3 von 3</p>'
+        '<p class="filter-eyebrow">Schritt 3 von 4</p>'
         '<p class="filter-title">Finetuning</p>'
         "</div>",
         unsafe_allow_html=True,
@@ -843,6 +844,7 @@ def main() -> None:
 
     st.session_state["filter_settings"] = merged_fs
     st.session_state["community_weights_raw"] = raw_weights
+    refresh_taste_wizard_after_filter_save()
 
     # ── CTA ──────────────────────────────────────────────────────
     st.markdown('<div class="filter-cta">', unsafe_allow_html=True)
@@ -855,8 +857,8 @@ def main() -> None:
         )
     with col_next:
         st.page_link(
-            "pages/6_Recommendations_Flow.py",
-            label="Empfehlungen anzeigen",
+            "pages/2_Entdecken.py",
+            label="Weiter zur Auswahl",
             use_container_width=True,
         )
     st.markdown("</div>", unsafe_allow_html=True)

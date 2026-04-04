@@ -7,8 +7,9 @@ from typing import Any
 import streamlit as st
 from pages.page_helpers import (
     clear_active_profile_slug_cookie,
-    get_selected_communities,
     persist_active_profile_slug_cookie,
+    reset_taste_preferences,
+    session_taste_setup_complete,
 )
 
 from music_review.dashboard.user_profile_store import (
@@ -121,6 +122,7 @@ def _create_new(profiles_dir: Any, name_raw: str) -> None:
     save_profile(profiles_dir, slug, payload)
     st.session_state[ACTIVE_PROFILE_SESSION_KEY] = slug
     persist_active_profile_slug_cookie(slug)
+    apply_profile_to_session(st.session_state, payload)
     st.rerun()
 
 
@@ -247,6 +249,24 @@ def main() -> None:
         "Abmelden oder „Ohne Profil weiter“ entfernt ihn wieder.",
     )
 
+    with st.expander("Geschmack zurücksetzen"):
+        st.markdown(
+            "Leert Stil- und Filtereinstellungen in dieser Sitzung. "
+            "Dein Profil auf der Platte bleibt unverändert, bis du "
+            "in der Seitenleiste **Speichern** wählst."
+        )
+        confirm = st.checkbox(
+            "Ja, Geschmack neu einrichten.",
+            key="profil_reset_confirm",
+        )
+        if st.button(
+            "Zurücksetzen und zur Einrichtung",
+            disabled=not confirm,
+            key="profil_reset_run",
+        ):
+            reset_taste_preferences()
+            st.switch_page("pages/0b_Einstieg.py")
+
     active = st.session_state.get(ACTIVE_PROFILE_SESSION_KEY)
     if active:
         _render_active_profile()
@@ -254,10 +274,9 @@ def main() -> None:
         _render_profile_choices()
 
     st.markdown('<div class="profil-cta">', unsafe_allow_html=True)
-    if st.button("Weiter", type="primary", width="stretch"):
-        active_slug = st.session_state.get(ACTIVE_PROFILE_SESSION_KEY)
-        if active_slug and get_selected_communities():
-            st.switch_page("pages/8_Neueste_Rezensionen.py")
+    if st.button("Weiter", type="primary", width="stretch", key="profil_page_weiter"):
+        if session_taste_setup_complete():
+            st.switch_page("pages/2_Entdecken.py")
         else:
             st.switch_page("pages/0b_Einstieg.py")
     st.markdown("</div>", unsafe_allow_html=True)

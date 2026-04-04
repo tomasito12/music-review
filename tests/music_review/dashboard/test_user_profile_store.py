@@ -7,6 +7,7 @@ from pathlib import Path
 
 import pytest
 
+from music_review.dashboard.taste_setup import TASTE_WIZARD_RESET_PENDING_KEY
 from music_review.dashboard.user_profile_store import (
     ACTIVE_PROFILE_SESSION_KEY,
     SCHEMA_VERSION,
@@ -80,19 +81,27 @@ def test_load_profile_invalid_json_returns_none(tmp_path: Path) -> None:
 
 def test_apply_profile_to_session_with_selected_communities() -> None:
     session: dict[str, object] = {}
+    fs = {
+        "sort_mode": "Deterministisch",
+        "year_min": 1990,
+        "year_max": 2024,
+        "rating_min": 7,
+        "rating_max": 10,
+    }
     apply_profile_to_session(
         session,
         {
             "selected_communities": ["10", "20", "30"],
-            "filter_settings": {"sort_mode": "Deterministisch"},
+            "filter_settings": fs,
             "community_weights_raw": {"10": 1.0},
             "flow_mode": "artists",
         },
     )
     assert session["selected_communities"] == {"10", "20", "30"}
-    assert session["filter_settings"] == {"sort_mode": "Deterministisch"}
+    assert session["filter_settings"] == fs
     assert session["community_weights_raw"] == {"10": 1.0}
     assert session["flow_mode"] == "artists"
+    assert TASTE_WIZARD_RESET_PENDING_KEY not in session
 
 
 def test_ensure_active_profile_hydrated_no_slug() -> None:
@@ -108,7 +117,12 @@ def test_ensure_active_profile_hydrated_loads_from_disk(tmp_path: Path) -> None:
         profile_slug="ada",
         flow_mode="combined",
         selected_communities={"7", "8"},
-        filter_settings={"year_min": 2000},
+        filter_settings={
+            "year_min": 2000,
+            "year_max": 2024,
+            "rating_min": 7,
+            "rating_max": 10,
+        },
         community_weights_raw={"7": 0.25},
     )
     save_profile(tmp_path, "ada", payload)
@@ -118,8 +132,9 @@ def test_ensure_active_profile_hydrated_loads_from_disk(tmp_path: Path) -> None:
     )
     assert session[ACTIVE_PROFILE_SESSION_KEY] == "ada"
     assert session["selected_communities"] == {"7", "8"}
-    assert session["filter_settings"] == {"year_min": 2000}
+    assert session["filter_settings"]["year_min"] == 2000
     assert session["community_weights_raw"] == {"7": 0.25}
+    assert TASTE_WIZARD_RESET_PENDING_KEY not in session
 
 
 def test_ensure_active_profile_hydrated_missing_file_clears_slug(
@@ -153,6 +168,7 @@ def test_apply_profile_to_session_legacy_fallback() -> None:
     )
     assert session["selected_communities"] == {"10", "20", "30"}
     assert session["artist_flow_selected_communities"] == {"10", "20", "30"}
+    assert session.get(TASTE_WIZARD_RESET_PENDING_KEY) is True
 
 
 def test_list_profile_slugs_empty_dir(tmp_path: Path) -> None:

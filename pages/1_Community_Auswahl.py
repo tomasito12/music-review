@@ -117,7 +117,7 @@ def main() -> None:
 
     st.markdown(
         '<div class="feinwahl-hero">'
-        '<p class="feinwahl-eyebrow">Schritt 2 von 3</p>'
+        '<p class="feinwahl-eyebrow">Schritt 2 von 4</p>'
         '<p class="feinwahl-title">Dein Sound im Detail</p>'
         "</div>",
         unsafe_allow_html=True,

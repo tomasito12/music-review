@@ -12,6 +12,12 @@ from typing import Any
 import streamlit as st
 
 from music_review.config import resolve_data_path
+from music_review.dashboard.taste_setup import (
+    clear_taste_wizard_reset_pending,
+    data_implies_taste_setup_complete,
+    is_taste_setup_complete,
+    mark_taste_wizard_reset_pending,
+)
 from music_review.dashboard.user_profile_store import (
     ACTIVE_PROFILE_COOKIE_NAME,
     ACTIVE_PROFILE_SESSION_KEY,
@@ -1020,6 +1026,17 @@ def get_selected_communities() -> set[str]:
     return {str(c) for c in artist_comms} | {str(c) for c in genre_comms}
 
 
+def session_taste_setup_complete() -> bool:
+    """True when genre, communities, and filter merge step are done for this session."""
+    return is_taste_setup_complete(st.session_state)
+
+
+def refresh_taste_wizard_after_filter_save() -> None:
+    """Clear the post-reset gate once merged filter data satisfies completion rules."""
+    if data_implies_taste_setup_complete(st.session_state):
+        clear_taste_wizard_reset_pending(st.session_state)
+
+
 def release_year_for_card_meta(review: Any) -> int | None:
     """Calendar year for recommendation-style meta (``release_year`` or date)."""
     ry = getattr(review, "release_year", None)
@@ -1105,6 +1122,13 @@ def _reset_filters() -> None:
     st.session_state.pop(SEMANTIC_CHAT_MESSAGES_KEY, None)
     st.session_state.pop(SEMANTIC_RAG_MAX_DISTANCE_KEY, None)
     st.session_state.pop(FILTER_PLATTENLABEL_MULTISELECT_KEY, None)
+
+
+def reset_taste_preferences() -> None:
+    """Clear taste-related session keys; the user must run the setup wizard again."""
+    _reset_filters()
+    mark_taste_wizard_reset_pending(st.session_state)
+    st.session_state["flow_mode"] = None
 
 
 # CookieManager uses a fixed element key; only one instance per session.
@@ -1195,7 +1219,7 @@ def render_profile_sidebar() -> None:
                 save_current_profile_to_disk()
         with b2:
             if st.button("Reset", key="sb_prof_reset"):
-                _reset_filters()
+                reset_taste_preferences()
                 st.rerun()
         with b3:
             if st.button("Abmelden", key="sb_prof_logout"):

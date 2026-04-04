@@ -7,6 +7,8 @@ from pathlib import Path
 from types import SimpleNamespace
 from unittest.mock import patch
 
+import pages.page_helpers as page_helpers_module
+import pytest
 from pages.page_helpers import (
     OVERALL_WEIGHT_TRADEOFF_RED_DARK,
     OVERALL_WEIGHT_TRADEOFF_RED_LIGHT,
@@ -33,9 +35,12 @@ from pages.page_helpers import (
     recommendation_card_community_tags_html,
     recommendation_card_meta_parts,
     recommendation_flow_shell_css_rules,
+    refresh_taste_wizard_after_filter_save,
     release_year_for_card_meta,
+    reset_taste_preferences,
     review_raw_release_year,
     search_rag_hits_for_dashboard,
+    session_taste_setup_complete,
     snap_spectrum_crossover,
     spectrum_crossover_option_label,
     spectrum_crossover_semantic_label,
@@ -43,6 +48,8 @@ from pages.page_helpers import (
     style_match_scores_from_percent_slider,
     unique_plattenlabels_from_reviews_jsonl,
 )
+
+from music_review.dashboard.taste_setup import TASTE_WIZARD_RESET_PENDING_KEY
 
 
 class TestPlattenlabelAlbumCountBuckets:
@@ -624,3 +631,62 @@ class TestSearchRagHitsForDashboard:
         assert kwargs["strategy"] == "B"
         assert kwargs["n_results"] == 2500
         assert kwargs["top_k_per_variant"] == 2500
+
+
+class TestTasteSetupSessionHelpers:
+    def test_reset_taste_preferences_clears_state_and_sets_pending(
+        self,
+        monkeypatch: pytest.MonkeyPatch,
+    ) -> None:
+        sess: dict[str, object] = {
+            "selected_communities": {"a"},
+            "selected_broad_categories": {"Rock"},
+            "artist_flow_selected_communities": {"a"},
+            "genre_flow_selected_communities": set(),
+            "filter_settings": {"year_min": 1990},
+            "community_weights_raw": {"a": 1.0},
+            "free_text_query": "x",
+            "flow_mode": "combined",
+        }
+        monkeypatch.setattr(page_helpers_module.st, "session_state", sess)
+        reset_taste_preferences()
+        assert sess["selected_communities"] == set()
+        assert sess["filter_settings"] == {}
+        assert sess["community_weights_raw"] == {}
+        assert sess["free_text_query"] == ""
+        assert sess["flow_mode"] is None
+        assert sess.get(TASTE_WIZARD_RESET_PENDING_KEY) is True
+
+    def test_refresh_taste_wizard_after_filter_save_clears_pending(
+        self,
+        monkeypatch: pytest.MonkeyPatch,
+    ) -> None:
+        sess: dict[str, object] = {
+            "selected_communities": {"c1"},
+            "filter_settings": {
+                "year_min": 1990,
+                "year_max": 2024,
+                "rating_min": 7,
+                "rating_max": 10,
+            },
+            TASTE_WIZARD_RESET_PENDING_KEY: True,
+        }
+        monkeypatch.setattr(page_helpers_module.st, "session_state", sess)
+        refresh_taste_wizard_after_filter_save()
+        assert TASTE_WIZARD_RESET_PENDING_KEY not in sess
+
+    def test_session_taste_setup_complete_uses_session_state(
+        self,
+        monkeypatch: pytest.MonkeyPatch,
+    ) -> None:
+        sess: dict[str, object] = {
+            "selected_communities": {"c1"},
+            "filter_settings": {
+                "year_min": 1990,
+                "year_max": 2024,
+                "rating_min": 7,
+                "rating_max": 10,
+            },
+        }
+        monkeypatch.setattr(page_helpers_module.st, "session_state", sess)
+        assert session_taste_setup_complete() is True

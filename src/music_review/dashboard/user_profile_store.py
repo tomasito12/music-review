@@ -15,6 +15,11 @@ from pathlib import Path
 from typing import Any
 
 from music_review.config import resolve_data_path
+from music_review.dashboard.taste_setup import (
+    clear_taste_wizard_reset_pending,
+    data_implies_taste_setup_complete,
+    mark_taste_wizard_reset_pending,
+)
 
 SCHEMA_VERSION = 1
 MAX_SLUG_LEN = 48
@@ -205,6 +210,11 @@ def apply_profile_to_session(
     fm = data.get("flow_mode")
     if fm is None or isinstance(fm, str):
         session["flow_mode"] = fm
+
+    if data_implies_taste_setup_complete(session):
+        clear_taste_wizard_reset_pending(session)
+    else:
+        mark_taste_wizard_reset_pending(session)
 
 
 def ensure_active_profile_hydrated(
