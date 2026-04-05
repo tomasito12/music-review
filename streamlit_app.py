@@ -9,8 +9,8 @@ import streamlit as st
 from pages.page_helpers import (
     ACTIVE_PROFILE_SESSION_KEY,
     bootstrap_profile_session,
+    logout_active_profile,
     render_profile_sidebar,
-    reset_taste_preferences,
     session_taste_setup_complete,
 )
 
@@ -120,47 +120,48 @@ def render_start_page() -> None:
             if st.button("Anderes Profil", width="stretch", key="start_other_profile"):
                 st.switch_page("pages/0_Profil.py")
         with s2:
-            if st.button(
-                "Geschmack neu einrichten",
-                width="stretch",
-                key="start_reset_taste",
-            ):
-                reset_taste_preferences()
-                st.switch_page("pages/0b_Einstieg.py")
+            if st.button("Abmelden", width="stretch", key="start_logout"):
+                logout_active_profile()
+                st.rerun()
     elif active and not complete:
         if st.button(
-            "Geschmack einrichten",
+            "Filter und Stile einrichten",
             type="primary",
             width="stretch",
             key="start_setup_taste",
         ):
             st.switch_page("pages/0b_Einstieg.py")
-        if st.button("Zum Profil", width="stretch", key="start_to_profile_incomplete"):
-            st.switch_page("pages/0_Profil.py")
+        inc1, inc2 = st.columns(2)
+        with inc1:
+            if st.button(
+                "Zum Profil",
+                width="stretch",
+                key="start_to_profile_incomplete",
+            ):
+                st.switch_page("pages/0_Profil.py")
+        with inc2:
+            if st.button("Abmelden", width="stretch", key="start_logout_incomplete"):
+                logout_active_profile()
+                st.rerun()
     elif not active and complete:
         if st.button(
-            "Zur Zielauswahl",
+            "Entdecken",
             type="primary",
             width="stretch",
             key="start_guest_hub",
         ):
             st.switch_page("pages/2_Entdecken.py")
-        g1, g2 = st.columns(2)
-        with g1:
-            if st.button(
-                "Profil speichern",
-                width="stretch",
-                key="start_guest_profile",
-            ):
-                st.switch_page("pages/0_Profil.py")
-        with g2:
-            if st.button(
-                "Geschmack neu einrichten",
-                width="stretch",
-                key="start_guest_reset",
-            ):
-                reset_taste_preferences()
-                st.switch_page("pages/0b_Einstieg.py")
+        st.caption(
+            "Deine Filter und Stile sind eingerichtet. "
+            "Im nächsten Schritt wählst du, was du entdecken möchtest."
+        )
+        if st.button(
+            "Profil anlegen",
+            width="stretch",
+            key="start_guest_profile",
+        ):
+            st.switch_page("pages/0_Profil.py")
+        st.caption("Ohne Profil bleiben Einstellungen nur in diesem Tab gültig.")
     else:
         if st.button(
             "Neu starten",
@@ -182,6 +183,15 @@ def render_start_page() -> None:
     st.markdown("</div>", unsafe_allow_html=True)
 
 
+def _spotify_nav_page() -> Any:
+    """Stable OAuth redirect path (must match ``SPOTIFY_REDIRECT_URI`` path segment)."""
+    return st.Page(
+        "pages/9_Spotify_Playlists.py",
+        title="Spotify",
+        url_path="spotify_playlists",
+    )
+
+
 def _navigation_pages() -> list[Any]:
     """Full app after taste setup; reduced sidebar during onboarding."""
     onboarding = [
@@ -192,6 +202,8 @@ def _navigation_pages() -> list[Any]:
         st.Page("pages/5_Filter_Flow.py", title="Filter"),
         # Reachable after Schritt 3 (page_link); shows a guard until setup is complete.
         st.Page("pages/2_Entdecken.py", title="Entdecken"),
+        # OAuth return can open a fresh session without taste setup; page must exist.
+        _spotify_nav_page(),
     ]
     full_app = [
         st.Page(render_start_page, title="Start", default=True),
@@ -204,7 +216,7 @@ def _navigation_pages() -> list[Any]:
         st.Page("pages/6_Recommendations_Flow.py", title="Empfehlungen"),
         st.Page("pages/8_Neueste_Rezensionen.py", title="Neueste Rezensionen"),
         st.Page("pages/7_Freitext_Qualitaet.py", title="Freitext-Qualität"),
-        st.Page("pages/9_Spotify_Playlists.py", title="Spotify"),
+        _spotify_nav_page(),
     ]
     if session_taste_setup_complete():
         return full_app

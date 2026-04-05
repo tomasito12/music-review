@@ -16,6 +16,7 @@ from typing import Any
 
 from music_review.config import resolve_data_path
 from music_review.dashboard.taste_setup import (
+    TASTE_WIZARD_RESET_PENDING_KEY,
     clear_taste_wizard_reset_pending,
     data_implies_taste_setup_complete,
     mark_taste_wizard_reset_pending,
@@ -228,6 +229,10 @@ def ensure_active_profile_hydrated(
     partial ``session_state`` loss (multipage navigation) does not leave the user
     signed in with empty preferences.
 
+    While ``taste_wizard_reset_pending`` is set (after "Filter und Stile
+    zurücksetzen"), disk is not applied so the cleared wizard session is not
+    immediately overwritten by the saved profile.
+
     Returns:
         What happened: no slug, successful hydrate, or slug removed (missing file
         or invalid slug in session).
@@ -250,5 +255,7 @@ def ensure_active_profile_hydrated(
 
     if safe_slug != raw_slug:
         session[ACTIVE_PROFILE_SESSION_KEY] = safe_slug
+    if session.get(TASTE_WIZARD_RESET_PENDING_KEY):
+        return ProfileHydrationResult.HYDRATED
     apply_profile_to_session(session, data)
     return ProfileHydrationResult.HYDRATED

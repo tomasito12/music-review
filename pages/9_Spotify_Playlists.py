@@ -13,7 +13,12 @@ from pages.neueste_reviews_pool import (
 from pages.neueste_spotify_playlist_section import (
     render_neueste_spotify_playlist_section,
 )
-from pages.page_helpers import render_toolbar
+from pages.page_helpers import (
+    clear_spotify_oauth_state_cookie,
+    peek_spotify_oauth_state_cookie,
+    persist_spotify_oauth_state_cookie,
+    render_toolbar,
+)
 
 from music_review.integrations.spotify_client import (
     SpotifyAuthConfig,
@@ -96,12 +101,21 @@ def _handle_oauth_callback(client: SpotifyClient) -> None:
     state = _query_param_single(params.get("state"))
     if not code or not state:
         return
-    expected_state = st.session_state.get(SPOTIFY_AUTH_STATE_KEY)
-    if isinstance(expected_state, str) and expected_state and state != expected_state:
+    sess_expected = st.session_state.get(SPOTIFY_AUTH_STATE_KEY)
+    cookie_expected = peek_spotify_oauth_state_cookie()
+    if isinstance(sess_expected, str) and sess_expected.strip():
+        expected_state = sess_expected.strip()
+    elif cookie_expected:
+        expected_state = cookie_expected
+    else:
+        expected_state = None
+    if not expected_state or state != expected_state:
         _clear_oauth_query_params()
+        clear_spotify_oauth_state_cookie()
         st.error(
-            "Sicherheitsüberprüfung für den Spotify-Login fehlgeschlagen. "
-            "Bitte den Verbindungsaufbau erneut starten.",
+            "Sicherheitsüberprüfung für den Spotify-Login fehlgeschlagen "
+            "(Sitzung abgelaufen oder neuer Tab ohne Cookie). "
+            "Bitte „Mit Spotify verbinden“ erneut wählen.",
         )
         return
     with st.spinner("Spotify-Verbindung wird hergestellt …"):
@@ -144,18 +158,25 @@ def _render_connection_section(client: SpotifyClient | None) -> SpotifyToken | N
                 st.session_state.pop(SPOTIFY_SEARCH_RESULTS_KEY, None)
                 st.session_state.pop(SPOTIFY_SELECTED_URIS_KEY, None)
                 st.session_state.pop(SPOTIFY_LAST_PLAYLIST_KEY, None)
+                clear_spotify_oauth_state_cookie()
                 st.rerun()
         return token
 
     if st.button("Mit Spotify verbinden", type="primary"):
         state = secrets.token_urlsafe(32)
         st.session_state[SPOTIFY_AUTH_STATE_KEY] = state
+        persist_spotify_oauth_state_cookie(state)
         auth_url = client.build_authorize_url(
             state=str(state),
         )
-        st.markdown(
-            f"[Zum Spotify-Login wechseln]({auth_url})",
-            unsafe_allow_html=False,
+        st.caption(
+            "Redirect-URI in der Spotify-App und in SPOTIFY_REDIRECT_URI muss exakt "
+            "zum App-Pfad passen (lokal üblich: `http://127.0.0.1:8501/spotify_playlists`)."
+        )
+        st.link_button(
+            "Zum Spotify-Login wechseln",
+            auth_url,
+            use_container_width=True,
         )
     else:
         st.info(

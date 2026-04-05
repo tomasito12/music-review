@@ -10,6 +10,7 @@ from pages.page_helpers import (
     load_broad_categories_res_10,
     load_communities_res_10,
     load_genre_labels_res_10,
+    persist_active_profile_from_session,
     render_toolbar,
 )
 
@@ -194,7 +195,7 @@ def main() -> None:
             )
 
     st.markdown('<div class="feinwahl-cta">', unsafe_allow_html=True)
-    col_back, col_next = st.columns(2)
+    col_back, col_next, col_save_next = st.columns(3)
     with col_back:
         st.page_link(
             "pages/0b_Einstieg.py",
@@ -207,6 +208,26 @@ def main() -> None:
             label="Weiter zu den Filtern",
             use_container_width=True,
         )
+    with col_save_next:
+        if st.button(
+            "Speichern & Weiter zu den Filtern",
+            type="primary",
+            width="stretch",
+            key="feinwahl_save_next_to_filter",
+        ):
+            slug = persist_active_profile_from_session()
+            if slug:
+                st.toast(f"Profil '{slug}' auf der Platte gespeichert.")
+            else:
+                st.toast(
+                    "Ohne Profil: Auswahl nur in dieser Sitzung, nicht auf der Platte.",
+                )
+            st.switch_page("pages/5_Filter_Flow.py")
+    st.caption(
+        "**Weiter** legt die Auswahl nur in der aktuellen Sitzung ab. "
+        "Auf die Profil-Datei schreibt nur **Speichern & Weiter** oder "
+        "**Speichern** in der Seitenleiste (wenn du angemeldet bist)."
+    )
     st.markdown("</div>", unsafe_allow_html=True)
 
 

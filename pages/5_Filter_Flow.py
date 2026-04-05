@@ -8,6 +8,13 @@ import streamlit as st
 from pages.page_helpers import (
     DEFAULT_PLATTENTESTS_RATING_FILTER_MAX,
     DEFAULT_PLATTENTESTS_RATING_FILTER_MIN,
+    FILTER_FLOW_WIDGET_KEY_OVERALL_ALPHA,
+    FILTER_FLOW_WIDGET_KEY_OVERALL_BETA,
+    FILTER_FLOW_WIDGET_KEY_OVERALL_GAMMA,
+    FILTER_FLOW_WIDGET_KEY_RATING_RANGE,
+    FILTER_FLOW_WIDGET_KEY_SPECTRUM,
+    FILTER_FLOW_WIDGET_KEY_STYLE_MATCH_PCT,
+    FILTER_FLOW_WIDGET_KEY_YEAR_RANGE,
     FILTER_PLATTENLABEL_MULTISELECT_KEY,
     PLATTENLABEL_SONSTIGE_UI,
     SEMANTIC_CHAT_INPUT_KEY,
@@ -30,6 +37,7 @@ from pages.page_helpers import (
     min_release_year_from_corpus,
     normalize_filter_expander_vspace_gap,
     overall_weights_tradeoff_bar_html,
+    persist_active_profile_from_session,
     refresh_taste_wizard_after_filter_save,
     render_toolbar,
     snap_spectrum_crossover,
@@ -403,6 +411,7 @@ def main() -> None:
                 max_value=year_cap,
                 value=(year_min_default, year_max_default),
                 step=1,
+                key=FILTER_FLOW_WIDGET_KEY_YEAR_RANGE,
             )
         with col_rating:
             rating_min, rating_max = st.slider(
@@ -411,6 +420,7 @@ def main() -> None:
                 max_value=10,
                 value=(rating_min_default, rating_max_default),
                 step=1,
+                key=FILTER_FLOW_WIDGET_KEY_RATING_RANGE,
             )
         st.markdown("</div>", unsafe_allow_html=True)
 
@@ -437,6 +447,7 @@ def main() -> None:
             value=(pct_lo_def, pct_hi_def),
             step=STYLE_MATCH_FILTER_PERCENT_STEP,
             format="%d %%",
+            key=FILTER_FLOW_WIDGET_KEY_STYLE_MATCH_PCT,
             help=(
                 "Linke Marke: Untergrenze, rechte Marke: Obergrenze der "
                 "zulässigen Passung (0-100 %). Alben dazwischen bleiben im "
@@ -583,6 +594,7 @@ def main() -> None:
                 value=crossover_default,
                 format_func=spectrum_crossover_option_label,
                 label_visibility="collapsed",
+                key=FILTER_FLOW_WIDGET_KEY_SPECTRUM,
                 help=(
                     "**Stufen:** links starker Fokus auf **einen** gewählten "
                     "Stil, rechts **möglichst viele** gewählte Stile zugleich; "
@@ -652,6 +664,7 @@ def main() -> None:
             max_value=1.0,
             value=min(1.0, max(0.0, ow_a_def)),
             step=0.05,
+            key=FILTER_FLOW_WIDGET_KEY_OVERALL_ALPHA,
             help=(
                 "Hohe Werte ziehen Alben nach oben, die stark zu deinen "
                 "gewählten Stil-Schwerpunkten passen (Community-Affinität)."
@@ -671,6 +684,7 @@ def main() -> None:
             max_value=1.0,
             value=min(1.0, max(0.0, ow_b_def)),
             step=0.05,
+            key=FILTER_FLOW_WIDGET_KEY_OVERALL_BETA,
             help=(
                 "Hohe Werte betonen die Bewertung von plattentests.de "
                 "im Gesamtscore (fehlende Ratings werden mit einem "
@@ -694,6 +708,7 @@ def main() -> None:
             max_value=1.0,
             value=min(1.0, max(0.0, ow_g_def)),
             step=0.05,
+            key=FILTER_FLOW_WIDGET_KEY_OVERALL_GAMMA,
             help=(
                 "Steuert, wie stark der Spektrum-Term ins Gewicht fällt "
                 "(Zusammenspiel aus Fokus auf einen Stil vs. Abdeckung "
@@ -848,7 +863,7 @@ def main() -> None:
 
     # ── CTA ──────────────────────────────────────────────────────
     st.markdown('<div class="filter-cta">', unsafe_allow_html=True)
-    col_back, col_next = st.columns(2)
+    col_back, col_next, col_save_next = st.columns(3)
     with col_back:
         st.page_link(
             "pages/1_Community_Auswahl.py",
@@ -861,6 +876,26 @@ def main() -> None:
             label="Weiter zur Auswahl",
             use_container_width=True,
         )
+    with col_save_next:
+        if st.button(
+            "Speichern & Weiter zur Auswahl",
+            type="primary",
+            width="stretch",
+            key="filter_save_next_to_hub",
+        ):
+            slug = persist_active_profile_from_session()
+            if slug:
+                st.toast(f"Profil '{slug}' auf der Platte gespeichert.")
+            else:
+                st.toast(
+                    "Ohne Profil: Filter nur in dieser Sitzung, nicht auf der Platte.",
+                )
+            st.switch_page("pages/2_Entdecken.py")
+    st.caption(
+        "**Weiter zur Auswahl** übernimmt Filter und Gewichte nur in der Sitzung. "
+        "Auf die Profil-Datei schreibt nur **Speichern & Weiter** oder "
+        "**Speichern** in der Seitenleiste (wenn du angemeldet bist)."
+    )
     st.markdown("</div>", unsafe_allow_html=True)
 
 

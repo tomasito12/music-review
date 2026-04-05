@@ -1,4 +1,4 @@
-"""Schritt 4 von 4: Zielwahl nach abgeschlossener Geschmackseinrichtung."""
+"""Step 4 of 4: destination hub after filter and style setup (Streamlit page)."""
 
 from __future__ import annotations
 
@@ -70,7 +70,7 @@ def main() -> None:
 
     if not session_taste_setup_complete():
         st.warning(
-            "Bitte richte zuerst deinen Geschmack ein "
+            "Bitte richte zuerst Filter und Stile ein "
             "(Stilrichtungen, Genre und Filter).",
         )
         if st.button(
@@ -111,7 +111,7 @@ def main() -> None:
             use_container_width=True,
         )
 
-    with st.expander("Geschmack zurücksetzen"):
+    with st.expander("Filter und Stile zurücksetzen"):
         st.markdown(
             "Alle Stil- und Filtereinstellungen in dieser Sitzung werden "
             "gelöscht. Wenn du angemeldet bist, bleibt die gespeicherte "
@@ -119,11 +119,11 @@ def main() -> None:
             "**Speichern** klickst."
         )
         confirm = st.checkbox(
-            "Ja, ich möchte den Geschmack neu einrichten.",
+            "Ja, Filter und Stile zurücksetzen.",
             key="hub_reset_confirm",
         )
         if st.button(
-            "Zurücksetzen und Einrichtung neu starten",
+            "Filter und Stile zurücksetzen",
             disabled=not confirm,
             key="hub_reset_run",
         ):

@@ -10,13 +10,17 @@ from unittest.mock import patch
 import pages.page_helpers as page_helpers_module
 import pytest
 from pages.page_helpers import (
+    ACTIVE_PROFILE_SESSION_KEY,
+    FILTER_FLOW_WIDGET_KEY_YEAR_RANGE,
     OVERALL_WEIGHT_TRADEOFF_RED_DARK,
     OVERALL_WEIGHT_TRADEOFF_RED_LIGHT,
     OVERALL_WEIGHT_TRADEOFF_RED_MID,
     PLATTENLABEL_SONSTIGE_UI,
+    SEMANTIC_CHAT_INPUT_KEY,
     SPECTRUM_CROSSOVER_STOPS,
     STYLE_MATCH_FILTER_PERCENT_STEP,
     build_community_broad_category_index,
+    build_session_profile_payload,
     clamp_plattentests_rating_filter_range,
     clamp_year_filter_bounds,
     collapse_plattenlabel_ui_selection,
@@ -25,11 +29,13 @@ from pages.page_helpers import (
     format_record_labels_for_card,
     format_release_date,
     format_style_match_range_display,
+    logout_active_profile,
     max_release_year_in_jsonl,
     min_release_year_in_jsonl,
     normalize_filter_expander_vspace_gap,
     overall_weights_display_percents,
     overall_weights_tradeoff_bar_html,
+    persist_active_profile_from_session,
     plattenlabel_album_count_buckets_from_reviews_jsonl,
     plattenlabel_filter_passes,
     recommendation_card_community_tags_html,
@@ -633,6 +639,105 @@ class TestSearchRagHitsForDashboard:
         assert kwargs["top_k_per_variant"] == 2500
 
 
+class TestSpotifyOauthCookieHelpers:
+    def test_persist_peek_clear_roundtrip(
+        self,
+        monkeypatch: pytest.MonkeyPatch,
+    ) -> None:
+        """OAuth state survives Streamlit session reset when mirrored in a cookie."""
+        storage: dict[str, str] = {}
+
+        class FakeCM:
+            def set(
+                self,
+                name: str,
+                val: str,
+                *,
+                key: str,
+                max_age: float,
+                same_site: str,
+            ) -> None:
+                storage[name] = val
+
+            def get(self, name: str) -> str | None:
+                return storage.get(name)
+
+            def delete(self, name: str, *, key: str) -> None:
+                storage.pop(name, None)
+
+        monkeypatch.setattr(
+            page_helpers_module,
+            "profile_cookie_manager",
+            lambda: FakeCM(),
+        )
+        monkeypatch.setattr(page_helpers_module.st, "session_state", {})
+        page_helpers_module.persist_spotify_oauth_state_cookie("state-xyz")
+        name = page_helpers_module.SPOTIFY_OAUTH_STATE_COOKIE_NAME
+        assert storage[name] == "state-xyz"
+        assert page_helpers_module.peek_spotify_oauth_state_cookie() == "state-xyz"
+        page_helpers_module.clear_spotify_oauth_state_cookie()
+        assert page_helpers_module.peek_spotify_oauth_state_cookie() is None
+
+    def test_persist_skips_blank_state(
+        self,
+        monkeypatch: pytest.MonkeyPatch,
+    ) -> None:
+        storage: dict[str, str] = {}
+
+        class FakeCM:
+            def set(self, *_a: object, **_k: object) -> None:
+                storage["touched"] = "yes"
+
+        monkeypatch.setattr(
+            page_helpers_module,
+            "profile_cookie_manager",
+            lambda: FakeCM(),
+        )
+        page_helpers_module.persist_spotify_oauth_state_cookie("  ")
+        assert storage == {}
+
+
+class TestPersistActiveProfileFromSession:
+    def test_writes_json_when_slug_active(
+        self,
+        tmp_path: Path,
+        monkeypatch: pytest.MonkeyPatch,
+    ) -> None:
+        """Logged-in session is written under data/user_profiles via save_profile."""
+        monkeypatch.setattr(
+            page_helpers_module,
+            "default_profiles_dir",
+            lambda: tmp_path,
+        )
+        sess: dict[str, object] = {
+            ACTIVE_PROFILE_SESSION_KEY: "ada",
+            "selected_communities": {"10"},
+            "filter_settings": {
+                "year_min": 1990,
+                "year_max": 2024,
+                "rating_min": 7,
+                "rating_max": 10,
+            },
+            "community_weights_raw": {"10": 0.5},
+            "flow_mode": "combined",
+        }
+        monkeypatch.setattr(page_helpers_module.st, "session_state", sess)
+        slug = persist_active_profile_from_session()
+        assert slug == "ada"
+        out = tmp_path / "ada.json"
+        assert out.is_file()
+        text = out.read_text(encoding="utf-8")
+        assert '"10"' in text
+
+    def test_returns_none_without_active_slug(
+        self,
+        monkeypatch: pytest.MonkeyPatch,
+    ) -> None:
+        sess: dict[str, object] = {"selected_communities": {"1"}}
+        monkeypatch.setattr(page_helpers_module.st, "session_state", sess)
+        assert persist_active_profile_from_session() is None
+
+
 class TestTasteSetupSessionHelpers:
     def test_reset_taste_preferences_clears_state_and_sets_pending(
         self,
@@ -647,6 +752,11 @@ class TestTasteSetupSessionHelpers:
             "community_weights_raw": {"a": 1.0},
             "free_text_query": "x",
             "flow_mode": "combined",
+            "comm_sel_C001": True,
+            "broad_cat_Rock": True,
+            "weight_comm_a": 0.25,
+            FILTER_FLOW_WIDGET_KEY_YEAR_RANGE: (2000, 2010),
+            SEMANTIC_CHAT_INPUT_KEY: "stale",
         }
         monkeypatch.setattr(page_helpers_module.st, "session_state", sess)
         reset_taste_preferences()
@@ -656,6 +766,11 @@ class TestTasteSetupSessionHelpers:
         assert sess["free_text_query"] == ""
         assert sess["flow_mode"] is None
         assert sess.get(TASTE_WIZARD_RESET_PENDING_KEY) is True
+        assert "comm_sel_C001" not in sess
+        assert "broad_cat_Rock" not in sess
+        assert "weight_comm_a" not in sess
+        assert FILTER_FLOW_WIDGET_KEY_YEAR_RANGE not in sess
+        assert SEMANTIC_CHAT_INPUT_KEY not in sess
 
     def test_refresh_taste_wizard_after_filter_save_clears_pending(
         self,
@@ -690,3 +805,56 @@ class TestTasteSetupSessionHelpers:
         }
         monkeypatch.setattr(page_helpers_module.st, "session_state", sess)
         assert session_taste_setup_complete() is True
+
+    def test_logout_active_profile_clears_slug_cookie_and_taste(
+        self,
+        monkeypatch: pytest.MonkeyPatch,
+    ) -> None:
+        """Sign-out removes profile key and applies the same taste reset as the UI."""
+        sess: dict[str, object] = {
+            ACTIVE_PROFILE_SESSION_KEY: "alice",
+            "selected_communities": {"x"},
+            "filter_settings": {"year_min": 2000},
+            "community_weights_raw": {"x": 0.5},
+        }
+        monkeypatch.setattr(page_helpers_module.st, "session_state", sess)
+        cleared: list[str] = []
+
+        def fake_clear_cookie() -> None:
+            cleared.append("cookie")
+
+        monkeypatch.setattr(
+            page_helpers_module,
+            "clear_active_profile_slug_cookie",
+            fake_clear_cookie,
+        )
+        logout_active_profile()
+        assert ACTIVE_PROFILE_SESSION_KEY not in sess
+        assert sess["selected_communities"] == set()
+        assert sess["filter_settings"] == {}
+        assert sess.get(TASTE_WIZARD_RESET_PENDING_KEY) is True
+        assert cleared == ["cookie"]
+
+    def test_build_session_profile_payload_matches_session(
+        self,
+        monkeypatch: pytest.MonkeyPatch,
+    ) -> None:
+        """New profiles must snapshot current taste session, not an empty payload."""
+        sess: dict[str, object] = {
+            "selected_communities": {"10", "20"},
+            "filter_settings": {
+                "year_min": 1990,
+                "year_max": 2024,
+                "rating_min": 7,
+                "rating_max": 10,
+            },
+            "community_weights_raw": {"10": 0.75},
+            "flow_mode": "combined",
+        }
+        monkeypatch.setattr(page_helpers_module.st, "session_state", sess)
+        payload = build_session_profile_payload(profile_slug="guest-export")
+        assert payload["profile_name"] == "guest-export"
+        assert set(payload["selected_communities"]) == {"10", "20"}
+        assert payload["filter_settings"]["year_min"] == 1990
+        assert payload["community_weights_raw"]["10"] == 0.75
+        assert payload["flow_mode"] == "combined"

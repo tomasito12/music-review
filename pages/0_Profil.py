@@ -6,7 +6,9 @@ from typing import Any
 
 import streamlit as st
 from pages.page_helpers import (
+    build_session_profile_payload,
     clear_active_profile_slug_cookie,
+    logout_active_profile,
     persist_active_profile_slug_cookie,
     reset_taste_preferences,
     session_taste_setup_complete,
@@ -15,7 +17,6 @@ from pages.page_helpers import (
 from music_review.dashboard.user_profile_store import (
     ACTIVE_PROFILE_SESSION_KEY,
     apply_profile_to_session,
-    build_profile_payload,
     default_profiles_dir,
     load_profile,
     normalize_profile_slug,
@@ -112,13 +113,7 @@ def _create_new(profiles_dir: Any, name_raw: str) -> None:
             "Andernfalls wähle einen anderen Namen.",
         )
         return
-    payload = build_profile_payload(
-        profile_slug=slug,
-        flow_mode=None,
-        selected_communities=set(),
-        filter_settings={},
-        community_weights_raw={},
-    )
+    payload = build_session_profile_payload(profile_slug=slug)
     save_profile(profiles_dir, slug, payload)
     st.session_state[ACTIVE_PROFILE_SESSION_KEY] = slug
     persist_active_profile_slug_cookie(slug)
@@ -139,8 +134,7 @@ def _render_active_profile() -> None:
             key=KEY_PROFILE_SIGN_OUT,
             width="stretch",
         ):
-            st.session_state.pop(ACTIVE_PROFILE_SESSION_KEY, None)
-            clear_active_profile_slug_cookie()
+            logout_active_profile()
             st.rerun()
 
 
@@ -249,18 +243,18 @@ def main() -> None:
         "Abmelden oder „Ohne Profil weiter“ entfernt ihn wieder.",
     )
 
-    with st.expander("Geschmack zurücksetzen"):
+    with st.expander("Filter und Stile zurücksetzen"):
         st.markdown(
             "Leert Stil- und Filtereinstellungen in dieser Sitzung. "
             "Dein Profil auf der Platte bleibt unverändert, bis du "
             "in der Seitenleiste **Speichern** wählst."
         )
         confirm = st.checkbox(
-            "Ja, Geschmack neu einrichten.",
+            "Ja, Filter und Stile zurücksetzen.",
             key="profil_reset_confirm",
         )
         if st.button(
-            "Zurücksetzen und zur Einrichtung",
+            "Filter und Stile zurücksetzen",
             disabled=not confirm,
             key="profil_reset_run",
         ):

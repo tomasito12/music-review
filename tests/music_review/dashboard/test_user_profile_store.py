@@ -112,6 +112,39 @@ def test_ensure_active_profile_hydrated_no_slug() -> None:
     )
 
 
+def test_ensure_active_profile_hydrated_skips_disk_when_reset_pending(
+    tmp_path: Path,
+) -> None:
+    """After taste reset, session must not be overwritten by profile JSON."""
+    payload = build_profile_payload(
+        profile_slug="bob",
+        flow_mode="combined",
+        selected_communities={"99"},
+        filter_settings={
+            "year_min": 2000,
+            "year_max": 2024,
+            "rating_min": 7,
+            "rating_max": 10,
+        },
+        community_weights_raw={"99": 1.0},
+    )
+    save_profile(tmp_path, "bob", payload)
+    session: dict[str, object] = {
+        ACTIVE_PROFILE_SESSION_KEY: "bob",
+        TASTE_WIZARD_RESET_PENDING_KEY: True,
+        "selected_communities": set(),
+        "filter_settings": {},
+        "community_weights_raw": {},
+    }
+    assert ensure_active_profile_hydrated(session, profiles_dir=tmp_path) == (
+        ProfileHydrationResult.HYDRATED
+    )
+    assert session["selected_communities"] == set()
+    assert session["filter_settings"] == {}
+    assert session["community_weights_raw"] == {}
+    assert session.get(TASTE_WIZARD_RESET_PENDING_KEY) is True
+
+
 def test_ensure_active_profile_hydrated_loads_from_disk(tmp_path: Path) -> None:
     payload = build_profile_payload(
         profile_slug="ada",

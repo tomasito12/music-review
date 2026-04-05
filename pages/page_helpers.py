@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import json
 import math
-from collections.abc import Collection, Mapping
+from collections.abc import Collection, Mapping, MutableMapping
 from datetime import datetime
 from pathlib import Path
 from typing import Any
@@ -178,6 +178,35 @@ SEMANTIC_CHAT_RESET_BUTTON_KEY = "rec_chat_reset_button"
 SEMANTIC_CHAT_INPUT_KEY = "rec_chat_input"
 SEMANTIC_RAG_MAX_DISTANCE_KEY = "rec_rag_max_distance"
 SEMANTIC_CHAT_MESSAGES_KEY = "rec_chat_messages"
+
+# Spotify OAuth CSRF state (browser cookie; survives URL navigation / new session).
+SPOTIFY_OAUTH_STATE_COOKIE_NAME = "mr_spotify_oauth_state"
+
+# Streamlit widget session keys for Schritt 3 sliders (cleared on taste reset).
+FILTER_FLOW_WIDGET_KEY_YEAR_RANGE = "filter_flow_year_range"
+FILTER_FLOW_WIDGET_KEY_RATING_RANGE = "filter_flow_rating_range"
+FILTER_FLOW_WIDGET_KEY_STYLE_MATCH_PCT = "filter_flow_style_match_pct"
+FILTER_FLOW_WIDGET_KEY_SPECTRUM = "filter_flow_spectrum_crossover"
+FILTER_FLOW_WIDGET_KEY_OVERALL_ALPHA = "filter_flow_overall_alpha"
+FILTER_FLOW_WIDGET_KEY_OVERALL_BETA = "filter_flow_overall_beta"
+FILTER_FLOW_WIDGET_KEY_OVERALL_GAMMA = "filter_flow_overall_gamma"
+
+FILTER_FLOW_WIDGET_KEYS: tuple[str, ...] = (
+    FILTER_FLOW_WIDGET_KEY_YEAR_RANGE,
+    FILTER_FLOW_WIDGET_KEY_RATING_RANGE,
+    FILTER_FLOW_WIDGET_KEY_STYLE_MATCH_PCT,
+    FILTER_FLOW_WIDGET_KEY_SPECTRUM,
+    FILTER_FLOW_WIDGET_KEY_OVERALL_ALPHA,
+    FILTER_FLOW_WIDGET_KEY_OVERALL_BETA,
+    FILTER_FLOW_WIDGET_KEY_OVERALL_GAMMA,
+)
+
+# Checkbox/slider keys on Schritt 1/2/3 that must be dropped when taste resets.
+TASTE_WIZARD_WIDGET_KEY_PREFIXES: tuple[str, ...] = (
+    "comm_sel_",
+    "broad_cat_",
+    "weight_comm_",
+)
 
 # Sammel-Option in der Filter-UI für seltene Plattenlabels.
 PLATTENLABEL_SONSTIGE_UI = "Sonstige"
@@ -1085,13 +1114,8 @@ def load_community_memberships() -> dict[str, dict[str, str]]:
     return load_artist_communities(mp)
 
 
-def save_current_profile_to_disk() -> None:
-    """Persist current session settings under the active profile slug."""
-    active = st.session_state.get(ACTIVE_PROFILE_SESSION_KEY)
-    if not active:
-        st.warning("Kein Profil aktiv -- bitte zuerst anmelden.")
-        return
-    profiles_dir = default_profiles_dir()
+def build_session_profile_payload(*, profile_slug: str) -> dict[str, Any]:
+    """Assemble profile JSON from the current Streamlit session (taste + filters)."""
     selected = get_selected_communities()
     fs = st.session_state.get("filter_settings")
     if not isinstance(fs, dict):
@@ -1099,15 +1123,58 @@ def save_current_profile_to_disk() -> None:
     weights = st.session_state.get("community_weights_raw")
     if not isinstance(weights, dict):
         weights = {}
-    payload = build_profile_payload(
-        profile_slug=active,
+    return build_profile_payload(
+        profile_slug=profile_slug,
         flow_mode=st.session_state.get("flow_mode"),
         selected_communities=selected,
         filter_settings=fs,
         community_weights_raw=weights,
     )
-    save_profile(profiles_dir, active, payload)
-    st.success(f"Profil '{active}' gespeichert.")
+
+
+def persist_active_profile_from_session() -> str | None:
+    """Write taste + filter session to profile JSON when a profile slug is active.
+
+    Returns the normalized slug after a successful write, otherwise ``None``
+    (guest / invalid slug).
+    """
+    raw = st.session_state.get(ACTIVE_PROFILE_SESSION_KEY)
+    if not isinstance(raw, str) or not raw.strip():
+        return None
+    try:
+        slug = normalize_profile_slug(raw)
+    except ValueError:
+        return None
+    profiles_dir = default_profiles_dir()
+    payload = build_session_profile_payload(profile_slug=slug)
+    save_profile(profiles_dir, slug, payload)
+    return slug
+
+
+def save_current_profile_to_disk() -> None:
+    """Persist current session settings under the active profile slug."""
+    slug = persist_active_profile_from_session()
+    if slug is None:
+        st.warning("Kein Profil aktiv -- bitte zuerst anmelden.")
+        return
+    st.success(f"Profil '{slug}' gespeichert.")
+
+
+def _pop_taste_wizard_widget_session_keys(state: MutableMapping[str, Any]) -> None:
+    """Remove Streamlit widget keys so checkboxes/sliders re-sync to cleared data.
+
+    Widgets with explicit ``key=`` keep their values in session state even when
+    canonical keys like ``selected_communities`` are cleared; unkeyed sliders
+    also retain internal state. Dropping these keys forces the next run to use
+    defaults derived from empty ``filter_settings`` / selection sets.
+    """
+    for k in list(state.keys()):
+        if not isinstance(k, str):
+            continue
+        if any(k.startswith(p) for p in TASTE_WIZARD_WIDGET_KEY_PREFIXES):
+            state.pop(k, None)
+    for k in FILTER_FLOW_WIDGET_KEYS:
+        state.pop(k, None)
 
 
 def _reset_filters() -> None:
@@ -1121,7 +1188,9 @@ def _reset_filters() -> None:
     st.session_state["free_text_query"] = ""
     st.session_state.pop(SEMANTIC_CHAT_MESSAGES_KEY, None)
     st.session_state.pop(SEMANTIC_RAG_MAX_DISTANCE_KEY, None)
+    st.session_state.pop(SEMANTIC_CHAT_INPUT_KEY, None)
     st.session_state.pop(FILTER_PLATTENLABEL_MULTISELECT_KEY, None)
+    _pop_taste_wizard_widget_session_keys(st.session_state)
 
 
 def reset_taste_preferences() -> None:
@@ -1129,6 +1198,13 @@ def reset_taste_preferences() -> None:
     _reset_filters()
     mark_taste_wizard_reset_pending(st.session_state)
     st.session_state["flow_mode"] = None
+
+
+def logout_active_profile() -> None:
+    """Sign out: remove slug, clear cookie, clear taste keys in this session."""
+    st.session_state.pop(ACTIVE_PROFILE_SESSION_KEY, None)
+    clear_active_profile_slug_cookie()
+    reset_taste_preferences()
 
 
 # CookieManager uses a fixed element key; only one instance per session.
@@ -1167,6 +1243,33 @@ def clear_active_profile_slug_cookie() -> None:
     """Remove client-side profile slug (call on logout or invalid profile file)."""
     cm = profile_cookie_manager()
     cm.delete(ACTIVE_PROFILE_COOKIE_NAME, key="mr_cookie_del_profile")
+
+
+def persist_spotify_oauth_state_cookie(state: str) -> None:
+    """Store Spotify OAuth ``state`` for callback validation after a full page load."""
+    if not isinstance(state, str) or not state.strip():
+        return
+    cm = profile_cookie_manager()
+    cm.set(
+        SPOTIFY_OAUTH_STATE_COOKIE_NAME,
+        state,
+        key="mr_cookie_spotify_oauth_set",
+        max_age=600.0,
+        same_site="lax",
+    )
+
+
+def peek_spotify_oauth_state_cookie() -> str | None:
+    """Return the Spotify OAuth ``state`` from the browser cookie if present."""
+    cm = profile_cookie_manager()
+    raw = cm.get(SPOTIFY_OAUTH_STATE_COOKIE_NAME)
+    return raw.strip() if isinstance(raw, str) and raw.strip() else None
+
+
+def clear_spotify_oauth_state_cookie() -> None:
+    """Remove the Spotify OAuth state cookie after success or disconnect."""
+    cm = profile_cookie_manager()
+    cm.delete(SPOTIFY_OAUTH_STATE_COOKIE_NAME, key="mr_cookie_spotify_oauth_del")
 
 
 def restore_active_profile_from_cookie_if_needed() -> None:
@@ -1213,26 +1316,36 @@ def render_profile_sidebar() -> None:
     active = st.session_state.get(ACTIVE_PROFILE_SESSION_KEY)
     if active:
         st.sidebar.caption(f"Angemeldet als **{active}**")
-        b1, b2, b3 = st.sidebar.columns(3)
-        with b1:
-            if st.button("Speichern", key="sb_prof_save"):
-                save_current_profile_to_disk()
-        with b2:
-            if st.button("Reset", key="sb_prof_reset"):
-                reset_taste_preferences()
-                st.rerun()
-        with b3:
-            if st.button("Abmelden", key="sb_prof_logout"):
-                st.session_state.pop(ACTIVE_PROFILE_SESSION_KEY, None)
-                clear_active_profile_slug_cookie()
-                st.rerun()
+        if st.sidebar.button(
+            "Speichern",
+            key="sb_prof_save",
+            use_container_width=True,
+        ):
+            save_current_profile_to_disk()
+        if st.sidebar.button(
+            "Filter und Stile zurücksetzen",
+            key="sb_prof_reset",
+            use_container_width=True,
+        ):
+            reset_taste_preferences()
+            st.rerun()
+        if st.sidebar.button(
+            "Abmelden",
+            key="sb_prof_logout",
+            use_container_width=True,
+        ):
+            logout_active_profile()
+            st.rerun()
     else:
         st.sidebar.caption("Kein Profil aktiv")
-        st.sidebar.page_link(
-            "pages/0_Profil.py",
-            label="Anmelden",
+        # Use switch_page, not page_link: after OAuth return URLs with query
+        # params, Streamlit's page_link registry can lack url_pathname and raise.
+        if st.sidebar.button(
+            "Anmelden",
+            key="sb_prof_login",
             use_container_width=True,
-        )
+        ):
+            st.switch_page("pages/0_Profil.py")
 
 
 def render_toolbar(page_key: str) -> None:

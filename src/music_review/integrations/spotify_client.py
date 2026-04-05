@@ -69,7 +69,9 @@ class SpotifyAuthConfig:
         Expected variables:
 
         - ``SPOTIFY_CLIENT_ID`` (required)
-        - ``SPOTIFY_REDIRECT_URI`` (required)
+        - ``SPOTIFY_REDIRECT_URI`` (required; path must match the Streamlit page URL,
+          e.g. ``http://127.0.0.1:8501/spotify_playlists`` when using ``url_path``
+          ``spotify_playlists`` in ``st.Page``)
         - ``SPOTIFY_SCOPES`` (optional, space-separated)
         - ``SPOTIFY_CLIENT_SECRET`` (optional, only used for some flows)
         """

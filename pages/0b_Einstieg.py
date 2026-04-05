@@ -30,17 +30,20 @@ def _einstieg_css() -> None:
             margin-bottom: 0.2rem;
             color: #111827;
         }
-        .einstieg-desc {
+        .einstieg-column {
             max-width: 34rem;
-            margin: 0 auto 0.85rem auto;
+            margin: 0 auto;
+            text-align: center;
+        }
+        .einstieg-desc {
+            margin: 0 0 0.85rem 0;
             color: #6b7280;
             font-size: 0.92rem;
             line-height: 1.58;
             text-align: center;
         }
         .einstieg-hint {
-            max-width: 34rem;
-            margin: 0 auto 1.1rem auto;
+            margin: 0 0 1.1rem 0;
             background: #fef2f2;
             border: 1px solid #fecaca;
             border-radius: 8px;
@@ -48,13 +51,16 @@ def _einstieg_css() -> None:
             font-size: 0.86rem;
             color: #44403c;
             line-height: 1.55;
-            text-align: left;
+            text-align: center;
         }
         .einstieg-hint strong { color: #991b1b; }
+        /* Streamlit markdown host: keep intro block centered */
+        div[data-testid="stMarkdownContainer"]:has(.einstieg-column) {
+            text-align: center !important;
+        }
         .einstieg-cta {
-            text-align: center;
-            margin-top: 1.5rem;
-            margin-bottom: 1.5rem;
+            max-width: 34rem;
+            margin: 1.5rem auto 1.5rem auto;
         }
         </style>
         """,
@@ -80,19 +86,18 @@ def main() -> None:
         unsafe_allow_html=True,
     )
     st.markdown(
+        '<div class="einstieg-column">'
         '<p class="einstieg-desc">'
         "Wähle eine oder mehrere grobe Stilrichtungen, die zu dir passen. "
         "Im nächsten Schritt siehst du dazu passende Genre-Schwerpunkte "
         "und typische Künstler - dort markierst du, welcher Sound "
         "wirklich deinem Geschmack entspricht."
-        "</p>",
-        unsafe_allow_html=True,
-    )
-    st.markdown(
+        "</p>"
         '<div class="einstieg-hint">'
         "<strong>So startest du:</strong> Es reicht, wenn du alles ankreuzt, "
         "das grundsätzlich in Frage kommt. Feinjustierung und Künstler "
         "kommen gleich danach in Schritt 2."
+        "</div>"
         "</div>",
         unsafe_allow_html=True,
     )
@@ -109,29 +114,33 @@ def main() -> None:
             st.session_state["selected_broad_categories"],
         )
 
-        for cat in broad_categories:
-            key = f"broad_cat_{cat}"
-            checked = st.checkbox(
-                cat,
-                key=key,
-                value=(cat in selected),
-            )
-            if checked:
-                selected.add(cat)
-            else:
-                selected.discard(cat)
+        _sp_left, sp_mid, _sp_right = st.columns([1, 4, 1])
+        with sp_mid:
+            for cat in broad_categories:
+                key = f"broad_cat_{cat}"
+                checked = st.checkbox(
+                    cat,
+                    key=key,
+                    value=(cat in selected),
+                )
+                if checked:
+                    selected.add(cat)
+                else:
+                    selected.discard(cat)
 
-        st.session_state["selected_broad_categories"] = selected
+            st.session_state["selected_broad_categories"] = selected
 
-        if selected:
-            st.caption("Ausgewählt: " + ", ".join(sorted(selected)))
+            if selected:
+                st.caption("Ausgewählt: " + ", ".join(sorted(selected)))
 
     st.markdown('<div class="einstieg-cta">', unsafe_allow_html=True)
-    st.page_link(
-        "pages/1_Community_Auswahl.py",
-        label="Weiter zu Schritt 2",
-        use_container_width=True,
-    )
+    if st.button(
+        "Weiter zu Schritt 2",
+        type="primary",
+        width="stretch",
+        key="einstieg_next_step2",
+    ):
+        st.switch_page("pages/1_Community_Auswahl.py")
     st.markdown("</div>", unsafe_allow_html=True)
 
 

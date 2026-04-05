@@ -42,7 +42,7 @@ HUB_DESTINATIONS: tuple[HubDestination, ...] = (
     HubDestination(
         title="Einstellungen speichern",
         description=(
-            "Profil anlegen oder laden, damit du Geschmack und Filter "
+            "Profil anlegen oder laden, damit du Filter und Stile "
             "beim nächsten Besuch nicht neu einrichten musst."
         ),
         page_path="pages/0_Profil.py",
