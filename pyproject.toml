@@ -63,6 +63,7 @@ features = ["dev"]
 [tool.hatch.envs.default.scripts]
 update-db = "python scripts/update_database.py {args:}"
 full-data-update = "python scripts/full_data_update.py {args:}"
+# Default bind/browser host: see .streamlit/config.toml (127.0.0.1 for Spotify OAuth).
 dashboard = "streamlit run streamlit_app.py {args:}"
 batch-embed = "python -m music_review.pipeline.retrieval.cli {args:}"
 graph-build = "python -m music_review.pipeline.retrieval.reference_graph_cli {args:}"

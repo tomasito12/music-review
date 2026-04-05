@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import contextlib
 import json
 import math
 from collections.abc import Collection, Mapping, MutableMapping
@@ -1223,6 +1224,17 @@ def profile_cookie_manager() -> Any:
     return cm
 
 
+def _safe_cookie_manager_delete(cm: Any, cookie_name: str, *, key: str) -> None:
+    """Call CookieManager.delete without failing when the name is absent locally.
+
+    The third-party component runs ``del self.cookies[cookie_name]`` after the
+    delete request; that raises :exc:`KeyError` when the cookie was never stored
+    in the in-memory dict (e.g.     OAuth callback before ``set`` synced).
+    """
+    with contextlib.suppress(KeyError):
+        cm.delete(cookie_name, key=key)
+
+
 def persist_active_profile_slug_cookie(slug: str) -> None:
     """Remember the active profile slug in the browser (same-site lax, 180 days)."""
     try:
@@ -1242,7 +1254,11 @@ def persist_active_profile_slug_cookie(slug: str) -> None:
 def clear_active_profile_slug_cookie() -> None:
     """Remove client-side profile slug (call on logout or invalid profile file)."""
     cm = profile_cookie_manager()
-    cm.delete(ACTIVE_PROFILE_COOKIE_NAME, key="mr_cookie_del_profile")
+    _safe_cookie_manager_delete(
+        cm,
+        ACTIVE_PROFILE_COOKIE_NAME,
+        key="mr_cookie_del_profile",
+    )
 
 
 def persist_spotify_oauth_state_cookie(state: str) -> None:
@@ -1266,10 +1282,28 @@ def peek_spotify_oauth_state_cookie() -> str | None:
     return raw.strip() if isinstance(raw, str) and raw.strip() else None
 
 
+def peek_spotify_oauth_state_from_context_cookies() -> str | None:
+    """Return OAuth CSRF state from ``st.context.cookies`` (HTTP request).
+
+    After an external OAuth redirect, ``extra_streamlit_components`` may not have
+    mirrored document cookies into Python yet, while the Streamlit session
+    request already includes cookies sent by the browser.
+    """
+    try:
+        raw = st.context.cookies.to_dict().get(SPOTIFY_OAUTH_STATE_COOKIE_NAME)
+    except Exception:
+        return None
+    return raw.strip() if isinstance(raw, str) and raw.strip() else None
+
+
 def clear_spotify_oauth_state_cookie() -> None:
     """Remove the Spotify OAuth state cookie after success or disconnect."""
     cm = profile_cookie_manager()
-    cm.delete(SPOTIFY_OAUTH_STATE_COOKIE_NAME, key="mr_cookie_spotify_oauth_del")
+    _safe_cookie_manager_delete(
+        cm,
+        SPOTIFY_OAUTH_STATE_COOKIE_NAME,
+        key="mr_cookie_spotify_oauth_del",
+    )
 
 
 def restore_active_profile_from_cookie_if_needed() -> None:
@@ -1283,12 +1317,20 @@ def restore_active_profile_from_cookie_if_needed() -> None:
     try:
         slug = normalize_profile_slug(raw)
     except ValueError:
-        cm.delete(ACTIVE_PROFILE_COOKIE_NAME, key="mr_cookie_del_bad_slug")
+        _safe_cookie_manager_delete(
+            cm,
+            ACTIVE_PROFILE_COOKIE_NAME,
+            key="mr_cookie_del_bad_slug",
+        )
         return
     profiles_dir = default_profiles_dir()
     data = load_profile(profiles_dir, slug)
     if data is None:
-        cm.delete(ACTIVE_PROFILE_COOKIE_NAME, key="mr_cookie_del_orphan")
+        _safe_cookie_manager_delete(
+            cm,
+            ACTIVE_PROFILE_COOKIE_NAME,
+            key="mr_cookie_del_orphan",
+        )
         return
     st.session_state[ACTIVE_PROFILE_SESSION_KEY] = slug
     apply_profile_to_session(st.session_state, data)

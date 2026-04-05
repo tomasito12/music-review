@@ -17,6 +17,8 @@ from music_review.integrations.spotify_client import (
     SpotifyToken,
     SpotifyTrack,
     generate_pkce_pair,
+    normalize_streamlit_spotify_redirect_uri,
+    resolve_spotify_redirect_uri,
 )
 
 
@@ -56,6 +58,41 @@ def test_spotify_auth_config_from_env_defaults_scopes(
     assert "playlist-modify-private" in cfg.scopes
 
 
+def test_spotify_auth_config_from_env_normalizes_spotify_page_path_case(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setenv("SPOTIFY_CLIENT_ID", "cid")
+    monkeypatch.setenv(
+        "SPOTIFY_REDIRECT_URI",
+        "http://127.0.0.1:8501/Spotify_Playlists",
+    )
+    monkeypatch.delenv("SPOTIFY_SCOPES", raising=False)
+    cfg = SpotifyAuthConfig.from_env()
+    assert cfg.redirect_uri == "http://127.0.0.1:8501/spotify_playlists"
+
+
+def test_normalize_streamlit_spotify_redirect_uri_fixes_last_segment_case() -> None:
+    assert (
+        normalize_streamlit_spotify_redirect_uri(
+            "http://127.0.0.1:8501/Spotify_Playlists",
+        )
+        == "http://127.0.0.1:8501/spotify_playlists"
+    )
+
+
+def test_normalize_streamlit_spotify_redirect_uri_leaves_other_paths() -> None:
+    uri = "http://127.0.0.1:8501/other/callback"
+    assert normalize_streamlit_spotify_redirect_uri(uri) == uri
+
+
+def test_normalize_spotify_redirect_uri_keeps_query_and_fragment() -> None:
+    """Unusual redirect URIs may include query or fragment; keep them."""
+    uri = "http://h/Spotify_Playlists?x=1#frag"
+    out = normalize_streamlit_spotify_redirect_uri(uri)
+    assert "spotify_playlists" in out
+    assert "x=1" in out
+
+
 def test_spotify_token_from_response_sets_expiry() -> None:
     token = SpotifyToken.from_token_response(_sample_token_payload())
     assert token.access_token == "access123"
@@ -82,6 +119,85 @@ def test_generate_pkce_pair_shapes() -> None:
     assert isinstance(challenge, str)
     assert len(verifier) > 10
     assert "=" not in challenge
+
+
+def test_resolve_spotify_redirect_uri_uses_configured_despite_browser_default(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.delenv("SPOTIFY_OAUTH_USE_BROWSER_REDIRECT_URI", raising=False)
+    assert (
+        resolve_spotify_redirect_uri(
+            configured="http://127.0.0.1:8501/cb",
+            browser_url="http://localhost:8501/spotify_playlists",
+        )
+        == "http://127.0.0.1:8501/cb"
+    )
+
+
+def test_resolve_spotify_redirect_uri_uses_browser_when_env_flag_set(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setenv("SPOTIFY_OAUTH_USE_BROWSER_REDIRECT_URI", "1")
+    assert (
+        resolve_spotify_redirect_uri(
+            configured="http://127.0.0.1:8501/cb",
+            browser_url="http://localhost:8501/spotify_playlists",
+        )
+        == "http://localhost:8501/spotify_playlists"
+    )
+
+
+def test_resolve_spotify_redirect_uri_falls_back_when_browser_missing(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.delenv("SPOTIFY_OAUTH_USE_BROWSER_REDIRECT_URI", raising=False)
+    assert (
+        resolve_spotify_redirect_uri(
+            configured="  http://127.0.0.1:8501/x  ",
+            browser_url=None,
+        )
+        == "http://127.0.0.1:8501/x"
+    )
+
+
+def test_resolve_spotify_redirect_uri_falls_back_when_browser_not_http(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.delenv("SPOTIFY_OAUTH_USE_BROWSER_REDIRECT_URI", raising=False)
+    assert (
+        resolve_spotify_redirect_uri(
+            configured="http://a/b",
+            browser_url="file:///tmp/x",
+        )
+        == "http://a/b"
+    )
+
+
+def test_spotify_client_with_redirect_uri_and_property() -> None:
+    base = SpotifyClient(
+        SpotifyAuthConfig(
+            client_id="cid",
+            redirect_uri="http://old/cb",
+            scopes=("playlist-modify-public",),
+        ),
+    )
+    other = base.with_redirect_uri("http://new/cb")
+    assert base.redirect_uri == "http://old/cb"
+    assert other.redirect_uri == "http://new/cb"
+    url = other.build_authorize_url(state="s")
+    assert "redirect_uri=http%3A%2F%2Fnew%2Fcb" in url
+
+
+def test_spotify_client_with_redirect_uri_rejects_empty() -> None:
+    client = SpotifyClient(
+        SpotifyAuthConfig(
+            client_id="c",
+            redirect_uri="http://x",
+            scopes=("playlist-modify-public",),
+        ),
+    )
+    with pytest.raises(ValueError, match="redirect_uri"):
+        client.with_redirect_uri("  ")
 
 
 def test_build_authorize_url_contains_expected_query() -> None:

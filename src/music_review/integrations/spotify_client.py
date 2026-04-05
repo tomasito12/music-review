@@ -9,7 +9,7 @@ import logging
 import secrets
 import urllib.parse
 from collections.abc import Mapping
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from datetime import UTC, datetime, timedelta
 from os import getcwd, getenv
 from pathlib import Path
@@ -24,6 +24,32 @@ LOGGER: Final = logging.getLogger(__name__)
 
 SPOTIFY_AUTH_BASE_URL: Final = "https://accounts.spotify.com"
 SPOTIFY_API_BASE_URL: Final = "https://api.spotify.com/v1"
+# Must match ``url_path`` on the Streamlit Page for ``9_Spotify_Playlists.py``.
+STREAMLIT_SPOTIFY_PAGE_PATH: Final = "spotify_playlists"
+
+
+def normalize_streamlit_spotify_redirect_uri(redirect_uri: str) -> str:
+    """Rewrite the Spotify Streamlit page path to the canonical lowercase segment.
+
+    Streamlit serves the playlist page at ``url_path="spotify_playlists"``. If
+    ``SPOTIFY_REDIRECT_URI`` uses the same segment with different casing (e.g.
+    ``/Spotify_Playlists``), OAuth and the browser path disagree and Spotify
+    login fails. The last path segment is compared case-insensitively to
+    :data:`STREAMLIT_SPOTIFY_PAGE_PATH`; when equal, that segment is replaced
+    with the canonical spelling.
+    """
+    raw = redirect_uri.strip()
+    if not raw:
+        return raw
+    parsed = urllib.parse.urlparse(raw)
+    segments = [segment for segment in (parsed.path or "").split("/") if segment]
+    if not segments:
+        return raw
+    if segments[-1].casefold() != STREAMLIT_SPOTIFY_PAGE_PATH.casefold():
+        return raw
+    segments[-1] = STREAMLIT_SPOTIFY_PAGE_PATH
+    new_path = "/" + "/".join(segments)
+    return urllib.parse.urlunparse(parsed._replace(path=new_path))
 
 
 def _spotify_api_error_message(response: requests.Response) -> str:
@@ -49,6 +75,37 @@ class SpotifyConfigError(RuntimeError):
     """Raised when required Spotify configuration is missing or invalid."""
 
 
+def _spotify_oauth_use_browser_redirect_override() -> bool:
+    """True when env ``SPOTIFY_OAUTH_USE_BROWSER_REDIRECT_URI`` enables browser URL."""
+    raw = (getenv("SPOTIFY_OAUTH_USE_BROWSER_REDIRECT_URI") or "").strip().lower()
+    return raw in {"1", "true", "yes", "on"}
+
+
+def resolve_spotify_redirect_uri(
+    *,
+    configured: str,
+    browser_url: str | None,
+) -> str:
+    """Return the redirect URI to send to Spotify for authorize and token exchange.
+
+    Spotify requires an exact match with a URI registered in the developer
+    dashboard. By default this function returns the trimmed ``configured`` value
+    from ``SPOTIFY_REDIRECT_URI`` so it always matches what you registered.
+
+    ``st.context.url`` can differ (missing path segment, trailing slash, or
+    another host), which previously caused *redirect_uri: Not matching
+    configuration* even when the dashboard looked correct.
+
+    Set ``SPOTIFY_OAUTH_USE_BROWSER_REDIRECT_URI=1`` to restore the old behaviour
+    and send the browser URL when it is ``http://`` or ``https://``.
+    """
+    if _spotify_oauth_use_browser_redirect_override() and isinstance(browser_url, str):
+        candidate = browser_url.strip()
+        if candidate.startswith(("http://", "https://")):
+            return candidate
+    return configured.strip()
+
+
 @dataclass(slots=True)
 class SpotifyAuthConfig:
     """Static configuration for Spotify OAuth.
@@ -69,9 +126,11 @@ class SpotifyAuthConfig:
         Expected variables:
 
         - ``SPOTIFY_CLIENT_ID`` (required)
-        - ``SPOTIFY_REDIRECT_URI`` (required; path must match the Streamlit page URL,
-          e.g. ``http://127.0.0.1:8501/spotify_playlists`` when using ``url_path``
-          ``spotify_playlists`` in ``st.Page``)
+        - ``SPOTIFY_REDIRECT_URI`` (required; must match the Spotify dashboard. The last
+          path segment is normalized to ``spotify_playlists`` when it only differs by
+          letter case from Streamlit's ``url_path``.)
+        - ``SPOTIFY_OAUTH_USE_BROWSER_REDIRECT_URI`` (optional; truthy uses
+          ``st.context.url`` for OAuth when ``http(s)``; may diverge from dashboard.)
         - ``SPOTIFY_SCOPES`` (optional, space-separated)
         - ``SPOTIFY_CLIENT_SECRET`` (optional, only used for some flows)
         """
@@ -108,14 +167,15 @@ class SpotifyAuthConfig:
             client_id_raw = getenv("SPOTIFY_CLIENT_ID")
 
         client_id = (client_id_raw or "").strip()
-        redirect_uri = (getenv("SPOTIFY_REDIRECT_URI") or "").strip()
+        redirect_raw = (getenv("SPOTIFY_REDIRECT_URI") or "").strip()
         scopes_raw = (getenv("SPOTIFY_SCOPES") or "").strip()
         client_secret = (getenv("SPOTIFY_CLIENT_SECRET") or "").strip() or None
 
         if not client_id:
             raise SpotifyConfigError("SPOTIFY_CLIENT_ID is not set")
-        if not redirect_uri:
+        if not redirect_raw:
             raise SpotifyConfigError("SPOTIFY_REDIRECT_URI is not set")
+        redirect_uri = normalize_streamlit_spotify_redirect_uri(redirect_raw)
 
         scopes: tuple[str, ...]
         if scopes_raw:
@@ -238,10 +298,23 @@ class SpotifyClient:
     def __init__(self, config: SpotifyAuthConfig) -> None:
         self._config = config
 
+    def with_redirect_uri(self, redirect_uri: str) -> SpotifyClient:
+        """Return a client that uses ``redirect_uri`` for OAuth (authorize + token)."""
+        normalized = redirect_uri.strip()
+        if not normalized:
+            msg = "redirect_uri must be non-empty"
+            raise ValueError(msg)
+        return SpotifyClient(replace(self._config, redirect_uri=normalized))
+
     @property
     def scopes(self) -> tuple[str, ...]:
         """Return configured OAuth scopes."""
         return self._config.scopes
+
+    @property
+    def redirect_uri(self) -> str:
+        """OAuth redirect URI used for authorize and token exchange."""
+        return self._config.redirect_uri
 
     def build_authorize_url(
         self,

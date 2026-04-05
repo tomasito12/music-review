@@ -640,6 +640,41 @@ class TestSearchRagHitsForDashboard:
 
 
 class TestSpotifyOauthCookieHelpers:
+    def test_peek_spotify_oauth_from_context_cookies_reads_value(
+        self,
+        monkeypatch: pytest.MonkeyPatch,
+    ) -> None:
+        name = page_helpers_module.SPOTIFY_OAUTH_STATE_COOKIE_NAME
+
+        class FakeCookies:
+            def to_dict(self) -> dict[str, str]:
+                return {name: "  state-from-request  "}
+
+        monkeypatch.setattr(
+            page_helpers_module.st,
+            "context",
+            SimpleNamespace(cookies=FakeCookies()),
+        )
+        assert page_helpers_module.peek_spotify_oauth_state_from_context_cookies() == (
+            "state-from-request"
+        )
+
+    def test_peek_spotify_oauth_from_context_cookies_missing_returns_none(
+        self,
+        monkeypatch: pytest.MonkeyPatch,
+    ) -> None:
+        class FakeCookies:
+            def to_dict(self) -> dict[str, str]:
+                return {}
+
+        monkeypatch.setattr(
+            page_helpers_module.st,
+            "context",
+            SimpleNamespace(cookies=FakeCookies()),
+        )
+        peek = page_helpers_module.peek_spotify_oauth_state_from_context_cookies
+        assert peek() is None
+
     def test_persist_peek_clear_roundtrip(
         self,
         monkeypatch: pytest.MonkeyPatch,
@@ -695,6 +730,31 @@ class TestSpotifyOauthCookieHelpers:
         )
         page_helpers_module.persist_spotify_oauth_state_cookie("  ")
         assert storage == {}
+
+    def test_clear_spotify_oauth_state_tolerates_cookie_manager_keyerror(
+        self,
+        monkeypatch: pytest.MonkeyPatch,
+    ) -> None:
+        """OAuth cleanup survives CookieManager KeyError on missing in-memory key."""
+
+        class FakeCM:
+            def delete(self, *_a: object, **_k: object) -> None:
+                raise KeyError("mr_spotify_oauth_state")
+
+        monkeypatch.setattr(
+            page_helpers_module,
+            "profile_cookie_manager",
+            lambda: FakeCM(),
+        )
+        page_helpers_module.clear_spotify_oauth_state_cookie()
+
+
+def test_safe_cookie_manager_delete_suppresses_keyerror() -> None:
+    class CM:
+        def delete(self, *_a: object, **_k: object) -> None:
+            raise KeyError("missing")
+
+    page_helpers_module._safe_cookie_manager_delete(CM(), "any", key="k")
 
 
 class TestPersistActiveProfileFromSession:

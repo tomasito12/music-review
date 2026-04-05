@@ -16,6 +16,7 @@ from pages.neueste_spotify_playlist_section import (
 from pages.page_helpers import (
     clear_spotify_oauth_state_cookie,
     peek_spotify_oauth_state_cookie,
+    peek_spotify_oauth_state_from_context_cookies,
     persist_spotify_oauth_state_cookie,
     render_toolbar,
 )
@@ -25,6 +26,7 @@ from music_review.integrations.spotify_client import (
     SpotifyClient,
     SpotifyPlaylist,
     SpotifyToken,
+    resolve_spotify_redirect_uri,
 )
 
 """Spotify playlist helper page.
@@ -42,8 +44,22 @@ SPOTIFY_SELECTED_URIS_KEY = "spotify_selected_track_uris"
 SPOTIFY_LAST_PLAYLIST_KEY = "spotify_last_playlist"
 
 
-def _load_client() -> SpotifyClient | None:
-    """Return a configured SpotifyClient instance or None if config is missing."""
+def _spotify_browser_url_or_none() -> str | None:
+    """Return the Streamlit-reported browser URL, or None if unavailable."""
+    try:
+        raw = st.context.url
+    except Exception:
+        return None
+    return raw if isinstance(raw, str) else None
+
+
+def _oauth_redirect_urls_equivalent(a: str, b: str) -> bool:
+    """Compare redirect URLs loosely (trim, ignore trailing slash on path)."""
+    return a.strip().rstrip("/") == b.strip().rstrip("/")
+
+
+def _load_client_and_redirect_hint() -> tuple[SpotifyClient | None, str | None]:
+    """Load Spotify client; OAuth uses ``SPOTIFY_REDIRECT_URI`` unless overridden."""
     try:
         cfg = SpotifyAuthConfig.from_env()
     except Exception as exc:
@@ -52,8 +68,24 @@ def _load_client() -> SpotifyClient | None:
             "(Client-ID/Redirect-URL). Bitte `.env` prüfen.",
         )
         st.caption(f"Technische Details: {exc}")
-        return None
-    return SpotifyClient(cfg)
+        return None, None
+    browser = _spotify_browser_url_or_none()
+    effective = resolve_spotify_redirect_uri(
+        configured=cfg.redirect_uri,
+        browser_url=browser,
+    )
+    client = SpotifyClient(cfg).with_redirect_uri(effective)
+    hint: str | None = None
+    if browser and not _oauth_redirect_urls_equivalent(browser, effective):
+        hint = (
+            "An Spotify wird als **redirect_uri** nur `SPOTIFY_REDIRECT_URI` aus der "
+            f"`.env` geschickt: `{effective}`. Dein Browser zeigt gerade `{browser}`. "
+            "Öffne die Spotify-Seite **über dieselbe URL wie in der `.env`**, damit "
+            "der Rücksprung nach der Anmeldung zur laufenden Sitzung passt. "
+            "Im Spotify-Dashboard muss **genau** diese `.env`-Adresse unter "
+            "Redirect URIs stehen."
+        )
+    return client, hint
 
 
 def _get_stored_token() -> SpotifyToken | None:
@@ -101,8 +133,17 @@ def _handle_oauth_callback(client: SpotifyClient) -> None:
     state = _query_param_single(params.get("state"))
     if not code or not state:
         return
+    # Spotify authorization codes are single-use; Streamlit may rerun with ?code=
+    # still visible before the URL is cleaned up — skip a second exchange.
+    if _get_stored_token() is not None:
+        _clear_oauth_query_params()
+        clear_spotify_oauth_state_cookie()
+        st.session_state.pop(SPOTIFY_AUTH_STATE_KEY, None)
+        return
     sess_expected = st.session_state.get(SPOTIFY_AUTH_STATE_KEY)
-    cookie_expected = peek_spotify_oauth_state_cookie()
+    cookie_from_cm = peek_spotify_oauth_state_cookie()
+    cookie_from_ctx = peek_spotify_oauth_state_from_context_cookies()
+    cookie_expected = cookie_from_cm or cookie_from_ctx
     if isinstance(sess_expected, str) and sess_expected.strip():
         expected_state = sess_expected.strip()
     elif cookie_expected:
@@ -137,9 +178,42 @@ def _handle_oauth_callback(client: SpotifyClient) -> None:
     st.success("Du bist jetzt mit Spotify verbunden.")
 
 
-def _render_connection_section(client: SpotifyClient | None) -> SpotifyToken | None:
+def _normalized_spotify_oauth_pending_state(raw: object) -> str | None:
+    """Return stripped OAuth state if ``raw`` is a non-empty string, otherwise None."""
+    if isinstance(raw, str) and raw.strip():
+        return raw.strip()
+    return None
+
+
+def _render_spotify_oauth_continue_ui(
+    client: SpotifyClient,
+    *,
+    oauth_state: str,
+) -> None:
+    """Show redirect hint, Spotify link, and short guidance mid-OAuth."""
+    st.caption(
+        "An Spotify wird **`SPOTIFY_REDIRECT_URI` aus der `.env`** verwendet: "
+        f"`{client.redirect_uri}`. Dieselbe Zeichenkette muss im "
+        "[Spotify Developer Dashboard](https://developer.spotify.com/dashboard) "
+        "unter **Redirect URIs** stehen (ohne Leerzeichen am Ende, in der Regel "
+        "**ohne** Schrägstrich am Ende des Pfads)."
+    )
+    st.link_button(
+        "Zum Spotify-Login wechseln",
+        client.build_authorize_url(state=oauth_state),
+        use_container_width=True,
+    )
+    st.caption(
+        "Als Nächstes bei Spotify anmelden und freigeben. "
+        "Dieser Link bleibt sichtbar, bis du dich angemeldet hast oder abbrichst."
+    )
+
+
+def _render_connection_section(
+    client: SpotifyClient | None,
+    redirect_hint: str | None,
+) -> SpotifyToken | None:
     st.subheader("Verbindung zu Spotify")
-    token = _get_stored_token()
     if client is None:
         st.info(
             "Diese Seite benötigt eine gültige Spotify-Konfiguration, um "
@@ -162,22 +236,29 @@ def _render_connection_section(client: SpotifyClient | None) -> SpotifyToken | N
                 st.rerun()
         return token
 
+    if redirect_hint:
+        st.info(redirect_hint)
+
+    # OAuth start is a two-step flow (primary button, then link). Streamlit only
+    # reports the primary button as clicked for a single rerun; CookieManager or
+    # other widgets can rerun the script immediately, which would otherwise hide
+    # the link and show only the "not connected" info again.
+    pending_state = _normalized_spotify_oauth_pending_state(
+        st.session_state.get(SPOTIFY_AUTH_STATE_KEY),
+    )
+    if pending_state is not None:
+        _render_spotify_oauth_continue_ui(client, oauth_state=pending_state)
+        if st.button("Login abbrechen", key="spotify_oauth_cancel"):
+            st.session_state.pop(SPOTIFY_AUTH_STATE_KEY, None)
+            clear_spotify_oauth_state_cookie()
+            st.rerun()
+        return None
+
     if st.button("Mit Spotify verbinden", type="primary"):
         state = secrets.token_urlsafe(32)
         st.session_state[SPOTIFY_AUTH_STATE_KEY] = state
         persist_spotify_oauth_state_cookie(state)
-        auth_url = client.build_authorize_url(
-            state=str(state),
-        )
-        st.caption(
-            "Redirect-URI in der Spotify-App und in SPOTIFY_REDIRECT_URI muss exakt "
-            "zum App-Pfad passen (lokal üblich: `http://127.0.0.1:8501/spotify_playlists`)."
-        )
-        st.link_button(
-            "Zum Spotify-Login wechseln",
-            auth_url,
-            use_container_width=True,
-        )
+        _render_spotify_oauth_continue_ui(client, oauth_state=str(state))
     else:
         st.info(
             "Noch nicht mit Spotify verbunden. Klicke auf "
@@ -352,8 +433,8 @@ def main() -> None:
         "</p>",
         unsafe_allow_html=True,
     )
-    client = _load_client()
-    token = _render_connection_section(client)
+    client, redirect_hint = _load_client_and_redirect_hint()
+    token = _render_connection_section(client, redirect_hint)
     st.markdown("---")
 
     ensure_neueste_session_defaults()
