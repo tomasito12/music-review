@@ -344,6 +344,10 @@ def build_album_weights(
             len(reviews),
             w,
         )
+        LOGGER.debug(
+            "Album weights: uniform mode review_ids_sample=%s",
+            [int(r.id) for r in reviews[:8]],
+        )
         return reviews, [w for _ in reviews]
 
     picked_reviews: list[Review] = []
@@ -382,6 +386,14 @@ def build_album_weights(
         "Album weights: from overall_score pool_size=%s raw_total=%.6f",
         len(picked_reviews),
         total,
+    )
+    LOGGER.debug(
+        "Album weights: preference mode norm_weight min=%.6f max=%.6f "
+        "raw_score min=%.6f max=%.6f",
+        min(norm_weights),
+        max(norm_weights),
+        min(raw_weights),
+        max(raw_weights),
     )
     for rev, nw, rw in zip(picked_reviews, norm_weights, raw_weights, strict=True):
         LOGGER.debug(

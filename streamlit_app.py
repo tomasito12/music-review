@@ -6,6 +6,7 @@ from __future__ import annotations
 from typing import Any
 
 import streamlit as st
+from pages.neueste_reviews_pool import configure_spotify_playlist_logging_from_env
 from pages.page_helpers import (
     ACTIVE_PROFILE_SESSION_KEY,
     bootstrap_profile_session,
@@ -230,6 +231,7 @@ def main() -> None:
         layout="centered",
     )
 
+    configure_spotify_playlist_logging_from_env()
     bootstrap_profile_session()
     render_profile_sidebar()
 

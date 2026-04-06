@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+from pathlib import Path
+from types import SimpleNamespace
 from unittest.mock import MagicMock
 
 import pytest
@@ -103,3 +105,63 @@ def test_restore_from_cookie_hydrates_when_empty_session(
     assert sess[ACTIVE_PROFILE_SESSION_KEY] == "bob"
     assert sess["selected_communities"] == {"C01"}
     assert sess["filter_settings"] == {"x": 1}
+
+
+def test_peek_active_profile_slug_from_context_cookies_strips_value(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    cookies = SimpleNamespace(
+        to_dict=lambda: {page_helpers.ACTIVE_PROFILE_COOKIE_NAME: "  bob  "},
+    )
+    monkeypatch.setattr(
+        page_helpers.st,
+        "context",
+        SimpleNamespace(cookies=cookies),
+    )
+    assert page_helpers.peek_active_profile_slug_from_context_cookies() == "bob"
+
+
+def test_peek_active_profile_slug_from_context_cookies_empty_when_absent(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    cookies = SimpleNamespace(to_dict=lambda: {})
+    monkeypatch.setattr(
+        page_helpers.st,
+        "context",
+        SimpleNamespace(cookies=cookies),
+    )
+    assert page_helpers.peek_active_profile_slug_from_context_cookies() is None
+
+
+def test_restore_from_cookie_uses_context_when_cookie_manager_empty(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    payload = build_profile_payload(
+        profile_slug="bob",
+        flow_mode=None,
+        selected_communities={"C01"},
+        filter_settings={"x": 1},
+        community_weights_raw={"C01": 0.5},
+    )
+    save_profile(tmp_path, "bob", payload)
+    sess: dict[str, object] = {}
+    monkeypatch.setattr(page_helpers.st, "session_state", sess)
+    mock_cm = MagicMock()
+    mock_cm.get.return_value = None
+    monkeypatch.setattr(
+        page_helpers,
+        "profile_cookie_manager",
+        lambda: mock_cm,
+    )
+    monkeypatch.setattr(
+        page_helpers,
+        "peek_active_profile_slug_from_context_cookies",
+        lambda: "bob",
+    )
+    monkeypatch.setattr(page_helpers, "default_profiles_dir", lambda: tmp_path)
+
+    page_helpers.restore_active_profile_from_cookie_if_needed()
+
+    assert sess[ACTIVE_PROFILE_SESSION_KEY] == "bob"
+    assert sess["selected_communities"] == {"C01"}

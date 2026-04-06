@@ -1306,12 +1306,31 @@ def clear_spotify_oauth_state_cookie() -> None:
     )
 
 
+def peek_active_profile_slug_from_context_cookies() -> str | None:
+    """Return active profile slug from HTTP request cookies when CookieManager lags.
+
+    After an external OAuth redirect, ``extra_streamlit_components`` may not have
+    mirrored document cookies into Python yet, while ``st.context.cookies`` already
+    reflects the browser-sent cookies (same pattern as Spotify OAuth ``state``).
+    """
+    try:
+        raw = st.context.cookies.to_dict().get(ACTIVE_PROFILE_COOKIE_NAME)
+    except Exception:
+        return None
+    return raw.strip() if isinstance(raw, str) and raw.strip() else None
+
+
 def restore_active_profile_from_cookie_if_needed() -> None:
     """If server session lost the slug, restore login from cookie + JSON on disk."""
     if st.session_state.get(ACTIVE_PROFILE_SESSION_KEY):
         return
     cm = profile_cookie_manager()
-    raw = cm.get(ACTIVE_PROFILE_COOKIE_NAME)
+    cm_raw = cm.get(ACTIVE_PROFILE_COOKIE_NAME)
+    ctx_slug = peek_active_profile_slug_from_context_cookies()
+    if isinstance(cm_raw, str) and cm_raw.strip():
+        raw: str | None = cm_raw
+    else:
+        raw = ctx_slug
     if not isinstance(raw, str) or not raw.strip():
         return
     try:

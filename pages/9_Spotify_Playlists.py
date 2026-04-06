@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import logging
 import secrets
 from dataclasses import asdict
 from typing import Any
@@ -7,6 +8,7 @@ from typing import Any
 import streamlit as st
 from pages.neueste_reviews_pool import (
     RECENT_DEFAULT,
+    configure_spotify_playlist_logging_from_env,
     ensure_neueste_session_defaults,
     fetch_newest_reviews_pool,
 )
@@ -17,10 +19,18 @@ from pages.page_helpers import (
     clear_spotify_oauth_state_cookie,
     peek_spotify_oauth_state_cookie,
     peek_spotify_oauth_state_from_context_cookies,
+    persist_active_profile_slug_cookie,
     persist_spotify_oauth_state_cookie,
     render_toolbar,
 )
 
+from music_review.dashboard.user_profile_store import (
+    ACTIVE_PROFILE_SESSION_KEY,
+    apply_profile_to_session,
+    default_profiles_dir,
+    load_profile,
+    normalize_profile_slug,
+)
 from music_review.integrations.spotify_client import (
     SpotifyAuthConfig,
     SpotifyClient,
@@ -42,6 +52,8 @@ SPOTIFY_TOKEN_KEY = "spotify_token"
 SPOTIFY_SEARCH_RESULTS_KEY = "spotify_search_results_tracks"
 SPOTIFY_SELECTED_URIS_KEY = "spotify_selected_track_uris"
 SPOTIFY_LAST_PLAYLIST_KEY = "spotify_last_playlist"
+
+_LOGGER = logging.getLogger(__name__)
 
 
 def _spotify_browser_url_or_none() -> str | None:
@@ -126,6 +138,53 @@ def _clear_oauth_query_params() -> None:
             del st.query_params[key]
 
 
+def _split_spotify_oauth_callback_state(state_param: str) -> tuple[str, str | None]:
+    """Split Spotify ``state`` into CSRF token and optional profile slug.
+
+    ``secrets.token_urlsafe`` does not produce ``.``, so a single dot separates
+    CSRF (left) from a normalized profile slug (right). Legacy states have no
+    dot: the full string is the CSRF token.
+    """
+    if "." not in state_param:
+        return state_param, None
+    left, right = state_param.split(".", 1)
+    if not left or not right:
+        return state_param, None
+    try:
+        normalize_profile_slug(right)
+    except ValueError:
+        return state_param, None
+    return left, right
+
+
+def _spotify_oauth_state_for_authorize_url(csrf: str) -> str:
+    """Build ``state`` query value: CSRF plus profile slug when logged in."""
+    slug_any = st.session_state.get(ACTIVE_PROFILE_SESSION_KEY)
+    if not isinstance(slug_any, str) or not slug_any.strip():
+        return csrf
+    try:
+        safe = normalize_profile_slug(slug_any.strip())
+    except ValueError:
+        return csrf
+    return f"{csrf}.{safe}"
+
+
+def _restore_profile_from_oauth_callback_slug(slug: str) -> None:
+    """Re-hydrate session and profile cookie when browser dropped profile cookie."""
+    if st.session_state.get(ACTIVE_PROFILE_SESSION_KEY):
+        return
+    try:
+        safe = normalize_profile_slug(slug)
+    except ValueError:
+        return
+    data = load_profile(default_profiles_dir(), safe)
+    if data is None:
+        return
+    st.session_state[ACTIVE_PROFILE_SESSION_KEY] = safe
+    apply_profile_to_session(st.session_state, data)
+    persist_active_profile_slug_cookie(safe)
+
+
 def _handle_oauth_callback(client: SpotifyClient) -> None:
     """Handle OAuth callback parameters present in the page URL."""
     params = st.query_params
@@ -133,6 +192,7 @@ def _handle_oauth_callback(client: SpotifyClient) -> None:
     state = _query_param_single(params.get("state"))
     if not code or not state:
         return
+    csrf_part, profile_slug_from_state = _split_spotify_oauth_callback_state(state)
     # Spotify authorization codes are single-use; Streamlit may rerun with ?code=
     # still visible before the URL is cleaned up — skip a second exchange.
     if _get_stored_token() is not None:
@@ -145,12 +205,12 @@ def _handle_oauth_callback(client: SpotifyClient) -> None:
     cookie_from_ctx = peek_spotify_oauth_state_from_context_cookies()
     cookie_expected = cookie_from_cm or cookie_from_ctx
     if isinstance(sess_expected, str) and sess_expected.strip():
-        expected_state = sess_expected.strip()
+        expected_csrf = sess_expected.strip()
     elif cookie_expected:
-        expected_state = cookie_expected
+        expected_csrf = cookie_expected
     else:
-        expected_state = None
-    if not expected_state or state != expected_state:
+        expected_csrf = None
+    if not expected_csrf or csrf_part != expected_csrf:
         _clear_oauth_query_params()
         clear_spotify_oauth_state_cookie()
         st.error(
@@ -159,6 +219,8 @@ def _handle_oauth_callback(client: SpotifyClient) -> None:
             "Bitte „Mit Spotify verbinden“ erneut wählen.",
         )
         return
+    if profile_slug_from_state:
+        _restore_profile_from_oauth_callback_slug(profile_slug_from_state)
     with st.spinner("Spotify-Verbindung wird hergestellt …"):
         try:
             token = client.exchange_code_for_token(
@@ -247,7 +309,10 @@ def _render_connection_section(
         st.session_state.get(SPOTIFY_AUTH_STATE_KEY),
     )
     if pending_state is not None:
-        _render_spotify_oauth_continue_ui(client, oauth_state=pending_state)
+        _render_spotify_oauth_continue_ui(
+            client,
+            oauth_state=_spotify_oauth_state_for_authorize_url(pending_state),
+        )
         if st.button("Login abbrechen", key="spotify_oauth_cancel"):
             st.session_state.pop(SPOTIFY_AUTH_STATE_KEY, None)
             clear_spotify_oauth_state_cookie()
@@ -258,7 +323,10 @@ def _render_connection_section(
         state = secrets.token_urlsafe(32)
         st.session_state[SPOTIFY_AUTH_STATE_KEY] = state
         persist_spotify_oauth_state_cookie(state)
-        _render_spotify_oauth_continue_ui(client, oauth_state=str(state))
+        _render_spotify_oauth_continue_ui(
+            client,
+            oauth_state=_spotify_oauth_state_for_authorize_url(state),
+        )
     else:
         st.info(
             "Noch nicht mit Spotify verbunden. Klicke auf "
@@ -382,6 +450,12 @@ def _render_playlist_section(client: SpotifyClient, token: SpotifyToken | None) 
             return
         with st.spinner("Playlist wird in Spotify erstellt …"):
             try:
+                _LOGGER.info(
+                    "manual spotify playlist: create name=%r public=%s n_tracks=%s",
+                    playlist_name.strip(),
+                    make_public,
+                    len(selected_uris),
+                )
                 playlist: SpotifyPlaylist = client.create_playlist(
                     name=playlist_name.strip(),
                     public=make_public,
@@ -392,6 +466,11 @@ def _render_playlist_section(client: SpotifyClient, token: SpotifyToken | None) 
                     playlist_id=playlist.id,
                     track_uris=list(selected_uris),
                     token=token,
+                )
+                _LOGGER.info(
+                    "manual spotify playlist: done playlist_id=%s url=%r",
+                    playlist.id,
+                    playlist.external_url,
                 )
             except Exception as exc:
                 st.error(
@@ -420,6 +499,7 @@ def _render_playlist_section(client: SpotifyClient, token: SpotifyToken | None) 
 
 
 def main() -> None:
+    configure_spotify_playlist_logging_from_env()
     render_toolbar("spotify_playlists")
 
     st.markdown(

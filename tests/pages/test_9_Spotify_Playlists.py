@@ -3,6 +3,8 @@ from __future__ import annotations
 import importlib
 import types
 
+import pytest
+
 
 def _spotify_playlists_module() -> types.ModuleType:
     return importlib.import_module("pages.9_Spotify_Playlists")
@@ -45,3 +47,43 @@ def test_oauth_redirect_urls_equivalent_detects_path_mismatch() -> None:
     a = "http://127.0.0.1:8501/"
     b = "http://127.0.0.1:8501/spotify_playlists"
     assert eq(a, b) is False
+
+
+def test_split_spotify_oauth_callback_state_legacy_token() -> None:
+    module = _spotify_playlists_module()
+    split = module._split_spotify_oauth_callback_state
+    assert split("aB3-xY9_token_only") == ("aB3-xY9_token_only", None)
+
+
+def test_split_spotify_oauth_callback_state_embeds_profile_slug() -> None:
+    module = _spotify_playlists_module()
+    split = module._split_spotify_oauth_callback_state
+    assert split("csrfpart.my-user_slug") == ("csrfpart", "my-user_slug")
+
+
+def test_split_spotify_oauth_callback_state_invalid_slug_suffix_is_legacy() -> None:
+    module = _spotify_playlists_module()
+    split = module._split_spotify_oauth_callback_state
+    raw = "csrfpart.!!!"
+    assert split(raw) == (raw, None)
+
+
+def test_spotify_oauth_state_for_authorize_url_appends_slug(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    module = _spotify_playlists_module()
+    monkeypatch.setattr(
+        module.st,
+        "session_state",
+        {"active_profile_slug": "demo_user"},
+    )
+    out = module._spotify_oauth_state_for_authorize_url("csrf123")
+    assert out == "csrf123.demo_user"
+
+
+def test_spotify_oauth_state_for_authorize_url_skips_without_profile(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    module = _spotify_playlists_module()
+    monkeypatch.setattr(module.st, "session_state", {})
+    assert module._spotify_oauth_state_for_authorize_url("csrf123") == "csrf123"

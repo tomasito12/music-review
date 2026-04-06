@@ -2,12 +2,14 @@
 
 from __future__ import annotations
 
+import logging
 import random
 import secrets
 from datetime import date
 from typing import Any
 
 import streamlit as st
+from pages.neueste_reviews_pool import configure_spotify_playlist_logging_from_env
 
 from music_review.dashboard.newest_spotify_playlist import (
     PlaylistCandidate,
@@ -26,6 +28,25 @@ from music_review.integrations.spotify_client import (
 SPOTIFY_TOKEN_KEY = "spotify_token"
 NEWEST_SPOTIFY_PREVIEW_KEY = "newest_spotify_preview"
 NEWEST_SPOTIFY_PLAYLIST_NAME_KEY = "newest-spotify-playlist-name"
+
+_LOGGER = logging.getLogger(__name__)
+
+
+def _log_weight_summary(weights: list[float], *, review_ids: list[int]) -> None:
+    """Emit DEBUG lines for normalized album sampling weights."""
+    if not weights:
+        _LOGGER.debug("playlist section: no album weights (empty pool)")
+        return
+    uniform = len(set(round(w, 12) for w in weights)) <= 1
+    _LOGGER.debug(
+        "playlist section: album_weights n=%s uniform=%s min=%.6f max=%.6f "
+        "review_ids_head=%s",
+        len(weights),
+        uniform,
+        min(weights),
+        max(weights),
+        review_ids[:12],
+    )
 
 
 def _default_newest_spotify_playlist_name() -> str:
@@ -106,6 +127,7 @@ def render_neueste_spotify_playlist_section(
     ranked_rows: list[dict[str, Any]] | None,
 ) -> None:
     """Expander: build a random playlist from the same pool as Neueste Rezensionen."""
+    configure_spotify_playlist_logging_from_env()
     with st.expander("Spotify-Playlist aus den neuesten Rezensionen", expanded=False):
         st.caption(
             "Erzeuge eine zufällige Playlist auf Basis der aktuell "
@@ -164,6 +186,18 @@ def render_neueste_spotify_playlist_section(
         pool_reviews = reviews[:pool_count]
         pool_rows = ranked_rows[:pool_count] if ranked_rows else None
         chosen_reviews, weights = build_album_weights(pool_reviews, pool_rows)
+        _LOGGER.info(
+            "newest spotify playlist section: pool_count=%s n_chosen_albums=%s "
+            "ranked_rows_available=%s target_songs=%s",
+            pool_count,
+            len(chosen_reviews),
+            ranked_rows is not None,
+            target_count,
+        )
+        _log_weight_summary(
+            weights,
+            review_ids=[int(r.id) for r in chosen_reviews],
+        )
         client: SpotifyClient | None = None
         config_error: str | None = None
         try:
@@ -223,6 +257,12 @@ def render_neueste_spotify_playlist_section(
 
         if generate_clicked or regenerate_clicked:
             rng = random.Random(secrets.randbits(64))
+            _LOGGER.info(
+                "newest spotify preview: start build_playlist_candidates "
+                "n_albums=%s target_count=%s",
+                len(chosen_reviews),
+                target_count,
+            )
             with st.spinner("Playlist-Vorschau wird erzeugt..."):
                 token_for_search = _ensure_valid_spotify_token(client, token)
                 preview = build_playlist_candidates(
@@ -237,6 +277,15 @@ def render_neueste_spotify_playlist_section(
                         track_title=track_title,
                     ),
                 )
+            _LOGGER.info(
+                "newest spotify preview: finished n_candidates=%s (target was %s)",
+                len(preview),
+                target_count,
+            )
+            _LOGGER.debug(
+                "newest spotify preview: candidate review_ids=%s",
+                [c.review_id for c in preview[:25]],
+            )
             st.session_state[NEWEST_SPOTIFY_PREVIEW_KEY] = preview
 
         preview_items_any = st.session_state.get(NEWEST_SPOTIFY_PREVIEW_KEY)
@@ -260,9 +309,19 @@ def render_neueste_spotify_playlist_section(
                 try:
                     with st.spinner("Spotify-Playlist wird gespeichert..."):
                         token_for_save = _ensure_valid_spotify_token(client, token)
+                        save_name = (
+                            playlist_name.strip()
+                            or _default_newest_spotify_playlist_name()
+                        )
+                        _LOGGER.info(
+                            "newest spotify save: create_playlist name=%r public=%s "
+                            "n_tracks=%s",
+                            save_name,
+                            make_playlist_public,
+                            len(valid_preview_items),
+                        )
                         playlist = client.create_playlist(
-                            name=playlist_name.strip()
-                            or _default_newest_spotify_playlist_name(),
+                            name=save_name,
                             description=(
                                 "Automatisch erstellt aus den neuesten Rezensionen "
                                 "in Music Review."
@@ -277,6 +336,11 @@ def render_neueste_spotify_playlist_section(
                                 track_uris=uris[idx : idx + 100],
                                 token=token_for_save,
                             )
+                        _LOGGER.info(
+                            "newest spotify save: done playlist_id=%s url=%r",
+                            playlist.id,
+                            playlist.external_url,
+                        )
                     st.success("Spotify-Playlist erfolgreich gespeichert.")
                 except RuntimeError as exc:
                     st.error(
