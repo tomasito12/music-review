@@ -4,6 +4,7 @@
 from __future__ import annotations
 
 import argparse
+import contextlib
 import logging
 import os
 import subprocess
@@ -14,6 +15,12 @@ logging.basicConfig(
     format="%(asctime)s [%(levelname)s] %(message)s",
 )
 logger = logging.getLogger(__name__)
+
+# Subprocess steps import ``music_review`` and get ``.env`` via ``config``; this
+# script's own ``os.environ.get("OPENAI_API_KEY")`` checks run in the parent
+# process and would otherwise miss values only set in ``.env``.
+with contextlib.suppress(ImportError):
+    import music_review.config  # noqa: F401 — side effect: ``load_dotenv``
 
 
 def run_module(module: str, args: list[str]) -> bool:

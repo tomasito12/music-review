@@ -12,8 +12,10 @@ logger level before ``streamlit run``).
 from __future__ import annotations
 
 import logging
+import math
 import random
 import re
+from collections import deque
 from dataclasses import dataclass
 from typing import Any, Protocol
 
@@ -312,6 +314,8 @@ class PlaylistCandidate:
     source_kind: str
     spotify_uri: str
     score_weight: float
+    raw_score: float
+    playlist_slot_quota: int
 
 
 def _norm_text(value: str) -> str:
@@ -322,23 +326,25 @@ def _norm_text(value: str) -> str:
 def build_album_weights(
     reviews: list[Review],
     ranked_rows: list[dict[str, Any]] | None,
-) -> tuple[list[Review], list[float]]:
-    """Return reviews and normalized sampling weights.
+) -> tuple[list[Review], list[float], list[float]]:
+    """Return reviews, normalized weights (sum 1), and raw non-negative scores.
 
     When ``ranked_rows`` is set, the returned list follows **row order** (same as
     the ranked UI), not the order of the ``reviews`` argument. Each weight is
-    ``max(0, overall_score) / sum(...)``, so scores ``0.3, 0.1, 0.1`` yield
-    sampling probabilities ``3/5, 1/5, 1/5`` on each **independent** weighted
-    draw with replacement (see :func:`build_playlist_candidates`).
+    ``max(0, overall_score) / sum(...)``, so scores ``0.3, 0.1, 0.1`` become
+    ``3/5, 1/5, 1/5``. Raw values are those ``max(0, overall_score)`` inputs
+    before normalization. :func:`build_playlist_candidates` turns weights into
+    **integer slot counts** per album (largest remainder).
 
-    Falls back to a uniform distribution when no ranked rows are present or
-    when no valid rows remain.
+    Uniform fallbacks use raw ``1.0`` per album so relative weights are equal
+    before normalization.
     """
     if not reviews:
         LOGGER.info("Album weights: empty review list")
-        return [], []
+        return [], [], []
     if not ranked_rows:
         w = 1.0 / float(len(reviews))
+        raw = [1.0 for _ in reviews]
         LOGGER.info(
             "Album weights: uniform (no ranking) pool_size=%s weight_each=%.6f",
             len(reviews),
@@ -348,7 +354,7 @@ def build_album_weights(
             "Album weights: uniform mode review_ids_sample=%s",
             [int(r.id) for r in reviews[:8]],
         )
-        return reviews, [w for _ in reviews]
+        return reviews, [w for _ in reviews], raw
 
     picked_reviews: list[Review] = []
     raw_weights: list[float] = []
@@ -366,21 +372,23 @@ def build_album_weights(
 
     if not picked_reviews:
         w = 1.0 / float(len(reviews))
+        raw_uniform = [1.0 for _ in reviews]
         LOGGER.warning(
             "Album weights: ranked rows had no valid reviews; uniform fallback "
             "pool_size=%s",
             len(reviews),
         )
-        return reviews, [w for _ in reviews]
+        return reviews, [w for _ in reviews], raw_uniform
 
     total = sum(raw_weights)
     if total <= 0.0:
         w = 1.0 / float(len(picked_reviews))
+        raw_uniform = [1.0 for _ in picked_reviews]
         LOGGER.warning(
             "Album weights: all scores zero or negative; uniform over %s ranked rows",
             len(picked_reviews),
         )
-        return picked_reviews, [w for _ in picked_reviews]
+        return picked_reviews, [w for _ in picked_reviews], raw_uniform
     norm_weights = [w / total for w in raw_weights]
     LOGGER.info(
         "Album weights: from overall_score pool_size=%s raw_total=%.6f",
@@ -405,7 +413,82 @@ def build_album_weights(
             _log_str(rev.artist, max_len=60),
             _log_str(rev.album, max_len=60),
         )
-    return picked_reviews, norm_weights
+    return picked_reviews, norm_weights, raw_weights
+
+
+def allocate_stratified_slot_counts(
+    weights: list[float],
+    target_count: int,
+) -> list[int]:
+    """Split ``target_count`` slots across albums proportionally to ``weights``.
+
+    Weights are renormalized if their sum is positive; each count is the
+    fractional share rounded down, then the remaining slots go to albums with
+    the largest fractional remainders (ties broken by larger album index).
+
+    If all weights are zero or empty, falls back to an even split across albums.
+    """
+    n = len(weights)
+    if n == 0:
+        return []
+    if target_count <= 0:
+        return [0] * n
+
+    total_w = float(sum(weights))
+    if total_w <= 0.0:
+        base = target_count // n
+        extra = target_count % n
+        return [base + (1 if i < extra else 0) for i in range(n)]
+
+    raw = [target_count * (float(w) / total_w) for w in weights]
+    floors = [math.floor(r) for r in raw]
+    remainder = target_count - sum(floors)
+    frac_order = sorted(
+        range(n),
+        key=lambda i: (raw[i] - floors[i], i),
+        reverse=True,
+    )
+    out = list(floors)
+    for j in range(remainder):
+        out[frac_order[j]] += 1
+    return out
+
+
+def review_has_unused_track_candidate(
+    review: Review,
+    already_picked_keys: set[str],
+) -> bool:
+    """True if the review has a track whose key is not in ``already_picked_keys``."""
+    highlights, non_highlights = candidate_tracks_for_review(review)
+    for track in (*highlights, *non_highlights):
+        key = f"{_norm_text(review.artist)}::{_norm_text(track.title)}"
+        if key not in already_picked_keys:
+            return True
+    return False
+
+
+def next_album_index_with_unused_tracks_cyclic(
+    reviews: list[Review],
+    *,
+    after_index: int,
+    skip_indices: set[int],
+    picked_song_keys: set[str],
+) -> int | None:
+    """Next pool index after ``after_index`` (cyclic) with an unused track.
+
+    Skips indices in ``skip_indices``. Returns ``None`` if no other album can
+    contribute a track (including single-album pools).
+    """
+    n = len(reviews)
+    if n <= 1:
+        return None
+    for step in range(1, n):
+        idx = (after_index + step) % n
+        if idx in skip_indices:
+            continue
+        if review_has_unused_track_candidate(reviews[idx], picked_song_keys):
+            return idx
+    return None
 
 
 def candidate_tracks_for_review(review: Review) -> tuple[list[Track], list[Track]]:
@@ -499,27 +582,47 @@ def build_playlist_candidates(
     *,
     reviews: list[Review],
     weights: list[float],
+    raw_scores: list[float],
     target_count: int,
     rng: random.Random,
     resolve_fn: ResolveTrackUriFn,
-    max_attempt_factor: int = 40,
+    resolve_retries_per_album: int = 2,
+    max_attempt_factor: int = 20,
 ) -> list[PlaylistCandidate]:
-    """Generate playlist candidates using weighted random album sampling.
+    """Generate playlist candidates with stratified album quotas.
 
-    Each successful slot: draw one album with ``random.choices(..., weights=weights)``
-    (**with replacement**). Then pick a track: random among highlights not yet
-    used in the playlist; if none left, random among non-highlights. If Spotify
-    resolution fails, the album draw is effectively **re-tried**, so albums with
-    more reliable API matches can appear more often in the final list than raw
-    weights suggest.
+    Normalized ``weights`` and parallel ``raw_scores`` (same length as ``reviews``)
+    define each album's **share** of ``target_count`` slots via
+    :func:`allocate_stratified_slot_counts`. ``raw_scores`` are stored on each
+    candidate for display (e.g. UI table); only ``weights`` affect allocation.
+    Slot order is shuffled so the final list is not grouped by album.
+
+    Slots are stored in a queue (shuffled album indices). For each slot, picks
+    are random among unused highlights, then non-highlights. After
+    ``resolve_retries_per_album`` failed Spotify resolutions (or duplicate URIs)
+    on the **same** album, the front slot is reassigned to the next pool album
+    (cyclic) that still has an unused track. If no album can fill the slot, it
+    is dropped. ``max_attempt_factor`` caps total loop iterations as
+    ``target_count * max_attempt_factor`` as a safety net.
     """
-    if not reviews or not weights or target_count <= 0:
+    if not reviews or not weights or not raw_scores or target_count <= 0:
         LOGGER.info(
             "Playlist candidate build skipped: empty inputs "
-            "reviews=%s weights=%s target_count=%s",
+            "reviews=%s weights=%s raw_scores=%s target_count=%s",
             len(reviews),
             len(weights),
+            len(raw_scores),
             target_count,
+        )
+        return []
+
+    if len(reviews) != len(weights) or len(reviews) != len(raw_scores):
+        LOGGER.warning(
+            "Playlist candidate build skipped: parallel list length mismatch "
+            "reviews=%s weights=%s raw_scores=%s",
+            len(reviews),
+            len(weights),
+            len(raw_scores),
         )
         return []
 
@@ -533,25 +636,92 @@ def build_playlist_candidates(
     skip_no_track = 0
     skip_unresolved = 0
     skip_dup_uri = 0
+    skip_abandoned_slots = 0
+    slot_album_fallbacks = 0
+
+    quotas = allocate_stratified_slot_counts(weights, target_count)
+    slot_album_indices: list[int] = []
+    for album_idx, q in enumerate(quotas):
+        slot_album_indices.extend([album_idx] * q)
+    assert len(slot_album_indices) == target_count
+    rng.shuffle(slot_album_indices)
+
+    pending_slots: deque[int] = deque(slot_album_indices)
+    slot_resolve_failures = 0
+    dead_albums_for_slot: set[int] = set()
+    per_album_resolve_cap = max(1, int(resolve_retries_per_album))
 
     max_attempts = max(target_count * max_attempt_factor, target_count)
     attempts = 0
     LOGGER.info(
-        "Playlist candidate build start target_count=%s pool_albums=%s max_attempts=%s",
+        "Playlist candidate build start target_count=%s pool_albums=%s "
+        "stratified_quotas=%s max_attempts=%s resolve_retries_per_album=%s",
         target_count,
         len(reviews),
+        quotas,
         max_attempts,
+        per_album_resolve_cap,
     )
-    while len(results) < target_count and attempts < max_attempts:
+
+    def _abandon_current_slot(*, reason: str, **details: object) -> None:
+        nonlocal skip_abandoned_slots, slot_resolve_failures
+        pending_slots.popleft()
+        skip_abandoned_slots += 1
+        slot_resolve_failures = 0
+        dead_albums_for_slot.clear()
+        LOGGER.warning(
+            "Playlist abandon slot: %s filled=%s pending=%s review_id=%s "
+            "artist=%r album=%r %s",
+            reason,
+            len(results),
+            len(pending_slots),
+            review.id,
+            _log_str(review.artist, max_len=80),
+            _log_str(review.album, max_len=80),
+            " ".join(f"{k}={v!r}" for k, v in details.items()),
+        )
+
+    def _try_assign_next_album_for_slot() -> bool:
+        """Move front slot to the next cyclic album with an unused track.
+
+        Adds ``album_idx`` to ``dead_albums_for_slot`` first. Returns True if
+        reassigned, False if no fallback album exists.
+        """
+        nonlocal slot_album_fallbacks, slot_resolve_failures
+        dead_albums_for_slot.add(album_idx)
+        nxt = next_album_index_with_unused_tracks_cyclic(
+            reviews,
+            after_index=album_idx,
+            skip_indices=dead_albums_for_slot,
+            picked_song_keys=picked_song_keys,
+        )
+        if nxt is None:
+            return False
+        pending_slots[0] = nxt
+        slot_resolve_failures = 0
+        slot_album_fallbacks += 1
+        LOGGER.info(
+            "Playlist slot: album fallback from_idx=%s to_idx=%s review_ids %s->%s",
+            album_idx,
+            nxt,
+            reviews[album_idx].id,
+            reviews[nxt].id,
+        )
+        return True
+
+    while pending_slots and attempts < max_attempts:
         attempts += 1
-        review = rng.choices(reviews, weights=weights, k=1)[0]
+        album_idx = pending_slots[0]
+        review = reviews[album_idx]
         w_album = score_weight_by_id.get(int(review.id), 0.0)
         LOGGER.debug(
-            "Playlist draw attempt=%s filled=%s/%s review_id=%s album_weight=%.6f "
-            "artist=%r album=%r",
+            "Playlist draw attempt=%s filled=%s/%s pending=%s album_idx=%s "
+            "review_id=%s album_weight=%.6f artist=%r album=%r",
             attempts,
             len(results),
             target_count,
+            len(pending_slots),
+            album_idx,
             review.id,
             w_album,
             _log_str(review.artist, max_len=80),
@@ -565,15 +735,13 @@ def build_playlist_candidates(
         if picked is None:
             skip_no_track += 1
             hl, nh = candidate_tracks_for_review(review)
-            LOGGER.warning(
-                "Playlist skip: no unused track review_id=%s artist=%r album=%r "
-                "highlights=%s non_highlights=%s tracklist_len=%s",
-                review.id,
-                _log_str(review.artist),
-                _log_str(review.album),
-                len(hl),
-                len(nh),
-                len(review.tracklist),
+            if _try_assign_next_album_for_slot():
+                continue
+            _abandon_current_slot(
+                reason="no_unused_track_pool_exhausted",
+                highlights=len(hl),
+                non_highlights=len(nh),
+                tracklist_len=len(review.tracklist),
             )
             continue
         track_title, source_kind = picked
@@ -586,25 +754,45 @@ def build_playlist_candidates(
         uri = resolve_fn(artist=review.artist, track_title=track_title)
         if not isinstance(uri, str) or not uri:
             skip_unresolved += 1
-            LOGGER.warning(
-                "Playlist skip: resolver returned empty review_id=%s track=%r "
-                "(see Spotify strict-resolve logs above)",
+            LOGGER.debug(
+                "Playlist skip: resolver returned empty review_id=%s track=%r",
                 review.id,
                 _log_str(track_title, max_len=100),
             )
+            slot_resolve_failures += 1
+            if slot_resolve_failures >= per_album_resolve_cap:
+                if _try_assign_next_album_for_slot():
+                    continue
+                _abandon_current_slot(
+                    reason="resolve_failures_no_fallback_album",
+                    tries=per_album_resolve_cap,
+                    last_track=_log_str(track_title, max_len=100),
+                )
             continue
         if uri in picked_uris:
             skip_dup_uri += 1
-            LOGGER.warning(
+            LOGGER.debug(
                 "Playlist skip: duplicate spotify uri review_id=%s uri=%r track=%r",
                 review.id,
                 _log_str(uri, max_len=80),
                 _log_str(track_title, max_len=80),
             )
+            slot_resolve_failures += 1
+            if slot_resolve_failures >= per_album_resolve_cap:
+                if _try_assign_next_album_for_slot():
+                    continue
+                _abandon_current_slot(
+                    reason="duplicate_uri_no_fallback_album",
+                    tries=per_album_resolve_cap,
+                    last_track=_log_str(track_title, max_len=80),
+                )
             continue
         key = f"{_norm_text(review.artist)}::{_norm_text(track_title)}"
         picked_song_keys.add(key)
         picked_uris.add(uri)
+        pending_slots.popleft()
+        slot_resolve_failures = 0
+        dead_albums_for_slot.clear()
         results.append(
             PlaylistCandidate(
                 review_id=int(review.id),
@@ -614,6 +802,8 @@ def build_playlist_candidates(
                 source_kind=source_kind,
                 spotify_uri=uri,
                 score_weight=score_weight_by_id.get(int(review.id), 0.0),
+                raw_score=float(raw_scores[album_idx]),
+                playlist_slot_quota=int(quotas[album_idx]),
             ),
         )
         LOGGER.debug(
@@ -624,13 +814,33 @@ def build_playlist_candidates(
             source_kind,
             _log_str(track_title, max_len=80),
         )
-    if len(results) < target_count:
+
+    if pending_slots:
         LOGGER.warning(
-            "Playlist candidate build stopped early: filled=%s target=%s "
-            "attempts_used=%s skip_no_track=%s skip_unresolved=%s skip_dup_uri=%s",
+            "Playlist candidate build hit global attempt limit: "
+            "unfilled_slots=%s filled=%s target=%s attempts_used=%s "
+            "album_fallbacks=%s abandoned_slots=%s skip_no_track=%s "
+            "skip_unresolved=%s skip_dup_uri=%s",
+            len(pending_slots),
             len(results),
             target_count,
             attempts,
+            slot_album_fallbacks,
+            skip_abandoned_slots,
+            skip_no_track,
+            skip_unresolved,
+            skip_dup_uri,
+        )
+    elif len(results) < target_count:
+        LOGGER.warning(
+            "Playlist candidate build stopped early: filled=%s target=%s "
+            "attempts_used=%s album_fallbacks=%s abandoned_slots=%s "
+            "skip_no_track=%s skip_unresolved=%s skip_dup_uri=%s",
+            len(results),
+            target_count,
+            attempts,
+            slot_album_fallbacks,
+            skip_abandoned_slots,
             skip_no_track,
             skip_unresolved,
             skip_dup_uri,
@@ -638,9 +848,12 @@ def build_playlist_candidates(
     else:
         LOGGER.info(
             "Playlist candidate build complete: filled=%s attempts_used=%s "
-            "skip_no_track=%s skip_unresolved=%s skip_dup_uri=%s",
+            "album_fallbacks=%s abandoned_slots=%s skip_no_track=%s "
+            "skip_unresolved=%s skip_dup_uri=%s",
             len(results),
             attempts,
+            slot_album_fallbacks,
+            skip_abandoned_slots,
             skip_no_track,
             skip_unresolved,
             skip_dup_uri,

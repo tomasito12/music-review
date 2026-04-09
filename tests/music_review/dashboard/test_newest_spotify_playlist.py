@@ -12,11 +12,14 @@ from music_review.dashboard.newest_spotify_playlist import (
     _artist_matches_review_vs_spotify,
     _strip_trailing_feat_credit_suffixes,
     _titles_match_review_vs_spotify,
+    allocate_stratified_slot_counts,
     build_album_weights,
     build_playlist_candidates,
     candidate_tracks_for_review,
+    next_album_index_with_unused_tracks_cyclic,
     pick_track_title_for_iteration,
     resolve_track_uri_strict,
+    review_has_unused_track_candidate,
     spotify_resolve_query_variants,
 )
 from music_review.domain.models import Review, Track
@@ -57,19 +60,21 @@ def test_build_album_weights_uses_normalized_scores() -> None:
         {"review": reviews[1], "overall_score": 6.0},
     ]
 
-    picked, weights = build_album_weights(reviews, rows)
+    picked, weights, raw_scores = build_album_weights(reviews, rows)
 
     assert picked == reviews
     assert weights == [0.25, 0.75]
+    assert raw_scores == [2.0, 6.0]
 
 
 def test_build_album_weights_without_ranking_is_uniform() -> None:
     reviews = [_review(1), _review(2), _review(3)]
 
-    picked, weights = build_album_weights(reviews, None)
+    picked, weights, raw_scores = build_album_weights(reviews, None)
 
     assert picked == reviews
     assert weights == [1 / 3, 1 / 3, 1 / 3]
+    assert raw_scores == [1.0, 1.0, 1.0]
 
 
 def test_build_album_weights_three_scores_match_relative_probabilities() -> None:
@@ -81,10 +86,11 @@ def test_build_album_weights_three_scores_match_relative_probabilities() -> None
         {"review": r3, "overall_score": 0.1},
     ]
 
-    picked, weights = build_album_weights([r1, r2, r3], rows)
+    picked, weights, raw_scores = build_album_weights([r1, r2, r3], rows)
 
     assert picked == [r1, r2, r3]
     assert weights == [0.6, 0.2, 0.2]
+    assert raw_scores == [0.3, 0.1, 0.1]
 
 
 def test_build_album_weights_uses_ranked_row_order_not_reviews_order() -> None:
@@ -95,24 +101,49 @@ def test_build_album_weights_uses_ranked_row_order_not_reviews_order() -> None:
         {"review": r1, "overall_score": 3.0},
     ]
 
-    picked, weights = build_album_weights(reviews_chrono, rows)
+    picked, weights, raw_scores = build_album_weights(reviews_chrono, rows)
 
     assert picked == [r2, r1]
     assert weights == [0.25, 0.75]
+    assert raw_scores == [1.0, 3.0]
 
 
-def test_build_playlist_candidates_weighted_sampling_matches_scores() -> None:
-    """With a always-successful resolver, album counts follow weights (approx.)."""
-    r1 = _review(1, tracks=[Track(1, f"A{i}", is_highlight=True) for i in range(300)])
-    r2 = _review(2, tracks=[Track(1, f"B{i}", is_highlight=True) for i in range(300)])
-    r3 = _review(3, tracks=[Track(1, f"C{i}", is_highlight=True) for i in range(300)])
+def test_allocate_stratified_slot_counts_matches_largest_remainder() -> None:
+    assert allocate_stratified_slot_counts([0.6, 0.2, 0.2], 10) == [6, 2, 2]
+    assert allocate_stratified_slot_counts([0.6, 0.2, 0.2], 11) == [7, 2, 2]
+    assert sum(allocate_stratified_slot_counts([0.1, 0.2, 0.7], 100)) == 100
+
+
+def test_allocate_stratified_slot_counts_even_split_when_weights_zero() -> None:
+    assert allocate_stratified_slot_counts([0.0, 0.0, 0.0], 10) == [4, 3, 3]
+
+
+def test_build_playlist_candidates_stratified_counts_match_quotas() -> None:
+    """With a always-successful resolver, each album appears exactly quota times."""
+    n_tracks = 80
+    r1 = _review(
+        1,
+        tracks=[Track(1, f"A{i}", is_highlight=True) for i in range(n_tracks)],
+    )
+    r2 = _review(
+        2,
+        tracks=[Track(1, f"B{i}", is_highlight=True) for i in range(n_tracks)],
+    )
+    r3 = _review(
+        3,
+        tracks=[Track(1, f"C{i}", is_highlight=True) for i in range(n_tracks)],
+    )
     rows = [
         {"review": r1, "overall_score": 0.3},
         {"review": r2, "overall_score": 0.1},
         {"review": r3, "overall_score": 0.1},
     ]
-    picked, weights = build_album_weights([r1, r2, r3], rows)
+    picked, weights, raw_scores = build_album_weights([r1, r2, r3], rows)
     assert weights == [0.6, 0.2, 0.2]
+    assert raw_scores == [0.3, 0.1, 0.1]
+    target = 60
+    expected = allocate_stratified_slot_counts(weights, target)
+    assert expected == [36, 12, 12]
 
     seq = iter(range(10_000))
 
@@ -123,16 +154,49 @@ def test_build_playlist_candidates_weighted_sampling_matches_scores() -> None:
     items = build_playlist_candidates(
         reviews=picked,
         weights=weights,
-        target_count=600,
+        raw_scores=raw_scores,
+        target_count=target,
         rng=rng,
         resolve_fn=resolve,
         max_attempt_factor=30,
     )
-    assert len(items) == 600
+    assert len(items) == target
     counts = Counter(c.review_id for c in items)
-    assert abs(counts[1] / 600 - 0.6) < 0.12
-    assert abs(counts[2] / 600 - 0.2) < 0.12
-    assert abs(counts[3] / 600 - 0.2) < 0.12
+    assert counts[1] == 36
+    assert counts[2] == 12
+    assert counts[3] == 12
+    for c in items:
+        if c.review_id == 1:
+            assert c.raw_score == 0.3
+            assert c.score_weight == 0.6
+            assert c.playlist_slot_quota == 36
+            break
+
+
+def test_build_playlist_candidates_returns_empty_on_weight_length_mismatch() -> None:
+    r = _review(1, tracks=[Track(1, "A", is_highlight=True)])
+    items = build_playlist_candidates(
+        reviews=[r],
+        weights=[1.0, 1.0],
+        raw_scores=[1.0],
+        target_count=1,
+        rng=random.Random(0),
+        resolve_fn=lambda **_: "spotify:track:1",
+    )
+    assert items == []
+
+
+def test_build_playlist_candidates_returns_empty_on_raw_score_length_mismatch() -> None:
+    r = _review(1, tracks=[Track(1, "A", is_highlight=True)])
+    items = build_playlist_candidates(
+        reviews=[r],
+        weights=[1.0],
+        raw_scores=[1.0, 1.0],
+        target_count=1,
+        rng=random.Random(0),
+        resolve_fn=lambda **_: "spotify:track:1",
+    )
+    assert items == []
 
 
 def test_candidate_tracks_for_review_matches_highlights_by_name() -> None:
@@ -146,6 +210,115 @@ def test_candidate_tracks_for_review_matches_highlights_by_name() -> None:
 
     assert [t.title for t in highlights] == ["B"]
     assert [t.title for t in non_highlights] == ["A", "C"]
+
+
+def test_review_has_unused_track_candidate_false_when_no_tracks() -> None:
+    review = _review(1, tracks=[])
+
+    assert review_has_unused_track_candidate(review, set()) is False
+
+
+def test_review_has_unused_track_candidate_true_when_track_not_picked() -> None:
+    review = _review(
+        1,
+        artist="A",
+        tracks=[Track(1, "One", is_highlight=True)],
+    )
+
+    assert review_has_unused_track_candidate(review, set()) is True
+
+
+def test_next_album_index_cyclic_returns_none_for_single_album_pool() -> None:
+    r = _review(1, tracks=[Track(1, "A", is_highlight=True)])
+
+    assert (
+        next_album_index_with_unused_tracks_cyclic(
+            [r],
+            after_index=0,
+            skip_indices=set(),
+            picked_song_keys=set(),
+        )
+        is None
+    )
+
+
+def test_next_album_index_cyclic_skips_dead_and_picks_next_with_track() -> None:
+    a = _review(1, artist="A", tracks=[Track(1, "x", is_highlight=True)])
+    b = _review(2, artist="B", tracks=[Track(1, "y", is_highlight=True)])
+    reviews = [a, b]
+
+    nxt = next_album_index_with_unused_tracks_cyclic(
+        reviews,
+        after_index=0,
+        skip_indices={0},
+        picked_song_keys=set(),
+    )
+    assert nxt == 1
+
+
+def test_next_album_index_cyclic_respects_picked_keys() -> None:
+    a = _review(1, artist="A", tracks=[Track(1, "x", is_highlight=True)])
+    b = _review(2, artist="B", tracks=[Track(1, "y", is_highlight=True)])
+    reviews = [a, b]
+
+    nxt = next_album_index_with_unused_tracks_cyclic(
+        reviews,
+        after_index=0,
+        skip_indices=set(),
+        picked_song_keys={"b::y"},
+    )
+    assert nxt is None
+
+
+def test_review_has_unused_track_candidate_false_when_all_picked() -> None:
+    review = _review(
+        1,
+        artist="A",
+        tracks=[Track(1, "One", is_highlight=True)],
+    )
+    keys = {"a::one"}
+
+    assert review_has_unused_track_candidate(review, keys) is False
+
+
+def test_build_playlist_candidates_abandons_bad_album_and_keeps_good() -> None:
+    """Do not block the queue when the first stratified slot never resolves."""
+    r_bad = _review(
+        1,
+        artist="Bad Artist",
+        tracks=[Track(1, "X", is_highlight=True)],
+    )
+    r_ok = _review(
+        2,
+        artist="Good Artist",
+        tracks=[
+            Track(1, "Y1", is_highlight=True),
+            Track(2, "Y2", is_highlight=True),
+        ],
+    )
+    weights = [0.5, 0.5]
+    assert allocate_stratified_slot_counts(weights, 2) == [1, 1]
+
+    def resolve(*, artist: str, track_title: str) -> str | None:
+        if artist == "Bad Artist":
+            return None
+        return f"spotify:track:{track_title}"
+
+    items = build_playlist_candidates(
+        reviews=[r_bad, r_ok],
+        weights=weights,
+        raw_scores=[1.0, 1.0],
+        target_count=2,
+        rng=random.Random(0),
+        resolve_fn=resolve,
+        resolve_retries_per_album=2,
+        max_attempt_factor=12,
+    )
+
+    assert len(items) == 2
+    assert all(c.review_id == 2 for c in items)
+    titles = {c.track_title for c in items}
+    assert titles == {"Y1", "Y2"}
 
 
 def test_pick_track_title_prefers_highlight_then_fallback() -> None:
@@ -387,6 +560,7 @@ def test_build_playlist_candidates_stops_when_attempt_limit_is_reached() -> None
     items = build_playlist_candidates(
         reviews=[review],
         weights=[1.0],
+        raw_scores=[1.0],
         target_count=3,
         rng=random.Random(1),
         resolve_fn=lambda **_: None,

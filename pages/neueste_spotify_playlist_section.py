@@ -111,6 +111,9 @@ def _render_playlist_preview_table(items: list[PlaylistCandidate]) -> None:
                 "#": idx,
                 "Künstler": item.artist,
                 "Album": item.album,
+                "Rohscore": round(float(item.raw_score), 4),
+                "Anteil (norm.)": round(float(item.score_weight), 4),
+                "Ziel-Slots": int(item.playlist_slot_quota),
                 "Song": item.track_title,
                 "Quelle": (
                     "Highlight" if item.source_kind == "highlight" else "Tracklist"
@@ -134,13 +137,16 @@ def render_neueste_spotify_playlist_section(
             "angezeigten neuesten Rezensionen."
         )
         st.caption(
-            "Gewichtung: Pro Slot wird ein Album mit Zurücklegen gezogen; "
-            "die Wahrscheinlichkeiten verhalten sich wie die angezeigten "
-            "Scores (jeder Score geteilt durch die Summe aller Scores im Pool). "
-            "Pro Album werden zuerst zufällig Anspieltipps genutzt, danach "
-            "übrige Titel. Wenn Spotify einen Titel nicht eindeutig findet, "
-            "wird er übersprungen und neu gezogen; Alben mit zuverlässigeren "
-            "Treffern können deshalb in der fertigen Liste häufiger vorkommen."
+            "Gewichtung: Die Zielanzahl Songs wird auf die Alben verteilt "
+            "entsprechend der normalisierten Scores (Summe 1; Abrundung mit "
+            "größtem Rest). Pro Album werden Titel zufällig aus den "
+            "Anspieltipps gewählt, danach zufällig aus der übrigen Tracklist. "
+            "Die Reihenfolge der Slots ist gemischt. Wenn Spotify einen Titel "
+            "nicht findet oder doppelt vorkommt, gibt es nur wenige Wiederholungen "
+            "pro Album; danach wird derselbe Listenplatz mit dem nächsten Album "
+            "im Pool versucht. Ohne passendes Album wird der Slot verworfen. "
+            "Die Liste kann dadurch kürzer als die Zielanzahl werden; die "
+            "Verteilung weicht ab, wenn viele Titel nicht aufgelöst werden."
         )
         if not reviews:
             st.info("Keine Rezensionen verfügbar.")
@@ -185,7 +191,10 @@ def render_neueste_spotify_playlist_section(
 
         pool_reviews = reviews[:pool_count]
         pool_rows = ranked_rows[:pool_count] if ranked_rows else None
-        chosen_reviews, weights = build_album_weights(pool_reviews, pool_rows)
+        chosen_reviews, weights, raw_scores = build_album_weights(
+            pool_reviews,
+            pool_rows,
+        )
         _LOGGER.info(
             "newest spotify playlist section: pool_count=%s n_chosen_albums=%s "
             "ranked_rows_available=%s target_songs=%s",
@@ -268,6 +277,7 @@ def render_neueste_spotify_playlist_section(
                 preview = build_playlist_candidates(
                     reviews=chosen_reviews,
                     weights=weights,
+                    raw_scores=raw_scores,
                     target_count=target_count,
                     rng=rng,
                     resolve_fn=lambda *, artist, track_title: resolve_track_uri_strict(
