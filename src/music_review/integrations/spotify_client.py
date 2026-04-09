@@ -52,6 +52,24 @@ def normalize_streamlit_spotify_redirect_uri(redirect_uri: str) -> str:
     return urllib.parse.urlunparse(parsed._replace(path=new_path))
 
 
+def _spotify_token_error_message(response: requests.Response) -> str:
+    """Human-readable message from a failed OAuth token endpoint response."""
+    raw = (response.text or "").strip()
+    status = int(response.status_code)
+    try:
+        parsed: Any = response.json()
+    except ValueError:
+        return f"Spotify token endpoint HTTP {status}: {raw[:800]}"
+    if isinstance(parsed, dict):
+        err = parsed.get("error")
+        desc = parsed.get("error_description")
+        if isinstance(err, str) and err.strip():
+            if isinstance(desc, str) and desc.strip():
+                return f"Spotify: {err.strip()} - {desc.strip()}"
+            return f"Spotify: {err.strip()}"
+    return f"Spotify token endpoint HTTP {status}: {raw[:800]}"
+
+
 def _spotify_api_error_message(response: requests.Response) -> str:
     """Build a short error string from a failed Spotify Web API response."""
     raw = (response.text or "").strip()
@@ -132,7 +150,8 @@ class SpotifyAuthConfig:
         - ``SPOTIFY_OAUTH_USE_BROWSER_REDIRECT_URI`` (optional; truthy uses
           ``st.context.url`` for OAuth when ``http(s)``; may diverge from dashboard.)
         - ``SPOTIFY_SCOPES`` (optional, space-separated)
-        - ``SPOTIFY_CLIENT_SECRET`` (optional, only used for some flows)
+        - ``SPOTIFY_CLIENT_SECRET`` (optional; the Streamlit Spotify page uses PKCE so
+          token exchange works without a secret when the Spotify app allows it)
         """
         client_id_raw = getenv("SPOTIFY_CLIENT_ID")
         if not client_id_raw:
@@ -275,6 +294,12 @@ class SpotifyPlaylist:
     external_url: str | None = None
 
 
+def pkce_challenge_from_verifier(verifier: str) -> str:
+    """Return the S256 PKCE challenge for an existing ``code_verifier``."""
+    digest = hashlib.sha256(verifier.encode("ascii")).digest()
+    return base64.urlsafe_b64encode(digest).decode("ascii").rstrip("=")
+
+
 def generate_pkce_pair() -> tuple[str, str]:
     """Return a ``(code_verifier, code_challenge)`` PKCE pair.
 
@@ -282,8 +307,7 @@ def generate_pkce_pair() -> tuple[str, str]:
     base64url-encoded SHA256 hash of the verifier without padding.
     """
     verifier = secrets.token_urlsafe(64)
-    digest = hashlib.sha256(verifier.encode("ascii")).digest()
-    challenge = base64.urlsafe_b64encode(digest).decode("ascii").rstrip("=")
+    challenge = pkce_challenge_from_verifier(verifier)
     return verifier, challenge
 
 
@@ -373,14 +397,13 @@ class SpotifyClient:
             timeout=15,
         )
         if response.status_code != 200:
+            detail = _spotify_token_error_message(response)
             LOGGER.error(
                 "Spotify token endpoint returned %s: %s",
                 response.status_code,
                 response.text,
             )
-            raise RuntimeError(
-                "Failed to exchange Spotify authorization code for token",
-            )
+            raise RuntimeError(detail)
         payload = response.json()
         return SpotifyToken.from_token_response(payload)
 
@@ -405,12 +428,13 @@ class SpotifyClient:
             timeout=15,
         )
         if response.status_code != 200:
+            detail = _spotify_token_error_message(response)
             LOGGER.error(
                 "Spotify token refresh failed with %s: %s",
                 response.status_code,
                 response.text,
             )
-            raise RuntimeError("Failed to refresh Spotify access token")
+            raise RuntimeError(detail)
         payload = response.json()
         # Spotify may omit refresh_token in refresh responses; preserve the old one.
         token = SpotifyToken.from_token_response(payload)

@@ -34,3 +34,16 @@ def test_log_weight_summary_marks_non_uniform_weights(
             review_ids=[1, 2, 3],
         )
     assert "uniform=False" in caplog.text
+
+
+def test_german_cooldown_hint_formats_minutes_and_seconds() -> None:
+    module = importlib.import_module("pages.neueste_spotify_playlist_section")
+    text = module._german_cooldown_hint(125)
+    assert "2 Minuten" in text
+    assert "5 Sekunden" in text
+    assert "Nächste Vorschau" in text
+
+
+def test_german_cooldown_hint_empty_when_allowed() -> None:
+    module = importlib.import_module("pages.neueste_spotify_playlist_section")
+    assert module._german_cooldown_hint(0) == ""

@@ -11,6 +11,34 @@ def test_neueste_reviews_pool_importable() -> None:
     assert hasattr(module, "fetch_newest_reviews_pool")
     assert hasattr(module, "ensure_neueste_session_defaults")
     assert hasattr(module, "RECENT_DEFAULT")
+    assert hasattr(module, "load_newest_reviews_slice")
+    assert hasattr(module, "preference_rank_rows_for_reviews")
+
+
+def test_load_newest_reviews_slice_uses_max_one(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    module = importlib.import_module("pages.neueste_reviews_pool")
+    seen: list[int] = []
+
+    def fake_load(k: int) -> list[object]:
+        seen.append(k)
+        return []
+
+    monkeypatch.setattr(module, "_load_newest_reviews", fake_load)
+    assert module.load_newest_reviews_slice(0) == []
+    assert seen == [1]
+    assert module.load_newest_reviews_slice(7) == []
+    assert seen == [1, 7]
+
+
+def test_preference_rank_rows_for_reviews_skips_without_communities(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    module = importlib.import_module("pages.neueste_reviews_pool")
+    monkeypatch.setattr(module, "get_selected_communities", lambda: set())
+    monkeypatch.setattr(module.st, "session_state", {})
+    assert module.preference_rank_rows_for_reviews([]) is None
 
 
 def _reset_spotify_playlist_loggers(module: object) -> None:

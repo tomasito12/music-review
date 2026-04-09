@@ -13,6 +13,7 @@ from music_review.dashboard.newest_spotify_playlist import (
     _strip_trailing_feat_credit_suffixes,
     _titles_match_review_vs_spotify,
     allocate_stratified_slot_counts,
+    amplify_preference_weights,
     build_album_weights,
     build_playlist_candidates,
     build_stratified_slot_plans,
@@ -107,6 +108,36 @@ def test_build_album_weights_uses_ranked_row_order_not_reviews_order() -> None:
     assert picked == [r2, r1]
     assert weights == [0.25, 0.75]
     assert raw_scores == [1.0, 3.0]
+
+
+def test_amplify_preference_weights_squares_and_renormalizes() -> None:
+    out = amplify_preference_weights([0.6, 0.2, 0.2], exponent=2.0)
+    assert sum(out) == pytest.approx(1.0)
+    assert out[0] > 0.6
+    assert out[1] < 0.2
+    assert out[0] == pytest.approx(0.36 / 0.44)
+
+
+def test_amplify_preference_weights_uniform_stays_uniform() -> None:
+    w = [1 / 3, 1 / 3, 1 / 3]
+    out = amplify_preference_weights(w, exponent=2.0)
+    assert out[0] == pytest.approx(1 / 3)
+
+
+def test_amplify_preference_weights_noop_when_exponent_at_most_one() -> None:
+    w = [0.5, 0.3, 0.2]
+    assert amplify_preference_weights(w, exponent=1.0) == w
+    assert amplify_preference_weights(w, exponent=0.5) == w
+
+
+def test_amplify_preference_weights_increases_top_album_quota() -> None:
+    """Convex weights allocate more slots to the highest linear-weight album."""
+    linear = [0.6, 0.2, 0.2]
+    boosted = amplify_preference_weights(linear, exponent=2.0)
+    q_linear = allocate_stratified_slot_counts(linear, 10)
+    q_boosted = allocate_stratified_slot_counts(boosted, 10)
+    assert q_linear == [6, 2, 2]
+    assert q_boosted[0] > q_linear[0]
 
 
 def test_allocate_stratified_slot_counts_matches_largest_remainder() -> None:

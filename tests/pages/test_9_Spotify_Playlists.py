@@ -87,3 +87,15 @@ def test_spotify_oauth_state_for_authorize_url_skips_without_profile(
     module = _spotify_playlists_module()
     monkeypatch.setattr(module.st, "session_state", {})
     assert module._spotify_oauth_state_for_authorize_url("csrf123") == "csrf123"
+
+
+def test_redirect_uri_mismatch_hint_html_escapes_special_characters() -> None:
+    module = _spotify_playlists_module()
+    html_fn = module._redirect_uri_mismatch_hint_html
+    out = html_fn(
+        effective="http://x/?a=1&b=2",
+        browser="http://y/<script>",
+    )
+    assert "<script>" not in out
+    assert "&amp;" in out or "1&amp;b" in out
+    assert "http://x/" in out

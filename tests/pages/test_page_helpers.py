@@ -58,6 +58,20 @@ from pages.page_helpers import (
 from music_review.dashboard.taste_setup import TASTE_WIZARD_RESET_PENDING_KEY
 
 
+def test_render_toolbar_does_not_emit_markdown(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Toolbar hook must not draw a horizontal rule above page titles."""
+    calls: list[object] = []
+
+    def capture_markdown(*args: object, **kwargs: object) -> None:
+        calls.append(True)
+
+    monkeypatch.setattr(page_helpers_module.st, "markdown", capture_markdown)
+    page_helpers_module.render_toolbar("any_page")
+    assert calls == []
+
+
 class TestPlattenlabelAlbumCountBuckets:
     def test_individual_only_if_more_than_threshold(self, tmp_path: Path) -> None:
         p = tmp_path / "reviews.jsonl"
@@ -747,6 +761,62 @@ class TestSpotifyOauthCookieHelpers:
             lambda: FakeCM(),
         )
         page_helpers_module.clear_spotify_oauth_state_cookie()
+
+
+class TestSpotifyPkceCookieHelpers:
+    def test_peek_pkce_from_context_cookies_reads_value(
+        self,
+        monkeypatch: pytest.MonkeyPatch,
+    ) -> None:
+        name = page_helpers_module.SPOTIFY_PKCE_VERIFIER_COOKIE_NAME
+
+        class FakeCookies:
+            def to_dict(self) -> dict[str, str]:
+                return {name: "  verifier-abc  "}
+
+        monkeypatch.setattr(
+            page_helpers_module.st,
+            "context",
+            SimpleNamespace(cookies=FakeCookies()),
+        )
+        got = page_helpers_module.peek_spotify_pkce_verifier_from_context_cookies()
+        assert got == "verifier-abc"
+
+    def test_pkce_persist_peek_clear_roundtrip(
+        self,
+        monkeypatch: pytest.MonkeyPatch,
+    ) -> None:
+        storage: dict[str, str] = {}
+
+        class FakeCM:
+            def set(
+                self,
+                name: str,
+                val: str,
+                *,
+                key: str,
+                max_age: float,
+                same_site: str,
+            ) -> None:
+                storage[name] = val
+
+            def get(self, name: str) -> str | None:
+                return storage.get(name)
+
+            def delete(self, name: str, *, key: str) -> None:
+                storage.pop(name, None)
+
+        monkeypatch.setattr(
+            page_helpers_module,
+            "profile_cookie_manager",
+            lambda: FakeCM(),
+        )
+        page_helpers_module.persist_spotify_pkce_verifier_cookie("ver-xyz")
+        cname = page_helpers_module.SPOTIFY_PKCE_VERIFIER_COOKIE_NAME
+        assert storage[cname] == "ver-xyz"
+        assert page_helpers_module.peek_spotify_pkce_verifier_cookie() == "ver-xyz"
+        page_helpers_module.clear_spotify_pkce_verifier_cookie()
+        assert page_helpers_module.peek_spotify_pkce_verifier_cookie() is None
 
 
 def test_safe_cookie_manager_delete_suppresses_keyerror() -> None:

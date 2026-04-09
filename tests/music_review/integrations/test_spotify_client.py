@@ -18,6 +18,7 @@ from music_review.integrations.spotify_client import (
     SpotifyTrack,
     generate_pkce_pair,
     normalize_streamlit_spotify_redirect_uri,
+    pkce_challenge_from_verifier,
     resolve_spotify_redirect_uri,
 )
 
@@ -245,11 +246,20 @@ def test_exchange_code_for_token_error_raises(mock_post: MagicMock) -> None:
     client = SpotifyClient(cfg)
     mock_resp = MagicMock()
     mock_resp.status_code = 400
-    mock_resp.text = "bad request"
+    mock_resp.text = '{"error":"invalid_grant","error_description":"code expired"}'
+    mock_resp.json.return_value = {
+        "error": "invalid_grant",
+        "error_description": "code expired",
+    }
     mock_post.return_value = mock_resp
 
-    with pytest.raises(RuntimeError):
+    with pytest.raises(RuntimeError, match="invalid_grant"):
         client.exchange_code_for_token(code="code123", code_verifier="verifier")
+
+
+def test_pkce_challenge_from_verifier_matches_generate_pair() -> None:
+    verifier, challenge = generate_pkce_pair()
+    assert pkce_challenge_from_verifier(verifier) == challenge
 
 
 @patch("music_review.integrations.spotify_client.requests.post")

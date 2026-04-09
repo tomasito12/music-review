@@ -182,6 +182,8 @@ SEMANTIC_CHAT_MESSAGES_KEY = "rec_chat_messages"
 
 # Spotify OAuth CSRF state (browser cookie; survives URL navigation / new session).
 SPOTIFY_OAUTH_STATE_COOKIE_NAME = "mr_spotify_oauth_state"
+# PKCE code_verifier (same lifetime as OAuth state; required for token exchange).
+SPOTIFY_PKCE_VERIFIER_COOKIE_NAME = "mr_spotify_pkce_verifier"
 
 # Streamlit widget session keys for Schritt 3 sliders (cleared on taste reset).
 FILTER_FLOW_WIDGET_KEY_YEAR_RANGE = "filter_flow_year_range"
@@ -1306,6 +1308,46 @@ def clear_spotify_oauth_state_cookie() -> None:
     )
 
 
+def persist_spotify_pkce_verifier_cookie(verifier: str) -> None:
+    """Store PKCE ``code_verifier`` for the token exchange after Spotify redirect."""
+    if not isinstance(verifier, str) or not verifier.strip():
+        return
+    cm = profile_cookie_manager()
+    cm.set(
+        SPOTIFY_PKCE_VERIFIER_COOKIE_NAME,
+        verifier,
+        key="mr_cookie_spotify_pkce_set",
+        max_age=600.0,
+        same_site="lax",
+    )
+
+
+def peek_spotify_pkce_verifier_cookie() -> str | None:
+    """Return the PKCE verifier from the browser cookie if present."""
+    cm = profile_cookie_manager()
+    raw = cm.get(SPOTIFY_PKCE_VERIFIER_COOKIE_NAME)
+    return raw.strip() if isinstance(raw, str) and raw.strip() else None
+
+
+def peek_spotify_pkce_verifier_from_context_cookies() -> str | None:
+    """Return PKCE verifier from ``st.context.cookies`` (OAuth return request)."""
+    try:
+        raw = st.context.cookies.to_dict().get(SPOTIFY_PKCE_VERIFIER_COOKIE_NAME)
+    except Exception:
+        return None
+    return raw.strip() if isinstance(raw, str) and raw.strip() else None
+
+
+def clear_spotify_pkce_verifier_cookie() -> None:
+    """Remove the PKCE verifier cookie after token exchange or cancel."""
+    cm = profile_cookie_manager()
+    _safe_cookie_manager_delete(
+        cm,
+        SPOTIFY_PKCE_VERIFIER_COOKIE_NAME,
+        key="mr_cookie_spotify_pkce_del",
+    )
+
+
 def peek_active_profile_slug_from_context_cookies() -> str | None:
     """Return active profile slug from HTTP request cookies when CookieManager lags.
 
@@ -1410,6 +1452,5 @@ def render_profile_sidebar() -> None:
 
 
 def render_toolbar(page_key: str) -> None:
-    """Top-of-page separator; profile controls live in the entrypoint sidebar."""
+    """Reserved hook at page top; profile controls live in the entrypoint sidebar."""
     _ = page_key
-    st.markdown("---")

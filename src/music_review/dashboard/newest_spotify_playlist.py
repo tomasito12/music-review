@@ -429,6 +429,29 @@ def build_album_weights(
     return picked_reviews, norm_weights, raw_weights
 
 
+def amplify_preference_weights(
+    weights: list[float],
+    *,
+    exponent: float = 2.0,
+) -> list[float]:
+    """Apply a convex reweighting so larger weights gain extra slot share.
+
+    Each non-negative weight is raised to ``exponent`` and the vector is
+    renormalized to sum 1. For ``exponent`` > 1, high-scoring albums receive
+    disproportionately more stratified slots than under linear weights. For
+    ``exponent`` <= 1 or an empty list, returns a shallow copy of ``weights``.
+
+    If the sum of powered weights is zero, returns a copy of ``weights``.
+    """
+    if not weights or exponent <= 1.0:
+        return list(weights)
+    powered = [max(0.0, float(w)) ** float(exponent) for w in weights]
+    total_p = float(sum(powered))
+    if total_p <= 0.0:
+        return list(weights)
+    return [p / total_p for p in powered]
+
+
 def build_stratified_slot_plans(
     weights: list[float],
     target_count: int,

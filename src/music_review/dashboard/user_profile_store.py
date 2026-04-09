@@ -7,9 +7,10 @@ untrusted multi-tenant deployments.
 from __future__ import annotations
 
 import json
+import math
 import re
 from collections.abc import Mapping, MutableMapping
-from datetime import UTC, datetime
+from datetime import UTC, datetime, timedelta
 from enum import Enum, auto
 from pathlib import Path
 from typing import Any
@@ -29,6 +30,11 @@ ACTIVE_PROFILE_SESSION_KEY = "active_profile_slug"
 # Browser cookie for remembering the last profile slug (client persistence).
 ACTIVE_PROFILE_COOKIE_NAME = "mr_active_profile_slug"
 _SLUG_PATTERN = re.compile(r"^[a-z0-9][a-z0-9_-]*$")
+
+# Spotify newest-playlist preview: rate limit per profile or guest session.
+SPOTIFY_PREVIEW_COOLDOWN_SECONDS = 600
+PROFILE_SPOTIFY_LAST_PREVIEW_AT_KEY = "spotify_last_preview_generated_at"
+SESSION_SPOTIFY_LAST_PREVIEW_AT_KEY = "spotify_last_preview_generated_at"
 
 
 class ProfileHydrationResult(Enum):
@@ -113,6 +119,102 @@ def save_profile(base_dir: Path, slug: str, payload: dict[str, Any]) -> None:
     text = json.dumps(payload, ensure_ascii=False, indent=2, sort_keys=True)
     tmp.write_text(text + "\n", encoding="utf-8")
     tmp.replace(path)
+
+
+def parse_iso_datetime_utc(raw: Any) -> datetime | None:
+    """Parse ISO-8601 timestamps from profile JSON; return timezone-aware UTC."""
+    if not isinstance(raw, str):
+        return None
+    s = raw.strip()
+    if not s:
+        return None
+    if s.endswith("Z"):
+        s = s[:-1] + "+00:00"
+    try:
+        dt = datetime.fromisoformat(s)
+    except ValueError:
+        return None
+    if dt.tzinfo is None:
+        return dt.replace(tzinfo=UTC)
+    return dt.astimezone(UTC)
+
+
+def spotify_preview_cooldown_seconds_remaining(
+    *,
+    now_utc: datetime,
+    last_generated_at_utc: datetime | None,
+    cooldown_seconds: int = SPOTIFY_PREVIEW_COOLDOWN_SECONDS,
+) -> int:
+    """Seconds until another Spotify preview; ``0`` means allowed."""
+    if last_generated_at_utc is None:
+        return 0
+    now = now_utc if now_utc.tzinfo else now_utc.replace(tzinfo=UTC)
+    last = (
+        last_generated_at_utc
+        if last_generated_at_utc.tzinfo
+        else last_generated_at_utc.replace(tzinfo=UTC)
+    )
+    deadline = last + timedelta(seconds=cooldown_seconds)
+    return max(0, math.ceil((deadline - now).total_seconds()))
+
+
+def read_last_spotify_preview_at_from_profile(
+    data: Mapping[str, Any] | None,
+) -> datetime | None:
+    """Read last preview timestamp from a loaded profile dict."""
+    if not data:
+        return None
+    return parse_iso_datetime_utc(data.get(PROFILE_SPOTIFY_LAST_PREVIEW_AT_KEY))
+
+
+def get_spotify_preview_last_generated_at(
+    *,
+    session: MutableMapping[str, Any],
+    profiles_dir: Path,
+) -> datetime | None:
+    """Last preview time: from active profile JSON if signed in, else session only."""
+    raw_slug = session.get(ACTIVE_PROFILE_SESSION_KEY)
+    if isinstance(raw_slug, str) and raw_slug.strip():
+        try:
+            slug = normalize_profile_slug(raw_slug.strip())
+        except ValueError:
+            return parse_iso_datetime_utc(
+                session.get(SESSION_SPOTIFY_LAST_PREVIEW_AT_KEY),
+            )
+        prof = load_profile(profiles_dir, slug)
+        dt = read_last_spotify_preview_at_from_profile(prof)
+        if dt is not None:
+            return dt
+        return None
+    return parse_iso_datetime_utc(session.get(SESSION_SPOTIFY_LAST_PREVIEW_AT_KEY))
+
+
+def record_spotify_preview_generated(
+    *,
+    session: MutableMapping[str, Any],
+    profiles_dir: Path,
+    when_utc: datetime,
+) -> None:
+    """Persist preview timestamp to profile JSON or guest session_state."""
+    when = when_utc if when_utc.tzinfo else when_utc.replace(tzinfo=UTC)
+    iso = when.replace(microsecond=0).isoformat().replace("+00:00", "Z")
+    raw_slug = session.get(ACTIVE_PROFILE_SESSION_KEY)
+    if isinstance(raw_slug, str) and raw_slug.strip():
+        try:
+            slug = normalize_profile_slug(raw_slug.strip())
+        except ValueError:
+            session[SESSION_SPOTIFY_LAST_PREVIEW_AT_KEY] = iso
+            return
+        data = load_profile(profiles_dir, slug)
+        if not isinstance(data, dict):
+            session[SESSION_SPOTIFY_LAST_PREVIEW_AT_KEY] = iso
+            return
+        merged = dict(data)
+        merged[PROFILE_SPOTIFY_LAST_PREVIEW_AT_KEY] = iso
+        save_profile(profiles_dir, slug, merged)
+        session.pop(SESSION_SPOTIFY_LAST_PREVIEW_AT_KEY, None)
+        return
+    session[SESSION_SPOTIFY_LAST_PREVIEW_AT_KEY] = iso
 
 
 def _sorted_community_list(raw: set[str] | list[str] | None) -> list[str]:

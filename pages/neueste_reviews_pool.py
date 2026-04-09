@@ -82,6 +82,11 @@ def _load_newest_reviews(n: int) -> list[Review]:
     return reviews[: max(1, n)]
 
 
+def load_newest_reviews_slice(n: int) -> list[Review]:
+    """Return the ``n`` newest reviews by id (cached); ranking may run later."""
+    return _load_newest_reviews(max(1, n))
+
+
 @st.cache_data(ttl=300)
 def _load_all_reviews_for_breadth_norm() -> list[Review]:
     """Full corpus for global coverage percentile (breadth_norm)."""
@@ -124,6 +129,60 @@ def _load_affinity_by_review_id() -> dict[int, dict[str, Any]]:
     return out
 
 
+def preference_rank_rows_for_reviews(
+    reviews: list[Review],
+) -> list[dict[str, Any]] | None:
+    """Preference scores for exactly ``reviews`` (same rules as the Neueste page).
+
+    Returns ``None`` when no communities are selected (callers use uniform
+    weights). Does not load reviews; only ranks the given list.
+    """
+    configure_spotify_playlist_logging_from_env()
+    ensure_neueste_session_defaults()
+    selected_comms = get_selected_communities()
+    if not selected_comms:
+        _LOGGER.info(
+            "preference_rank_rows_for_reviews: skipped "
+            "(no selected communities; uniform album weights). n_reviews=%s",
+            len(reviews),
+        )
+        return None
+    filter_settings: dict[str, Any] = st.session_state.get("filter_settings") or {}
+    weights_raw: dict[str, float] = st.session_state.get("community_weights_raw") or {}
+    aff_map_full = _load_affinity_by_review_id()
+    memberships = load_community_memberships()
+    weights_key = tuple((str(k), float(v)) for k, v in sorted(weights_raw.items()))
+    breadth_norm_global = _cached_global_breadth_norm_map(
+        tuple(sorted(selected_comms)),
+        weights_key,
+    )
+    ranked_rows = preference_ranked_rows(
+        reviews,
+        affinity_by_review_id=aff_map_full,
+        memberships=memberships,
+        selected_comms=selected_comms,
+        weights_raw=weights_raw,
+        filter_settings=filter_settings,
+        apply_serendipity=False,
+        global_breadth_norm_by_review_id=breadth_norm_global or None,
+    )
+    _LOGGER.info(
+        "preference_rank_rows_for_reviews: applied n_reviews=%s n_ranked_rows=%s "
+        "n_selected_communities=%s",
+        len(reviews),
+        len(ranked_rows),
+        len(selected_comms),
+    )
+    _LOGGER.debug(
+        "preference_rank_rows_for_reviews: selected_community_ids=%s "
+        "filter_settings_keys=%s n_community_weights=%s",
+        sorted(selected_comms),
+        sorted((st.session_state.get("filter_settings") or {}).keys()),
+        len(st.session_state.get("community_weights_raw") or {}),
+    )
+    return ranked_rows
+
+
 def fetch_newest_reviews_pool(
     n_show: int,
 ) -> tuple[list[Review], list[dict[str, Any]] | None]:
@@ -131,51 +190,5 @@ def fetch_newest_reviews_pool(
     configure_spotify_playlist_logging_from_env()
     ensure_neueste_session_defaults()
     reviews = _load_newest_reviews(n_show)
-    selected_comms = get_selected_communities()
-    ranked_rows: list[dict[str, Any]] | None = None
-    if not selected_comms:
-        _LOGGER.info(
-            "fetch_newest_reviews_pool: preference ranking skipped "
-            "(no selected communities; Spotify preview uses uniform album weights). "
-            "n_show=%s n_reviews=%s",
-            n_show,
-            len(reviews),
-        )
-    if selected_comms:
-        filter_settings: dict[str, Any] = st.session_state.get("filter_settings") or {}
-        weights_raw: dict[str, float] = (
-            st.session_state.get("community_weights_raw") or {}
-        )
-        aff_map_full = _load_affinity_by_review_id()
-        memberships = load_community_memberships()
-        weights_key = tuple((str(k), float(v)) for k, v in sorted(weights_raw.items()))
-        breadth_norm_global = _cached_global_breadth_norm_map(
-            tuple(sorted(selected_comms)),
-            weights_key,
-        )
-        ranked_rows = preference_ranked_rows(
-            reviews,
-            affinity_by_review_id=aff_map_full,
-            memberships=memberships,
-            selected_comms=selected_comms,
-            weights_raw=weights_raw,
-            filter_settings=filter_settings,
-            apply_serendipity=False,
-            global_breadth_norm_by_review_id=breadth_norm_global or None,
-        )
-        _LOGGER.info(
-            "fetch_newest_reviews_pool: preference ranking applied "
-            "n_show=%s n_reviews=%s n_ranked_rows=%s n_selected_communities=%s",
-            n_show,
-            len(reviews),
-            len(ranked_rows) if ranked_rows else 0,
-            len(selected_comms),
-        )
-        _LOGGER.debug(
-            "fetch_newest_reviews_pool: selected_community_ids=%s "
-            "filter_settings_keys=%s n_community_weights=%s",
-            sorted(selected_comms),
-            sorted((st.session_state.get("filter_settings") or {}).keys()),
-            len(st.session_state.get("community_weights_raw") or {}),
-        )
+    ranked_rows = preference_rank_rows_for_reviews(reviews)
     return reviews, ranked_rows

@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+from datetime import UTC, datetime
 from pathlib import Path
 
 import pytest
@@ -15,10 +16,14 @@ from music_review.dashboard.user_profile_store import (
     apply_profile_to_session,
     build_profile_payload,
     ensure_active_profile_hydrated,
+    get_spotify_preview_last_generated_at,
     list_profile_slugs,
     load_profile,
     normalize_profile_slug,
+    parse_iso_datetime_utc,
+    record_spotify_preview_generated,
     save_profile,
+    spotify_preview_cooldown_seconds_remaining,
 )
 
 
@@ -236,3 +241,90 @@ def test_save_atomic_replace(tmp_path: Path) -> None:
     data = json.loads(path.read_text(encoding="utf-8"))
     assert data["schema_version"] == SCHEMA_VERSION
     assert "saved_at" in data
+
+
+def test_parse_iso_datetime_utc_accepts_z_suffix() -> None:
+    dt = parse_iso_datetime_utc("2024-01-15T12:00:00Z")
+    assert dt is not None
+    assert dt.tzinfo is not None
+    assert dt.year == 2024
+
+
+def test_spotify_preview_cooldown_zero_when_never_generated() -> None:
+    now = datetime(2024, 6, 1, 12, 0, 0, tzinfo=UTC)
+    assert (
+        spotify_preview_cooldown_seconds_remaining(
+            now_utc=now,
+            last_generated_at_utc=None,
+        )
+        == 0
+    )
+
+
+def test_spotify_preview_cooldown_full_window_right_after_generation() -> None:
+    now = datetime(2024, 6, 1, 12, 0, 0, tzinfo=UTC)
+    last = datetime(2024, 6, 1, 12, 0, 0, tzinfo=UTC)
+    rem = spotify_preview_cooldown_seconds_remaining(
+        now_utc=now,
+        last_generated_at_utc=last,
+        cooldown_seconds=600,
+    )
+    assert rem == 600
+
+
+def test_spotify_preview_cooldown_expired_after_interval() -> None:
+    now = datetime(2024, 6, 1, 13, 0, 0, tzinfo=UTC)
+    last = datetime(2024, 6, 1, 12, 0, 0, tzinfo=UTC)
+    assert (
+        spotify_preview_cooldown_seconds_remaining(
+            now_utc=now,
+            last_generated_at_utc=last,
+            cooldown_seconds=600,
+        )
+        == 0
+    )
+
+
+def test_record_spotify_preview_guest_writes_session_only(tmp_path: Path) -> None:
+    session: dict[str, object] = {}
+    when = datetime(2024, 3, 1, 10, 30, 0, tzinfo=UTC)
+    record_spotify_preview_generated(
+        session=session,
+        profiles_dir=tmp_path,
+        when_utc=when,
+    )
+    assert isinstance(session.get("spotify_last_preview_generated_at"), str)
+
+
+def test_record_and_get_spotify_preview_merges_profile_json(tmp_path: Path) -> None:
+    payload = build_profile_payload(
+        profile_slug="u1",
+        flow_mode="combined",
+        selected_communities={"1"},
+        filter_settings={},
+        community_weights_raw={},
+    )
+    save_profile(tmp_path, "u1", payload)
+    session: dict[str, object] = {ACTIVE_PROFILE_SESSION_KEY: "u1"}
+    when = datetime(2024, 5, 1, 8, 0, 0, tzinfo=UTC)
+    record_spotify_preview_generated(
+        session=session,
+        profiles_dir=tmp_path,
+        when_utc=when,
+    )
+    loaded = load_profile(tmp_path, "u1")
+    assert loaded is not None
+    assert "spotify_last_preview_generated_at" in loaded
+    got = get_spotify_preview_last_generated_at(
+        session=session,
+        profiles_dir=tmp_path,
+    )
+    assert got is not None
+    assert (
+        spotify_preview_cooldown_seconds_remaining(
+            now_utc=when,
+            last_generated_at_utc=got,
+            cooldown_seconds=600,
+        )
+        == 600
+    )
