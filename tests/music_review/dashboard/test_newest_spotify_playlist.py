@@ -15,6 +15,7 @@ from music_review.dashboard.newest_spotify_playlist import (
     allocate_stratified_slot_counts,
     build_album_weights,
     build_playlist_candidates,
+    build_stratified_slot_plans,
     candidate_tracks_for_review,
     next_album_index_with_unused_tracks_cyclic,
     pick_track_title_for_iteration,
@@ -114,6 +115,35 @@ def test_allocate_stratified_slot_counts_matches_largest_remainder() -> None:
     assert sum(allocate_stratified_slot_counts([0.1, 0.2, 0.7], 100)) == 100
 
 
+def test_build_stratified_slot_plans_quotas_match_allocate() -> None:
+    weights_sets = (
+        [0.6, 0.2, 0.2],
+        [0.0, 0.0, 0.0],
+        [0.1, 0.2, 0.7],
+    )
+    for weights in weights_sets:
+        for tc in (0, 1, 10, 11, 100):
+            plans = build_stratified_slot_plans(weights, tc)
+            assert [p.quota for p in plans] == allocate_stratified_slot_counts(
+                weights,
+                tc,
+            )
+            for p in plans:
+                assert p.quota == p.floor_slots + p.remainder_extra_slots
+
+
+def test_build_stratified_slot_plans_exposes_largest_remainder_steps() -> None:
+    plans = build_stratified_slot_plans([0.6, 0.2, 0.2], 11)
+    assert plans[0].ideal_slots == pytest.approx(6.6)
+    assert plans[0].floor_slots == 6
+    assert plans[0].remainder_extra_slots == 1
+    assert plans[0].quota == 7
+    assert plans[1].ideal_slots == pytest.approx(2.2)
+    assert plans[1].floor_slots == 2
+    assert plans[1].remainder_extra_slots == 0
+    assert plans[1].quota == 2
+
+
 def test_allocate_stratified_slot_counts_even_split_when_weights_zero() -> None:
     assert allocate_stratified_slot_counts([0.0, 0.0, 0.0], 10) == [4, 3, 3]
 
@@ -170,6 +200,9 @@ def test_build_playlist_candidates_stratified_counts_match_quotas() -> None:
             assert c.raw_score == 0.3
             assert c.score_weight == 0.6
             assert c.playlist_slot_quota == 36
+            assert c.strat_ideal_slots == pytest.approx(36.0)
+            assert c.strat_floor_slots == 36
+            assert c.strat_remainder_extra_slots == 0
             break
 
 

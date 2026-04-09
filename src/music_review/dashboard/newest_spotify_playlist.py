@@ -316,6 +316,19 @@ class PlaylistCandidate:
     score_weight: float
     raw_score: float
     playlist_slot_quota: int
+    strat_ideal_slots: float
+    strat_floor_slots: int
+    strat_remainder_extra_slots: int
+
+
+@dataclass(slots=True)
+class StratifiedSlotPlan:
+    """Per-album breakdown from normalized weights to integer slot quota."""
+
+    ideal_slots: float
+    floor_slots: int
+    remainder_extra_slots: int
+    quota: int
 
 
 def _norm_text(value: str) -> str:
@@ -416,29 +429,37 @@ def build_album_weights(
     return picked_reviews, norm_weights, raw_weights
 
 
-def allocate_stratified_slot_counts(
+def build_stratified_slot_plans(
     weights: list[float],
     target_count: int,
-) -> list[int]:
-    """Split ``target_count`` slots across albums proportionally to ``weights``.
+) -> list[StratifiedSlotPlan]:
+    """Compute ideal fractional slots, floors, remainder extras, and final quotas.
 
-    Weights are renormalized if their sum is positive; each count is the
-    fractional share rounded down, then the remaining slots go to albums with
-    the largest fractional remainders (ties broken by larger album index).
-
-    If all weights are zero or empty, falls back to an even split across albums.
+    Uses the largest-remainder method when weight sums are positive: each album
+    gets ``floor(ideal)`` plus at most one extra slot for the largest fractional
+    remainders (ties: higher album index first). When all weights are zero,
+    falls back to an even split (first ``target_count % n`` albums get +1).
     """
     n = len(weights)
     if n == 0:
         return []
     if target_count <= 0:
-        return [0] * n
+        return [StratifiedSlotPlan(0.0, 0, 0, 0) for _ in range(n)]
 
     total_w = float(sum(weights))
     if total_w <= 0.0:
         base = target_count // n
         extra = target_count % n
-        return [base + (1 if i < extra else 0) for i in range(n)]
+        ideal_each = float(target_count) / float(n)
+        return [
+            StratifiedSlotPlan(
+                ideal_slots=ideal_each,
+                floor_slots=base,
+                remainder_extra_slots=1 if i < extra else 0,
+                quota=base + (1 if i < extra else 0),
+            )
+            for i in range(n)
+        ]
 
     raw = [target_count * (float(w) / total_w) for w in weights]
     floors = [math.floor(r) for r in raw]
@@ -448,10 +469,29 @@ def allocate_stratified_slot_counts(
         key=lambda i: (raw[i] - floors[i], i),
         reverse=True,
     )
-    out = list(floors)
+    extra_by_idx = [0 for _ in range(n)]
     for j in range(remainder):
-        out[frac_order[j]] += 1
-    return out
+        extra_by_idx[frac_order[j]] += 1
+    return [
+        StratifiedSlotPlan(
+            ideal_slots=raw[i],
+            floor_slots=floors[i],
+            remainder_extra_slots=extra_by_idx[i],
+            quota=floors[i] + extra_by_idx[i],
+        )
+        for i in range(n)
+    ]
+
+
+def allocate_stratified_slot_counts(
+    weights: list[float],
+    target_count: int,
+) -> list[int]:
+    """Split ``target_count`` slots across albums proportionally to ``weights``.
+
+    Same rules as :func:`build_stratified_slot_plans`; returns only the quotas.
+    """
+    return [p.quota for p in build_stratified_slot_plans(weights, target_count)]
 
 
 def review_has_unused_track_candidate(
@@ -639,7 +679,8 @@ def build_playlist_candidates(
     skip_abandoned_slots = 0
     slot_album_fallbacks = 0
 
-    quotas = allocate_stratified_slot_counts(weights, target_count)
+    strat_plans = build_stratified_slot_plans(weights, target_count)
+    quotas = [p.quota for p in strat_plans]
     slot_album_indices: list[int] = []
     for album_idx, q in enumerate(quotas):
         slot_album_indices.extend([album_idx] * q)
@@ -793,6 +834,7 @@ def build_playlist_candidates(
         pending_slots.popleft()
         slot_resolve_failures = 0
         dead_albums_for_slot.clear()
+        plan = strat_plans[album_idx]
         results.append(
             PlaylistCandidate(
                 review_id=int(review.id),
@@ -803,7 +845,10 @@ def build_playlist_candidates(
                 spotify_uri=uri,
                 score_weight=score_weight_by_id.get(int(review.id), 0.0),
                 raw_score=float(raw_scores[album_idx]),
-                playlist_slot_quota=int(quotas[album_idx]),
+                playlist_slot_quota=int(plan.quota),
+                strat_ideal_slots=float(plan.ideal_slots),
+                strat_floor_slots=int(plan.floor_slots),
+                strat_remainder_extra_slots=int(plan.remainder_extra_slots),
             ),
         )
         LOGGER.debug(

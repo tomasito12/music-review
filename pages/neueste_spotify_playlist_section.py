@@ -103,16 +103,26 @@ def _token_declares_spotify_scope(token: SpotifyToken, scope: str) -> bool:
     return scope in granted
 
 
-def _render_playlist_preview_table(items: list[PlaylistCandidate]) -> None:
+def _render_playlist_preview_table(
+    items: list[PlaylistCandidate],
+    *,
+    target_count: int,
+) -> None:
     rows: list[dict[str, Any]] = []
     for idx, item in enumerate(items, start=1):
+        w = float(item.score_weight)
+        ideal = float(item.strat_ideal_slots)
         rows.append(
             {
                 "#": idx,
                 "Künstler": item.artist,
                 "Album": item.album,
                 "Rohscore": round(float(item.raw_score), 4),
-                "Anteil (norm.)": round(float(item.score_weight), 4),
+                "Anteil (norm.)": round(w, 4),
+                "Ziel * Anteil": f"{target_count} * {w:.4f} = {round(ideal, 4)}",
+                "Ideale Slots": round(ideal, 4),
+                "Abrunden": int(item.strat_floor_slots),
+                "+Rest": int(item.strat_remainder_extra_slots),
                 "Ziel-Slots": int(item.playlist_slot_quota),
                 "Song": item.track_title,
                 "Quelle": (
@@ -122,6 +132,12 @@ def _render_playlist_preview_table(items: list[PlaylistCandidate]) -> None:
             }
         )
     st.dataframe(rows, width="stretch", hide_index=True)
+    st.caption(
+        "Ideale Slots = Zielanzahl mal Anteil; falls die Anteile nicht exakt Summe 1 "
+        "haben: Zielanzahl mal (Anteil / Summe). Abrunden ist der ganzzahlige Anteil "
+        "davon. +Rest verteilt die noch fehlenden Plätze nach dem größten Rest "
+        "(bei Gleichstand höherer Album-Index zuerst). Ziel-Slots = Abrunden + Rest."
+    )
 
 
 def render_neueste_spotify_playlist_section(
@@ -304,7 +320,10 @@ def render_neueste_spotify_playlist_section(
             x for x in preview_items if isinstance(x, PlaylistCandidate)
         ]
         if valid_preview_items:
-            _render_playlist_preview_table(valid_preview_items)
+            _render_playlist_preview_table(
+                valid_preview_items,
+                target_count=target_count,
+            )
             if len(valid_preview_items) < target_count:
                 st.warning(
                     "Es konnten nicht genug eindeutige Spotify-Treffer "
