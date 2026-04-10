@@ -13,6 +13,7 @@ from pages.neueste_reviews_pool import (
     configure_spotify_playlist_logging_from_env,
     preference_rank_rows_for_reviews,
 )
+from pages.page_helpers import SPOTIFY_SURFACE_CONNECTION_UI_KEY
 
 from music_review.dashboard.newest_spotify_playlist import (
     PlaylistCandidate,
@@ -39,6 +40,20 @@ from music_review.integrations.spotify_client import (
 SPOTIFY_TOKEN_KEY = "spotify_token"
 NEWEST_SPOTIFY_PREVIEW_KEY = "newest_spotify_preview"
 NEWEST_SPOTIFY_PLAYLIST_NAME_KEY = "newest-spotify-playlist-name"
+
+# Discrete taste-orientation steps for the select slider (German UI labels).
+_SPOTIFY_TASTE_ORIENTATION_OPTIONS: tuple[str, ...] = (
+    "gar nicht",
+    "etwas",
+    "mittel",
+    "stark",
+)
+_SPOTIFY_TASTE_ORIENTATION_EXPONENT: dict[str, float] = {
+    "gar nicht": 1.0,
+    "etwas": 1.0,
+    "mittel": 2.0,
+    "stark": 3.0,
+}
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -175,68 +190,47 @@ def render_neueste_spotify_playlist_section(
 ) -> None:
     """Build a random playlist from the same pool as Neueste Rezensionen."""
     configure_spotify_playlist_logging_from_env()
-    st.caption(
-        "Erzeuge eine zufällige Playlist aus den gewählten zuletzt rezensierten "
-        "Alben. Präferenz-Scores (wie auf „Neueste Rezensionen“) werden beim "
-        "Klick auf „Vorschau erzeugen“ berechnet."
-    )
-    st.caption(
-        "Gewichtung: Die Zielanzahl Songs wird auf die Alben verteilt "
-        "entsprechend der normalisierten Scores (Summe 1; Abrundung mit "
-        "größtem Rest). Pro Album werden Titel zufällig aus den "
-        "Anspieltipps gewählt, danach zufällig aus der übrigen Tracklist. "
-        "Die Reihenfolge der Slots ist gemischt. Wenn Spotify einen Titel "
-        "nicht findet oder doppelt vorkommt, gibt es nur wenige Wiederholungen "
-        "pro Album; danach wird derselbe Listenplatz mit dem nächsten Album "
-        "im Pool versucht. Ohne passendes Album wird der Slot verworfen. "
-        "Die Liste kann dadurch kürzer als die Zielanzahl werden; die "
-        "Verteilung weicht ab, wenn viele Titel nicht aufgelöst werden."
-    )
     if not reviews:
         st.info("Keine Rezensionen verfügbar.")
         return
 
     max_pool = len(reviews)
     target_count = st.slider(
-        "Zielanzahl Songs",
+        "Wie viele Songs sollen auf der Playlist stehen?",
         min_value=5,
         max_value=50,
         value=min(30, max(5, max_pool)),
         step=1,
+        key="newest-spotify-song-count",
+    )
+    taste_orientation = st.select_slider(
+        "Wie stark soll sich die Playlist an deinem persönlichen Geschmack "
+        "orientieren?",
+        options=list(_SPOTIFY_TASTE_ORIENTATION_OPTIONS),
+        value="etwas",
+        key="newest-spotify-taste-orientation",
     )
     if NEWEST_SPOTIFY_PLAYLIST_NAME_KEY not in st.session_state:
         st.session_state[NEWEST_SPOTIFY_PLAYLIST_NAME_KEY] = (
             _default_newest_spotify_playlist_name()
         )
-    playlist_name = st.text_input(
-        "Name der Spotify-Playlist",
-        key=NEWEST_SPOTIFY_PLAYLIST_NAME_KEY,
-    )
-    make_playlist_public = st.checkbox(
-        "Playlist öffentlich machen",
-        value=False,
-        key="newest-spotify-playlist-public",
-    )
-    boost_high_scores = st.checkbox(
-        "Höhere Ranking-Scores stärker gewichten (mehr Slots für Top-Alben)",
-        value=False,
-        key="newest-spotify-boost-high-scores",
-        help=(
-            "Die normalisierten Anteile werden vor der Slot-Verteilung quadriert "
-            "und erneut auf Summe 1 gebracht. Dadurch rücken Alben mit hohem "
-            "Score näher an die Spitze der Playlist-Quote. "
-            "Ohne Ranking (gleichmäßige Gewichte) bleibt die Verteilung "
-            "unverändert."
-        ),
-    )
-
-    token = _stored_spotify_token()
-    if token is None:
-        st.info(
-            "Bitte zuerst oben auf dieser Seite mit Spotify verbinden, "
-            "damit eine Playlist gespeichert werden kann."
+    col_playlist_name, col_playlist_public = st.columns([2, 1], gap="medium")
+    with col_playlist_name:
+        playlist_name = st.text_input(
+            "Name der Spotify-Playlist",
+            key=NEWEST_SPOTIFY_PLAYLIST_NAME_KEY,
         )
-        return
+    with col_playlist_public:
+        # Offset so the checkbox aligns with the text field (label sits above input).
+        st.markdown(
+            '<div style="min-height: 2.5rem;" aria-hidden="true"></div>',
+            unsafe_allow_html=True,
+        )
+        make_playlist_public = st.checkbox(
+            "Playlist öffentlich machen",
+            value=False,
+            key="newest-spotify-playlist-public",
+        )
 
     client: SpotifyClient | None = None
     config_error: str | None = None
@@ -249,6 +243,8 @@ def render_neueste_spotify_playlist_section(
         st.error(f"Spotify-Konfiguration fehlt: {config_error}")
         return
     assert client is not None
+
+    token = _stored_spotify_token()
 
     profiles_dir = default_profiles_dir()
     now_utc = datetime.now(UTC)
@@ -265,6 +261,10 @@ def render_neueste_spotify_playlist_section(
     if cooldown_remaining > 0:
         st.warning(_german_cooldown_hint(cooldown_remaining))
 
+    st.markdown(
+        '<div style="min-height: 2.5rem;" aria-hidden="true"></div>',
+        unsafe_allow_html=True,
+    )
     generate_clicked = st.button(
         "Vorschau erzeugen",
         type="primary",
@@ -309,35 +309,46 @@ def render_neueste_spotify_playlist_section(
                 "Eine neue Vorschau ist noch nicht möglich. Bitte die angezeigte "
                 "Wartezeit abwarten.",
             )
+        elif _stored_spotify_token() is None:
+            st.session_state[SPOTIFY_SURFACE_CONNECTION_UI_KEY] = True
+            st.rerun()
         else:
-            ranked_rows = preference_rank_rows_for_reviews(reviews)
+            ranked_rows = (
+                None
+                if taste_orientation == "gar nicht"
+                else preference_rank_rows_for_reviews(reviews)
+            )
             chosen_reviews, weights, raw_scores = build_album_weights(
                 reviews,
                 ranked_rows,
             )
+            taste_exponent = _SPOTIFY_TASTE_ORIENTATION_EXPONENT[taste_orientation]
             _LOGGER.info(
                 "newest spotify playlist section: n_chosen_albums=%s "
-                "ranked_rows_available=%s target_songs=%s",
+                "ranked_rows_available=%s target_songs=%s taste_orientation=%s "
+                "taste_exponent=%s",
                 len(chosen_reviews),
                 ranked_rows is not None,
                 target_count,
+                taste_orientation,
+                taste_exponent,
             )
             _log_weight_summary(
                 weights,
                 review_ids=[int(r.id) for r in chosen_reviews],
             )
             rng = random.Random(secrets.randbits(64))
-            alloc_weights = (
-                amplify_preference_weights(weights, exponent=2.0)
-                if boost_high_scores
-                else weights
+            alloc_weights = amplify_preference_weights(
+                weights,
+                exponent=taste_exponent,
             )
             _LOGGER.info(
                 "newest spotify preview: start build_playlist_candidates "
-                "n_albums=%s target_count=%s boost_high_scores=%s",
+                "n_albums=%s target_count=%s taste_orientation=%s taste_exponent=%s",
                 len(chosen_reviews),
                 target_count,
-                boost_high_scores,
+                taste_orientation,
+                taste_exponent,
             )
             with st.spinner("Playlist-Vorschau wird erzeugt..."):
                 token_for_search = _ensure_valid_spotify_token(client, token)
@@ -405,8 +416,9 @@ def render_neueste_spotify_playlist_section(
                     playlist = client.create_playlist(
                         name=save_name,
                         description=(
-                            "Automatisch erstellt aus den neuesten Rezensionen "
-                            "in Music Review."
+                            "Playlist aus aktuellen Album-Rezensionen von "
+                            "plattentests.de - passend zu Deinem persönlichen "
+                            "Musikgeschmack."
                         ),
                         public=make_playlist_public,
                         token=token_for_save,
@@ -439,5 +451,3 @@ def render_neueste_spotify_playlist_section(
                         "`.env`/`SPOTIFY_SCOPES` prüfen, erneut verbinden, "
                         "oder die Option „Playlist öffentlich machen“ testen."
                     )
-    else:
-        st.caption("Noch keine Vorschau erzeugt.")

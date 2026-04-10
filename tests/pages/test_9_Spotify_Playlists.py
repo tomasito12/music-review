@@ -89,6 +89,35 @@ def test_spotify_oauth_state_for_authorize_url_skips_without_profile(
     assert module._spotify_oauth_state_for_authorize_url("csrf123") == "csrf123"
 
 
+def test_spotify_oauth_session_snapshot_dict_builds_expected(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    module = _spotify_playlists_module()
+    monkeypatch.setattr(
+        module.st,
+        "session_state",
+        {
+            "filter_settings": {"year_min": 2000},
+            "community_weights_raw": {"C001": 0.5},
+            "selected_communities": {"C001", "C002"},
+            "artist_flow_selected_communities": {"C001"},
+            "genre_flow_selected_communities": set(),
+            "flow_mode": "test",
+            "free_text_query": "hello",
+            "spotify-page-pool-count": 15,
+            "newest-spotify-taste-orientation": "stark",
+        },
+    )
+    d = module._spotify_oauth_session_snapshot_dict()
+    assert d["snapshot_version"] == 1
+    assert d["filter_settings"]["year_min"] == 2000
+    assert d["community_weights_raw"]["C001"] == 0.5
+    assert set(d["selected_communities"]) == {"C001", "C002"}
+    assert d["genre_flow_selected_communities"] == []
+    assert d["widgets"]["spotify-page-pool-count"] == 15
+    assert d["widgets"]["newest-spotify-taste-orientation"] == "stark"
+
+
 def test_redirect_uri_mismatch_hint_html_escapes_special_characters() -> None:
     module = _spotify_playlists_module()
     html_fn = module._redirect_uri_mismatch_hint_html

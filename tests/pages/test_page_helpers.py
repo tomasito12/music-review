@@ -763,6 +763,55 @@ class TestSpotifyOauthCookieHelpers:
         page_helpers_module.clear_spotify_oauth_state_cookie()
 
 
+def test_apply_spotify_oauth_session_snapshot_restores_core_keys() -> None:
+    """OAuth snapshot reapplies filter and widget state over a fresh session."""
+    sess: dict[str, object] = {
+        "filter_settings": {},
+        "selected_communities": set(),
+    }
+    page_helpers_module.apply_spotify_oauth_session_snapshot(
+        sess,
+        {
+            "snapshot_version": 1,
+            "filter_settings": {
+                "year_min": 1990,
+                "year_max": 2020,
+                "rating_min": 8,
+                "rating_max": 10,
+            },
+            "community_weights_raw": {"C01": 1.5},
+            "selected_communities": ["a", "b"],
+            "artist_flow_selected_communities": ["a"],
+            "genre_flow_selected_communities": [],
+            "flow_mode": "x",
+            "free_text_query": "q",
+            "widgets": {"spotify-page-pool-count": 22},
+        },
+    )
+    assert sess["filter_settings"] == {
+        "year_min": 1990,
+        "year_max": 2020,
+        "rating_min": 8,
+        "rating_max": 10,
+    }
+    assert sess["community_weights_raw"] == {"C01": 1.5}
+    assert sess["selected_communities"] == {"a", "b"}
+    assert sess["artist_flow_selected_communities"] == {"a"}
+    assert sess["genre_flow_selected_communities"] == set()
+    assert sess["flow_mode"] == "x"
+    assert sess["free_text_query"] == "q"
+    assert sess["spotify-page-pool-count"] == 22
+
+
+def test_apply_spotify_oauth_session_snapshot_unknown_version_is_noop() -> None:
+    sess: dict[str, object] = {"filter_settings": {"x": 1}}
+    page_helpers_module.apply_spotify_oauth_session_snapshot(
+        sess,
+        {"snapshot_version": 99, "filter_settings": {"y": 2}},
+    )
+    assert sess["filter_settings"] == {"x": 1}
+
+
 class TestSpotifyPkceCookieHelpers:
     def test_peek_pkce_from_context_cookies_reads_value(
         self,

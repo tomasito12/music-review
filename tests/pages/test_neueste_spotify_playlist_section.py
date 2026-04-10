@@ -11,6 +11,17 @@ def test_neueste_spotify_playlist_section_importable() -> None:
     assert hasattr(module, "render_neueste_spotify_playlist_section")
 
 
+def test_spotify_taste_orientation_options_map_to_exponents() -> None:
+    module = importlib.import_module("pages.neueste_spotify_playlist_section")
+    opts = module._SPOTIFY_TASTE_ORIENTATION_OPTIONS
+    exp_map = module._SPOTIFY_TASTE_ORIENTATION_EXPONENT
+    assert set(opts) == set(exp_map.keys())
+    assert exp_map["gar nicht"] == 1.0
+    assert exp_map["etwas"] == 1.0
+    assert exp_map["mittel"] == 2.0
+    assert exp_map["stark"] == 3.0
+
+
 def test_log_weight_summary_marks_uniform_weights(
     caplog: pytest.LogCaptureFixture,
 ) -> None:

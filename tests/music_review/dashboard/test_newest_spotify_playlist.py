@@ -118,6 +118,19 @@ def test_amplify_preference_weights_squares_and_renormalizes() -> None:
     assert out[0] == pytest.approx(0.36 / 0.44)
 
 
+def test_amplify_preference_weights_cubes_and_renormalizes() -> None:
+    out = amplify_preference_weights([0.6, 0.2, 0.2], exponent=3.0)
+    assert sum(out) == pytest.approx(1.0)
+    assert out[0] == pytest.approx(0.216 / (0.216 + 0.008 + 0.008))
+
+
+def test_amplify_preference_weights_cube_favors_top_more_than_square() -> None:
+    linear = [0.6, 0.2, 0.2]
+    squared = amplify_preference_weights(linear, exponent=2.0)
+    cubed = amplify_preference_weights(linear, exponent=3.0)
+    assert cubed[0] > squared[0]
+
+
 def test_amplify_preference_weights_uniform_stays_uniform() -> None:
     w = [1 / 3, 1 / 3, 1 / 3]
     out = amplify_preference_weights(w, exponent=2.0)

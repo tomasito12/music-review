@@ -184,6 +184,10 @@ SEMANTIC_CHAT_MESSAGES_KEY = "rec_chat_messages"
 SPOTIFY_OAUTH_STATE_COOKIE_NAME = "mr_spotify_oauth_state"
 # PKCE code_verifier (same lifetime as OAuth state; required for token exchange).
 SPOTIFY_PKCE_VERIFIER_COOKIE_NAME = "mr_spotify_pkce_verifier"
+# Filter/taste session snapshot before Spotify redirect (survives profile re-hydrate).
+SPOTIFY_SESSION_SNAPSHOT_COOKIE_NAME = "mr_spotify_session_snapshot"
+# Open Spotify connection UI after "Vorschau erzeugen" without a token (Streamlit).
+SPOTIFY_SURFACE_CONNECTION_UI_KEY = "spotify_surface_connection_ui"
 
 # Streamlit widget session keys for Schritt 3 sliders (cleared on taste reset).
 FILTER_FLOW_WIDGET_KEY_YEAR_RANGE = "filter_flow_year_range"
@@ -1346,6 +1350,96 @@ def clear_spotify_pkce_verifier_cookie() -> None:
         SPOTIFY_PKCE_VERIFIER_COOKIE_NAME,
         key="mr_cookie_spotify_pkce_del",
     )
+
+
+def persist_spotify_session_snapshot_cookie(payload_json: str) -> None:
+    """Store taste/filter session fields for restore after OAuth (short-lived)."""
+    if not isinstance(payload_json, str) or not payload_json.strip():
+        return
+    cm = profile_cookie_manager()
+    cm.set(
+        SPOTIFY_SESSION_SNAPSHOT_COOKIE_NAME,
+        payload_json,
+        key="mr_cookie_spotify_snapshot_set",
+        max_age=600.0,
+        same_site="lax",
+    )
+
+
+def peek_spotify_session_snapshot_from_context_cookies() -> str | None:
+    """Return snapshot JSON from HTTP cookies when CookieManager lags (OAuth return)."""
+    try:
+        raw = st.context.cookies.to_dict().get(SPOTIFY_SESSION_SNAPSHOT_COOKIE_NAME)
+    except Exception:
+        return None
+    return raw.strip() if isinstance(raw, str) and raw.strip() else None
+
+
+def peek_spotify_session_snapshot_cookie() -> str | None:
+    """Return session snapshot JSON from browser cookie if present."""
+    raw_ctx = peek_spotify_session_snapshot_from_context_cookies()
+    if raw_ctx:
+        return raw_ctx
+    cm = profile_cookie_manager()
+    raw = cm.get(SPOTIFY_SESSION_SNAPSHOT_COOKIE_NAME)
+    return raw.strip() if isinstance(raw, str) and raw.strip() else None
+
+
+def clear_spotify_session_snapshot_cookie() -> None:
+    """Remove the session snapshot cookie after successful token exchange or abandon."""
+    cm = profile_cookie_manager()
+    _safe_cookie_manager_delete(
+        cm,
+        SPOTIFY_SESSION_SNAPSHOT_COOKIE_NAME,
+        key="mr_cookie_spotify_snapshot_del",
+    )
+
+
+def apply_spotify_oauth_session_snapshot(
+    session: MutableMapping[str, Any],
+    data: Mapping[str, Any],
+) -> None:
+    """Merge Spotify OAuth snapshot dict into session (filters, communities, widgets).
+
+    Used after an external redirect: ``bootstrap_profile_session`` may re-apply the
+    saved profile from disk and wipe unsaved tweaks; the snapshot restores the
+    in-tab state the user had when starting OAuth.
+    """
+    if data.get("snapshot_version") != 1:
+        return
+    fs = data.get("filter_settings")
+    if isinstance(fs, dict):
+        session["filter_settings"] = dict(fs)
+    cw = data.get("community_weights_raw")
+    if isinstance(cw, dict):
+        parsed: dict[str, float] = {}
+        for k, v in cw.items():
+            if isinstance(v, (int, float)):
+                parsed[str(k)] = float(v)
+        session["community_weights_raw"] = parsed
+    for key in (
+        "selected_communities",
+        "artist_flow_selected_communities",
+        "genre_flow_selected_communities",
+    ):
+        raw_list = data.get(key)
+        if isinstance(raw_list, list):
+            session[key] = {str(x) for x in raw_list}
+    fm = data.get("flow_mode")
+    if fm is None or isinstance(fm, str):
+        session["flow_mode"] = fm
+    ft = data.get("free_text_query")
+    if isinstance(ft, str):
+        session["free_text_query"] = ft
+    widgets = data.get("widgets")
+    if isinstance(widgets, dict):
+        for wkey, val in widgets.items():
+            if isinstance(wkey, str) and isinstance(val, (bool, int, float, str)):
+                session[wkey] = val
+    if data_implies_taste_setup_complete(session):
+        clear_taste_wizard_reset_pending(session)
+    else:
+        mark_taste_wizard_reset_pending(session)
 
 
 def peek_active_profile_slug_from_context_cookies() -> str | None:
