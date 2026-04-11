@@ -5,7 +5,11 @@ from __future__ import annotations
 import logging
 import random
 import secrets
-from datetime import UTC, date, datetime
+import threading
+import time
+from datetime import UTC, date, datetime, timedelta
+from pathlib import Path
+from typing import Any
 
 import streamlit as st
 import streamlit.components.v1 as components
@@ -19,14 +23,13 @@ from pages.spotify_token_persist import (
     read_spotify_token_from_session,
 )
 
-from music_review.dashboard.neueste_spotify_publish import (
-    publish_playlist_for_candidates,
+from music_review.dashboard.neueste_spotify_generate_job import (
+    NeuesteSpotifyGenerateOutcome,
+    run_neueste_spotify_publish_pipeline,
 )
 from music_review.dashboard.newest_spotify_playlist import (
     amplify_preference_weights,
     build_album_weights,
-    build_playlist_candidates,
-    resolve_track_uri_strict,
 )
 from music_review.dashboard.user_db import (
     get_connection as get_db_connection,
@@ -36,7 +39,6 @@ from music_review.dashboard.user_db import (
 )
 from music_review.dashboard.user_profile_store import (
     ACTIVE_PROFILE_SESSION_KEY,
-    SPOTIFY_PREVIEW_COOLDOWN_SECONDS,
     default_profiles_dir,
     get_spotify_preview_last_generated_at,
     normalize_profile_slug,
@@ -77,6 +79,13 @@ def _try_load_user_spotify_config() -> SpotifyAuthConfig | None:
 
 NEWEST_SPOTIFY_PLAYLIST_NAME_KEY = "newest-spotify-playlist-name"
 NEWEST_SPOTIFY_LAST_PUBLISH_KEY = "newest_spotify_last_publish"
+NEWEST_SPOTIFY_GENERATE_JOB_KEY = "neueste_spotify_generate_job_v1"
+
+# Short HTTP reruns while a background worker talks to Spotify (proxy timeout).
+_SPOTIFY_JOB_POLL_INTERVAL_SECONDS = 1.0
+
+# Spotify iframe height and Streamlit ``components.html`` viewport (must match).
+_NEWEST_SPOTIFY_PLAYLIST_EMBED_HEIGHT_PX = 720
 
 # Discrete taste-orientation steps for the select slider (German UI labels).
 _SPOTIFY_TASTE_ORIENTATION_OPTIONS: tuple[str, ...] = (
@@ -95,22 +104,19 @@ _SPOTIFY_TASTE_ORIENTATION_EXPONENT: dict[str, float] = {
 _LOGGER = logging.getLogger(__name__)
 
 
-def _german_cooldown_hint(seconds_remaining: int) -> str:
-    """User-facing countdown for the Spotify playlist generation rate limit."""
-    if seconds_remaining <= 0:
-        return ""
-    minutes, secs = divmod(seconds_remaining, 60)
-    parts: list[str] = []
-    if minutes > 0:
-        parts.append("1 Minute" if minutes == 1 else f"{minutes} Minuten")
-    if secs > 0 or not parts:
-        parts.append("1 Sekunde" if secs == 1 else f"{secs} Sekunden")
-    duration = " und ".join(parts) if len(parts) > 1 else parts[0]
-    return (
-        f"Nächste Playlist-Erstellung frühestens in {duration} "
-        f"(Sperre {SPOTIFY_PREVIEW_COOLDOWN_SECONDS // 60} Minuten nach "
-        "„Spotify-Playlist erzeugen“; gespeichert im Profil bzw. in dieser Sitzung)."
-    )
+def _german_spotify_generate_button_label(
+    *,
+    can_publish: bool,
+    seconds_remaining: int,
+    now_utc: datetime,
+) -> str:
+    """Generate-button label; when rate-limited, appends next allowed local time."""
+    base = "Spotify-Playlist erzeugen"
+    if can_publish or seconds_remaining <= 0:
+        return base
+    unlock_at = now_utc + timedelta(seconds=seconds_remaining)
+    clock = unlock_at.astimezone().strftime("%H:%M")
+    return f"{base} (um {clock} Uhr erneut)"
 
 
 def _log_weight_summary(weights: list[float], *, review_ids: list[int]) -> None:
@@ -163,7 +169,7 @@ def _token_declares_spotify_scope(token: SpotifyToken, scope: str) -> bool:
 
 
 def _render_last_spotify_publish_if_any() -> None:
-    """Show link and embed for the last successfully published playlist."""
+    """Show embed for the last successfully published playlist."""
     raw = st.session_state.get(NEWEST_SPOTIFY_LAST_PUBLISH_KEY)
     if not isinstance(raw, dict):
         return
@@ -171,24 +177,136 @@ def _render_last_spotify_publish_if_any() -> None:
     if not isinstance(pid_any, str) or not pid_any.strip():
         return
     pid = pid_any.strip()
-    ext_any = raw.get("external_url")
-    url = (
-        ext_any.strip()
-        if isinstance(ext_any, str) and ext_any.strip()
-        else f"https://open.spotify.com/playlist/{pid}"
-    )
-    st.link_button("In Spotify öffnen", url, use_container_width=True)
     embed_src = f"https://open.spotify.com/embed/playlist/{pid}"
+    h = _NEWEST_SPOTIFY_PLAYLIST_EMBED_HEIGHT_PX
+    # Streamlit ``height`` is the component iframe viewport; if it is smaller than
+    # the inner Spotify iframe, the playlist embed appears clipped.
     components.html(
         (
             f'<iframe title="Spotify" style="border-radius:12px" '
-            f'src="{embed_src}?utm_source=generator" width="100%" height="720" '
+            f'src="{embed_src}?utm_source=generator" width="100%" height="{h}" '
             'frameBorder="0" allowfullscreen="" '
             'allow="autoplay; clipboard-write; encrypted-media; fullscreen; '
             'picture-in-picture" loading="lazy"></iframe>'
         ),
-        height=400,
+        height=h,
     )
+
+
+def _run_neueste_spotify_job_worker(
+    holder: dict[str, Any],
+    *,
+    client: SpotifyClient,
+    token: SpotifyToken,
+    chosen_reviews: list[Review],
+    alloc_weights: list[float],
+    raw_scores: list[float],
+    target_count: int,
+    rng: random.Random,
+    resolved_playlist_name: str,
+    public: bool,
+) -> None:
+    """Run Spotify API work off the main Streamlit script thread."""
+    try:
+        outcome = run_neueste_spotify_publish_pipeline(
+            client=client,
+            token=token,
+            chosen_reviews=chosen_reviews,
+            alloc_weights=alloc_weights,
+            raw_scores=raw_scores,
+            target_count=target_count,
+            rng=rng,
+            resolved_playlist_name=resolved_playlist_name,
+            public=public,
+        )
+        holder["outcome"] = outcome
+    except Exception as exc:
+        holder["worker_error"] = repr(exc)
+    finally:
+        holder["done"] = True
+
+
+def _apply_spotify_generate_job_holder(
+    holder: dict[str, Any],
+    *,
+    profiles_dir: Path,
+) -> None:
+    """Apply a finished job to session state and show German UI messages."""
+    worker_err = holder.get("worker_error")
+    if isinstance(worker_err, str) and worker_err:
+        st.error("Spotify-Playlist konnte nicht erzeugt werden (unerwarteter Fehler).")
+        st.caption(f"Technische Details: {worker_err}")
+        return
+
+    outcome_any = holder.get("outcome")
+    if not isinstance(outcome_any, NeuesteSpotifyGenerateOutcome):
+        st.error(
+            "Spotify-Playlist konnte nicht erzeugt werden "
+            "(kein Ergebnis vom Hintergrundjob)."
+        )
+        return
+
+    outcome = outcome_any
+    if outcome.unexpected_error:
+        st.error("Spotify-Playlist konnte nicht erzeugt werden (unerwarteter Fehler).")
+        st.caption(f"Technische Details: {outcome.unexpected_error}")
+        return
+
+    if outcome.warn_partial_candidates:
+        st.warning(outcome.warn_partial_candidates)
+
+    if outcome.error_no_candidates:
+        st.error(
+            "Keine Spotify-Treffer für die Auswahl. Bitte Einstellungen "
+            "oder den Rezensionen-Pool prüfen."
+        )
+        return
+
+    if outcome.error_value_message is not None:
+        st.error(outcome.error_value_message)
+        return
+
+    if outcome.error_runtime_message is not None:
+        st.error(
+            "Spotify-Playlist konnte nicht erzeugt werden. "
+            "Bitte Verbindung und Berechtigungen prüfen."
+        )
+        st.caption(f"Technische Details: {outcome.error_runtime_message}")
+        if outcome.show_runtime_403_caption:
+            st.caption(
+                "Hinweis: HTTP 403 bedeutet oft fehlende "
+                "OAuth-Berechtigungen: private Playlists brauchen "
+                "„playlist-modify-private“, öffentliche "
+                "„playlist-modify-public“. Zum Auflisten eigener "
+                "Playlists (Namensabgleich) braucht Spotify "
+                "„playlist-read-private“. Unter „Spotify-App verwalten“ "
+                "Zugangsdaten entfernen, `.env`/`SPOTIFY_SCOPES` prüfen, "
+                "erneut „Verbindung mit Spotify herstellen“."
+            )
+        return
+
+    if outcome.publish_succeeded:
+        record_spotify_preview_generated(
+            session=st.session_state,
+            profiles_dir=profiles_dir,
+            when_utc=datetime.now(UTC),
+        )
+        st.session_state[NEWEST_SPOTIFY_LAST_PUBLISH_KEY] = {
+            "playlist_id": outcome.playlist_id,
+            "external_url": outcome.external_url,
+            "created": outcome.created,
+        }
+        _LOGGER.info(
+            "newest spotify publish: done playlist_id=%s created=%s url=%r",
+            outcome.playlist_id,
+            outcome.created,
+            outcome.external_url,
+        )
+        if not outcome.created:
+            st.success(
+                "Eine bestehende Playlist gleichen Namens wurde "
+                "aktualisiert (Songs ersetzt)."
+            )
 
 
 def render_neueste_spotify_playlist_section(
@@ -239,12 +357,6 @@ def render_neueste_spotify_playlist_section(
             value=False,
             key="newest-spotify-playlist-public",
         )
-    st.caption(
-        "Gleicher Name (Groß-/Kleinschreibung wird ignoriert) wie eine Playlist in "
-        "deiner Spotify-Bibliothek: **nur die Songs** dieser Playlist werden ersetzt. "
-        "Wenn mehrere Playlists gleich heißen, zählt die erste in der "
-        "Bibliotheks-Reihenfolge von Spotify."
-    )
 
     cfg = _try_load_user_spotify_config()
     if cfg is None:
@@ -269,9 +381,6 @@ def render_neueste_spotify_playlist_section(
     )
     can_publish_playlist = cooldown_remaining == 0
 
-    if cooldown_remaining > 0:
-        st.warning(_german_cooldown_hint(cooldown_remaining))
-
     st.markdown(
         '<div style="min-height: 2.5rem;" aria-hidden="true"></div>',
         unsafe_allow_html=True,
@@ -281,7 +390,11 @@ def render_neueste_spotify_playlist_section(
         generate_clicked = False
     else:
         generate_clicked = st.button(
-            "Spotify-Playlist erzeugen",
+            _german_spotify_generate_button_label(
+                can_publish=can_publish_playlist,
+                seconds_remaining=cooldown_remaining,
+                now_utc=now_utc,
+            ),
             type="primary",
             key="newest-spotify-generate",
             width="stretch",
@@ -332,12 +445,13 @@ def render_neueste_spotify_playlist_section(
             "`SPOTIFY_SCOPES` dieses Scope enthält."
         )
 
-    if generate_clicked:
-        if not can_publish_playlist:
-            st.warning(
-                "Eine neue Playlist-Erstellung ist noch nicht möglich. Bitte die "
-                "angezeigte Wartezeit abwarten.",
-            )
+    if generate_clicked and can_publish_playlist:
+        existing_job = st.session_state.get(NEWEST_SPOTIFY_GENERATE_JOB_KEY)
+        prev_holder = (
+            existing_job.get("holder") if isinstance(existing_job, dict) else None
+        )
+        if isinstance(prev_holder, dict) and not prev_holder.get("done"):
+            st.warning("Eine Playlist-Erstellung läuft bereits. Bitte kurz warten.")
         else:
             ranked_rows = (
                 None
@@ -368,108 +482,61 @@ def render_neueste_spotify_playlist_section(
                 weights,
                 exponent=taste_exponent,
             )
+            token_for_publish = _ensure_valid_spotify_token(client, token)
+            resolved_name = (
+                playlist_name.strip() or _default_newest_spotify_playlist_name()
+            )
+            holder: dict[str, Any] = {
+                "done": False,
+                "outcome": None,
+                "worker_error": None,
+            }
+            thread = threading.Thread(
+                target=_run_neueste_spotify_job_worker,
+                kwargs={
+                    "holder": holder,
+                    "client": client,
+                    "token": token_for_publish,
+                    "chosen_reviews": chosen_reviews,
+                    "alloc_weights": alloc_weights,
+                    "raw_scores": raw_scores,
+                    "target_count": target_count,
+                    "rng": rng,
+                    "resolved_playlist_name": resolved_name,
+                    "public": make_playlist_public,
+                },
+                daemon=True,
+            )
+            st.session_state[NEWEST_SPOTIFY_GENERATE_JOB_KEY] = {
+                "holder": holder,
+                "thread": thread,
+            }
+            thread.start()
             _LOGGER.info(
-                "newest spotify publish: start build_playlist_candidates "
-                "n_albums=%s target_count=%s taste_orientation=%s taste_exponent=%s",
+                "newest spotify publish: background job started "
+                "n_albums=%s target_count=%s",
                 len(chosen_reviews),
                 target_count,
-                taste_orientation,
-                taste_exponent,
             )
-            with st.spinner("Spotify-Playlist wird erzeugt …"):
-                token_for_publish = _ensure_valid_spotify_token(client, token)
-                candidates = build_playlist_candidates(
-                    reviews=chosen_reviews,
-                    weights=alloc_weights,
-                    raw_scores=raw_scores,
-                    target_count=target_count,
-                    rng=rng,
-                    resolve_fn=lambda *, artist, track_title: resolve_track_uri_strict(
-                        client,
-                        token_for_publish,
-                        artist=artist,
-                        track_title=track_title,
-                    ),
-                )
-            _LOGGER.info(
-                "newest spotify publish: finished n_candidates=%s (target was %s)",
-                len(candidates),
-                target_count,
-            )
-            _LOGGER.debug(
-                "newest spotify publish: candidate review_ids=%s",
-                [c.review_id for c in candidates[:25]],
-            )
-            if len(candidates) < target_count:
-                st.warning(
-                    "Es konnten nicht genug eindeutige Spotify-Treffer gefunden "
-                    "werden. "
-                    f"Gefunden: {len(candidates)} von {target_count}. Die Playlist "
-                    "wird nur mit diesen Songs befüllt."
-                )
-            if not candidates:
-                st.error(
-                    "Keine Spotify-Treffer für die Auswahl. Bitte Einstellungen "
-                    "oder den Rezensionen-Pool prüfen."
-                )
-            else:
-                resolved_name = (
-                    playlist_name.strip() or _default_newest_spotify_playlist_name()
-                )
-                try:
-                    playlist, created = publish_playlist_for_candidates(
-                        client,
-                        token_for_publish,
-                        candidates=candidates,
-                        resolved_name=resolved_name,
-                        public=make_playlist_public,
-                    )
-                except ValueError as exc:
-                    st.error(str(exc))
-                except RuntimeError as exc:
-                    st.error(
-                        "Spotify-Playlist konnte nicht erzeugt werden. "
-                        "Bitte Verbindung und Berechtigungen prüfen."
-                    )
-                    st.caption(f"Technische Details: {exc}")
-                    detail = str(exc)
-                    if "403" in detail or "forbidden" in detail.casefold():
-                        st.caption(
-                            "Hinweis: HTTP 403 bedeutet oft fehlende "
-                            "OAuth-Berechtigungen: private Playlists brauchen "
-                            "„playlist-modify-private“, öffentliche "
-                            "„playlist-modify-public“. Zum Auflisten eigener "
-                            "Playlists (Namensabgleich) braucht Spotify "
-                            "„playlist-read-private“. Unter „Spotify-App verwalten“ "
-                            "Zugangsdaten entfernen, `.env`/`SPOTIFY_SCOPES` prüfen, "
-                            "erneut „Verbindung mit Spotify herstellen“."
-                        )
-                else:
-                    record_spotify_preview_generated(
-                        session=st.session_state,
-                        profiles_dir=profiles_dir,
-                        when_utc=datetime.now(UTC),
-                    )
-                    st.session_state[NEWEST_SPOTIFY_LAST_PUBLISH_KEY] = {
-                        "playlist_id": playlist.id,
-                        "external_url": playlist.external_url or "",
-                        "created": created,
-                    }
-                    _LOGGER.info(
-                        "newest spotify publish: done playlist_id=%s created=%s url=%r",
-                        playlist.id,
-                        created,
-                        playlist.external_url,
-                    )
-                    if created:
-                        st.success(
-                            "Neue Spotify-Playlist wurde angelegt und mit Songs "
-                            "befüllt."
-                        )
-                    else:
-                        st.success(
-                            "Eine bestehende Playlist gleichen Namens wurde "
-                            "aktualisiert (Songs ersetzt)."
-                        )
 
     _render_last_spotify_publish_if_any()
+
+    job = st.session_state.get(NEWEST_SPOTIFY_GENERATE_JOB_KEY)
+    if isinstance(job, dict):
+        holder_poll = job.get("holder")
+        if not isinstance(holder_poll, dict):
+            del st.session_state[NEWEST_SPOTIFY_GENERATE_JOB_KEY]
+        elif holder_poll["done"]:
+            _apply_spotify_generate_job_holder(
+                holder_poll,
+                profiles_dir=profiles_dir,
+            )
+            del st.session_state[NEWEST_SPOTIFY_GENERATE_JOB_KEY]
+            st.rerun()
+        else:
+            st.info(
+                "Spotify-Playlist wird erzeugt … Das kann mehrere Minuten dauern; "
+                "diese Seite aktualisiert sich kurz automatisch."
+            )
+            time.sleep(_SPOTIFY_JOB_POLL_INTERVAL_SECONDS)
+            st.rerun()

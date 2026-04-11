@@ -2,6 +2,8 @@ from __future__ import annotations
 
 import importlib
 import logging
+import re
+from datetime import UTC, datetime
 
 import pytest
 
@@ -47,14 +49,38 @@ def test_log_weight_summary_marks_non_uniform_weights(
     assert "uniform=False" in caplog.text
 
 
-def test_german_cooldown_hint_formats_minutes_and_seconds() -> None:
+def test_spotify_generate_button_label_unlocked() -> None:
     module = importlib.import_module("pages.neueste_spotify_playlist_section")
-    text = module._german_cooldown_hint(125)
-    assert "2 Minuten" in text
-    assert "5 Sekunden" in text
-    assert "Nächste Playlist-Erstellung" in text
+    assert (
+        module._german_spotify_generate_button_label(
+            can_publish=True,
+            seconds_remaining=999,
+            now_utc=datetime(2026, 1, 1, 12, 0, 0, tzinfo=UTC),
+        )
+        == "Spotify-Playlist erzeugen"
+    )
 
 
-def test_german_cooldown_hint_empty_when_allowed() -> None:
+def test_spotify_generate_button_label_no_suffix_when_cooldown_zero() -> None:
     module = importlib.import_module("pages.neueste_spotify_playlist_section")
-    assert module._german_cooldown_hint(0) == ""
+    assert (
+        module._german_spotify_generate_button_label(
+            can_publish=False,
+            seconds_remaining=0,
+            now_utc=datetime(2026, 1, 1, 12, 0, 0, tzinfo=UTC),
+        )
+        == "Spotify-Playlist erzeugen"
+    )
+
+
+def test_spotify_generate_button_label_locked_shows_local_time_suffix() -> None:
+    module = importlib.import_module("pages.neueste_spotify_playlist_section")
+    text = module._german_spotify_generate_button_label(
+        can_publish=False,
+        seconds_remaining=125,
+        now_utc=datetime(2026, 6, 15, 14, 0, 0, tzinfo=UTC),
+    )
+    assert re.fullmatch(
+        r"Spotify-Playlist erzeugen \(um \d{2}:\d{2} Uhr erneut\)$",
+        text,
+    ), text
