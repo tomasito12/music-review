@@ -534,9 +534,6 @@ def render_neueste_spotify_playlist_section(
             del st.session_state[NEWEST_SPOTIFY_GENERATE_JOB_KEY]
             st.rerun()
         else:
-            st.info(
-                "Spotify-Playlist wird erzeugt … Das kann mehrere Minuten dauern; "
-                "diese Seite aktualisiert sich kurz automatisch."
-            )
+            st.info("Die Playlist wird erzeugt - das kann einige Sekunden dauern.")
             time.sleep(_SPOTIFY_JOB_POLL_INTERVAL_SECONDS)
             st.rerun()

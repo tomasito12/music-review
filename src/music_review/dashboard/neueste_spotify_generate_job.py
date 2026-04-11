@@ -13,12 +13,13 @@ from dataclasses import dataclass
 from music_review.dashboard.neueste_spotify_publish import (
     publish_playlist_for_candidates,
 )
-from music_review.dashboard.newest_spotify_playlist import (
-    build_playlist_candidates,
-    resolve_track_uri_strict,
-)
+from music_review.dashboard.newest_spotify_playlist import build_playlist_candidates
 from music_review.domain.models import Review
 from music_review.integrations.spotify_client import SpotifyClient, SpotifyToken
+from music_review.integrations.streaming_catalog_cache import (
+    load_streaming_catalog_cache_from_env,
+    spotify_resolve_with_streaming_catalog_cache,
+)
 
 LOGGER = logging.getLogger(__name__)
 
@@ -79,18 +80,24 @@ def run_neueste_spotify_publish_pipeline(
             len(chosen_reviews),
             target_count,
         )
+        catalog_cache = load_streaming_catalog_cache_from_env()
+
+        def _resolve_tracks(*, artist: str, track_title: str) -> str | None:
+            return spotify_resolve_with_streaming_catalog_cache(
+                catalog_cache,
+                client,
+                token,
+                artist=artist,
+                track_title=track_title,
+            )
+
         candidates = build_playlist_candidates(
             reviews=chosen_reviews,
             weights=alloc_weights,
             raw_scores=raw_scores,
             target_count=target_count,
             rng=rng,
-            resolve_fn=lambda *, artist, track_title: resolve_track_uri_strict(
-                client,
-                token,
-                artist=artist,
-                track_title=track_title,
-            ),
+            resolve_fn=_resolve_tracks,
         )
         LOGGER.info(
             "neueste spotify job: finished n_candidates=%s (target was %s)",

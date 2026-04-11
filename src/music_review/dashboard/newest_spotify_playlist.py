@@ -336,6 +336,15 @@ def _norm_text(value: str) -> str:
     return _SPACE_RE.sub(" ", clean).strip()
 
 
+def catalog_lookup_key(artist: str, track_title: str) -> str:
+    """Stable key for cross-provider catalog caches.
+
+    Matches duplicate-track detection inside :func:`build_playlist_candidates`
+    (``artist`` + ``track_title`` from the review source).
+    """
+    return f"{_norm_text(artist)}::{_norm_text(track_title)}"
+
+
 def build_album_weights(
     reviews: list[Review],
     ranked_rows: list[dict[str, Any]] | None,
@@ -524,7 +533,7 @@ def review_has_unused_track_candidate(
     """True if the review has a track whose key is not in ``already_picked_keys``."""
     highlights, non_highlights = candidate_tracks_for_review(review)
     for track in (*highlights, *non_highlights):
-        key = f"{_norm_text(review.artist)}::{_norm_text(track.title)}"
+        key = catalog_lookup_key(review.artist, track.title)
         if key not in already_picked_keys:
             return True
     return False
@@ -583,7 +592,7 @@ def pick_track_title_for_iteration(
         shuffled = list(candidates)
         rng.shuffle(shuffled)
         for track in shuffled:
-            key = f"{_norm_text(review.artist)}::{_norm_text(track.title)}"
+            key = catalog_lookup_key(review.artist, track.title)
             if key in already_picked_keys:
                 continue
             return track.title, source_kind
@@ -851,7 +860,7 @@ def build_playlist_candidates(
                     last_track=_log_str(track_title, max_len=80),
                 )
             continue
-        key = f"{_norm_text(review.artist)}::{_norm_text(track_title)}"
+        key = catalog_lookup_key(review.artist, track_title)
         picked_song_keys.add(key)
         picked_uris.add(uri)
         pending_slots.popleft()

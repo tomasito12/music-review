@@ -18,6 +18,7 @@ from music_review.dashboard.newest_spotify_playlist import (
     build_playlist_candidates,
     build_stratified_slot_plans,
     candidate_tracks_for_review,
+    catalog_lookup_key,
     next_album_index_with_unused_tracks_cyclic,
     pick_track_title_for_iteration,
     resolve_track_uri_strict,
@@ -190,6 +191,21 @@ def test_build_stratified_slot_plans_exposes_largest_remainder_steps() -> None:
 
 def test_allocate_stratified_slot_counts_even_split_when_weights_zero() -> None:
     assert allocate_stratified_slot_counts([0.0, 0.0, 0.0], 10) == [4, 3, 3]
+
+
+def test_catalog_lookup_key_matches_norm_text_pair() -> None:
+    """``catalog_lookup_key`` must stay aligned with playlist duplicate-key logic."""
+    import music_review.dashboard.newest_spotify_playlist as nsp
+
+    artist = "Foo / Bar"
+    title = "Song (live)"
+    assert catalog_lookup_key(artist, title) == (
+        f"{nsp._norm_text(artist)}::{nsp._norm_text(title)}"
+    )
+
+
+def test_catalog_lookup_key_empty_strings() -> None:
+    assert catalog_lookup_key("", "") == "::"
 
 
 def test_build_playlist_candidates_stratified_counts_match_quotas() -> None:
