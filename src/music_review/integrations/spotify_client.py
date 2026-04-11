@@ -212,6 +212,42 @@ class SpotifyAuthConfig:
             client_secret=client_secret,
         )
 
+    @classmethod
+    def from_user_credentials(
+        cls,
+        *,
+        client_id: str,
+        client_secret: str,
+        redirect_uri: str | None = None,
+        scopes: tuple[str, ...] | None = None,
+    ) -> SpotifyAuthConfig:
+        """Build config from per-user Spotify Developer App credentials.
+
+        ``redirect_uri`` defaults to ``SPOTIFY_REDIRECT_URI`` from the
+        environment (the deploy-wide endpoint); ``scopes`` default to the
+        standard playlist scopes.
+        """
+        if not client_id or not client_secret:
+            raise SpotifyConfigError(
+                "Spotify Client-ID und Client-Secret sind erforderlich."
+            )
+        if redirect_uri is None:
+            redirect_uri = (getenv("SPOTIFY_REDIRECT_URI") or "").strip()
+        if not redirect_uri:
+            raise SpotifyConfigError("SPOTIFY_REDIRECT_URI is not set")
+        redirect_uri = normalize_streamlit_spotify_redirect_uri(redirect_uri)
+        if scopes is None:
+            scopes = (
+                "playlist-modify-public",
+                "playlist-modify-private",
+            )
+        return cls(
+            client_id=client_id.strip(),
+            redirect_uri=redirect_uri,
+            scopes=scopes,
+            client_secret=client_secret.strip(),
+        )
+
 
 @dataclass(slots=True)
 class SpotifyToken:

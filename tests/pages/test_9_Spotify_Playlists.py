@@ -2,12 +2,32 @@ from __future__ import annotations
 
 import importlib
 import types
+from pathlib import Path
+from urllib.parse import parse_qs, urlparse
 
 import pytest
+
+from music_review.dashboard import user_db
 
 
 def _spotify_playlists_module() -> types.ModuleType:
     return importlib.import_module("pages.9_Spotify_Playlists")
+
+
+def test_spotify_authorization_code_digest_is_stable_and_length() -> None:
+    module = _spotify_playlists_module()
+    d1 = module._spotify_authorization_code_digest("same-code")
+    d2 = module._spotify_authorization_code_digest("same-code")
+    assert d1 == d2
+    assert len(d1) == 24
+
+
+def test_spotify_oauth_spent_digests_roundtrip(monkeypatch: pytest.MonkeyPatch) -> None:
+    module = _spotify_playlists_module()
+    monkeypatch.setattr(module.st, "session_state", {})
+    module._spotify_oauth_mark_code_digest_spent("digest_a")
+    module._spotify_oauth_mark_code_digest_spent("digest_b")
+    assert module._spotify_oauth_spent_digests_list() == ["digest_a", "digest_b"]
 
 
 def test_spotify_page_importable() -> None:
@@ -118,6 +138,46 @@ def test_spotify_oauth_session_snapshot_dict_builds_expected(
     assert d["widgets"]["newest-spotify-taste-orientation"] == "stark"
 
 
+def test_active_user_slug_returns_slug_from_session(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    module = _spotify_playlists_module()
+    monkeypatch.setattr(
+        module.st,
+        "session_state",
+        {"active_profile_slug": "demo-user"},
+    )
+    assert module._active_user_slug() == "demo-user"
+
+
+def test_active_user_slug_returns_none_without_profile(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    module = _spotify_playlists_module()
+    monkeypatch.setattr(module.st, "session_state", {})
+    assert module._active_user_slug() is None
+
+
+def test_active_user_slug_returns_none_for_empty_string(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    module = _spotify_playlists_module()
+    monkeypatch.setattr(
+        module.st,
+        "session_state",
+        {"active_profile_slug": "  "},
+    )
+    assert module._active_user_slug() is None
+
+
+def test_user_has_spotify_credentials_false_without_login(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    module = _spotify_playlists_module()
+    monkeypatch.setattr(module.st, "session_state", {})
+    assert module._user_has_spotify_credentials() is False
+
+
 def test_redirect_uri_mismatch_hint_html_escapes_special_characters() -> None:
     module = _spotify_playlists_module()
     html_fn = module._redirect_uri_mismatch_hint_html
@@ -128,3 +188,106 @@ def test_redirect_uri_mismatch_hint_html_escapes_special_characters() -> None:
     assert "<script>" not in out
     assert "&amp;" in out or "1&amp;b" in out
     assert "http://x/" in out
+    assert "127.0.0.1" in out
+    assert "localhost" in out
+
+
+def test_oauth_profile_slug_from_state_param_returns_slug() -> None:
+    module = _spotify_playlists_module()
+    assert module._oauth_profile_slug_from_state_param("csrf.my-user_slug") == (
+        "my-user_slug"
+    )
+
+
+def test_oauth_profile_slug_from_state_param_returns_none_for_legacy_state() -> None:
+    module = _spotify_playlists_module()
+    assert module._oauth_profile_slug_from_state_param("csrf-token-only") is None
+
+
+def test_spotify_oauth_callback_query_present_true(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    module = _spotify_playlists_module()
+    monkeypatch.setattr(
+        module.st,
+        "query_params",
+        {"code": "auth-code", "state": "csrf.alice"},
+    )
+    assert module._spotify_oauth_callback_query_present() is True
+
+
+def test_spotify_oauth_callback_query_present_false_without_code(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    module = _spotify_playlists_module()
+    monkeypatch.setattr(
+        module.st,
+        "query_params",
+        {"state": "only-state"},
+    )
+    assert module._spotify_oauth_callback_query_present() is False
+
+
+def test_should_show_spotify_setup_guide_only_false_when_oauth_pending() -> None:
+    module = _spotify_playlists_module()
+    assert (
+        module._should_show_spotify_setup_guide_only(
+            client=None,
+            has_user_creds=False,
+            oauth_callback_pending=True,
+        )
+        is False
+    )
+
+
+def test_should_show_spotify_setup_guide_only_true_when_no_oauth_no_client() -> None:
+    module = _spotify_playlists_module()
+    assert (
+        module._should_show_spotify_setup_guide_only(
+            client=None,
+            has_user_creds=False,
+            oauth_callback_pending=False,
+        )
+        is True
+    )
+
+
+def test_load_client_uses_db_credentials_for_slug_in_oauth_state(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    """OAuth return must use the same Spotify app as authorize (per-user DB creds)."""
+    db_path = tmp_path / "plattenradar_test.db"
+    conn = user_db.get_connection(db_path)
+    assert user_db.create_user(conn, "alice", "pw12345678")
+    user_db.save_spotify_credentials(
+        conn,
+        "alice",
+        "cid-from-db-for-alice",
+        "secret-from-db-for-alice",
+    )
+
+    module = _spotify_playlists_module()
+
+    def _conn():
+        return user_db.get_connection(db_path)
+
+    monkeypatch.setattr(module, "get_db_connection", _conn)
+    monkeypatch.setenv(
+        "SPOTIFY_REDIRECT_URI",
+        "http://127.0.0.1:8501/spotify_playlists",
+    )
+    monkeypatch.delenv("SPOTIFY_CLIENT_ID", raising=False)
+    monkeypatch.delenv("SPOTIFY_CLIENT_SECRET", raising=False)
+    monkeypatch.setattr(module.st, "session_state", {})
+    monkeypatch.setattr(
+        module.st,
+        "query_params",
+        {"code": "unused-in-this-test", "state": "csrfpart.alice"},
+    )
+
+    client, _hint = module._load_client_and_redirect_hint()
+    assert client is not None
+    auth_url = client.build_authorize_url(state="x", code_challenge="y")
+    parsed = parse_qs(urlparse(auth_url).query)
+    assert parsed.get("client_id") == ["cid-from-db-for-alice"]

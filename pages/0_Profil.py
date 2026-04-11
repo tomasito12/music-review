@@ -1,23 +1,27 @@
-"""Eigenständige Profilseite -- Profil laden, anlegen oder überspringen."""
+"""Profile page -- login, register, change password, or skip (German UI)."""
 
 from __future__ import annotations
-
-from typing import Any
 
 import streamlit as st
 from pages.page_helpers import (
     build_session_profile_payload,
-    clear_active_profile_slug_cookie,
+    clear_session_token_cookie,
     logout_active_profile,
     persist_active_profile_slug_cookie,
     reset_taste_preferences,
     session_taste_setup_complete,
 )
 
+from music_review.dashboard.user_db import (
+    authenticate_user,
+    change_password,
+    create_user,
+    get_connection,
+    user_exists,
+)
 from music_review.dashboard.user_profile_store import (
     ACTIVE_PROFILE_SESSION_KEY,
     apply_profile_to_session,
-    default_profiles_dir,
     load_profile,
     normalize_profile_slug,
     save_profile,
@@ -27,6 +31,15 @@ KEY_PROFILE_NAME = "profil_page_name_input"
 KEY_PROFILE_SIGN_IN = "profil_page_sign_in"
 KEY_PROFILE_SIGN_OUT = "profil_page_sign_out"
 KEY_EXISTING_NAME = "profil_page_existing_name_input"
+KEY_EXISTING_PASSWORD = "profil_page_existing_pw_input"
+KEY_NEW_NAME = "profil_page_new_name_input"
+KEY_NEW_PASSWORD = "profil_page_new_pw_input"
+KEY_NEW_PASSWORD_CONFIRM = "profil_page_new_pw_confirm"
+KEY_CHANGE_PW_OLD = "profil_page_change_pw_old"
+KEY_CHANGE_PW_NEW = "profil_page_change_pw_new"
+KEY_CHANGE_PW_CONFIRM = "profil_page_change_pw_confirm"
+
+_MIN_PASSWORD_LENGTH = 4
 
 
 def _profil_css() -> None:
@@ -82,43 +95,99 @@ def _profil_css() -> None:
     )
 
 
-def _sign_in(profiles_dir: Any, slug: str) -> None:
+def _sign_in(slug: str, password: str) -> None:
     try:
         safe = normalize_profile_slug(slug)
     except ValueError as err:
         st.error(str(err))
         return
-    data = load_profile(profiles_dir, safe)
-    if data is None:
-        st.error("Profil konnte nicht geladen werden.")
+    if not password:
+        st.error("Bitte gib dein Passwort ein.")
         return
-    apply_profile_to_session(st.session_state, data)
+    conn = get_connection()
+    if not user_exists(conn, safe):
+        st.error("Profil nicht gefunden.")
+        return
+    if not authenticate_user(conn, safe, password):
+        st.error("Passwort ist falsch.")
+        return
+    data = load_profile(None, safe)  # type: ignore[arg-type]
+    if data is not None:
+        apply_profile_to_session(st.session_state, data)
     st.session_state[ACTIVE_PROFILE_SESSION_KEY] = safe
     persist_active_profile_slug_cookie(safe)
     st.rerun()
 
 
-def _create_new(profiles_dir: Any, name_raw: str) -> None:
+def _create_new(name_raw: str, password: str, password_confirm: str) -> None:
     try:
         slug = normalize_profile_slug(name_raw)
     except ValueError as err:
         st.error(str(err))
         return
-    existing_data = load_profile(profiles_dir, slug)
-    if existing_data is not None:
+    if not password or len(password) < _MIN_PASSWORD_LENGTH:
+        st.error(f"Passwort muss mindestens {_MIN_PASSWORD_LENGTH} Zeichen lang sein.")
+        return
+    if password != password_confirm:
+        st.error("Passwörter stimmen nicht überein.")
+        return
+    conn = get_connection()
+    if not create_user(conn, slug, password):
         st.error(
             "Ein Profil mit diesem Namen existiert bereits. "
             "Wenn es dein Profil ist, melde dich unter "
-            "„Bestehendes Profil laden“ mit demselben Namen an. "
+            "\u201eAnmelden\u201c mit demselben Namen an. "
             "Andernfalls wähle einen anderen Namen.",
         )
         return
     payload = build_session_profile_payload(profile_slug=slug)
-    save_profile(profiles_dir, slug, payload)
+    save_profile(None, slug, payload)  # type: ignore[arg-type]
     st.session_state[ACTIVE_PROFILE_SESSION_KEY] = slug
     persist_active_profile_slug_cookie(slug)
     apply_profile_to_session(st.session_state, payload)
     st.rerun()
+
+
+def _render_change_password() -> None:
+    """Expander to change the password of the logged-in user."""
+    active = st.session_state.get(ACTIVE_PROFILE_SESSION_KEY)
+    if not active:
+        return
+    with st.expander("Passwort ändern"):
+        old_pw = st.text_input(
+            "Aktuelles Passwort",
+            type="password",
+            key=KEY_CHANGE_PW_OLD,
+        )
+        new_pw = st.text_input(
+            "Neues Passwort",
+            type="password",
+            key=KEY_CHANGE_PW_NEW,
+        )
+        new_pw_confirm = st.text_input(
+            "Neues Passwort bestätigen",
+            type="password",
+            key=KEY_CHANGE_PW_CONFIRM,
+        )
+        if st.button("Passwort ändern", key="profil_change_pw_btn"):
+            if not old_pw:
+                st.error("Bitte gib dein aktuelles Passwort ein.")
+                return
+            conn = get_connection()
+            if not authenticate_user(conn, active, old_pw):
+                st.error("Aktuelles Passwort ist falsch.")
+                return
+            if not new_pw or len(new_pw) < _MIN_PASSWORD_LENGTH:
+                st.error(
+                    f"Neues Passwort muss mindestens "
+                    f"{_MIN_PASSWORD_LENGTH} Zeichen haben."
+                )
+                return
+            if new_pw != new_pw_confirm:
+                st.error("Neue Passwörter stimmen nicht überein.")
+                return
+            change_password(conn, active, new_pw)
+            st.success("Passwort wurde geändert.")
 
 
 def _render_active_profile() -> None:
@@ -137,21 +206,22 @@ def _render_active_profile() -> None:
             logout_active_profile()
             st.rerun()
 
+    _render_change_password()
+
 
 def _render_profile_choices() -> None:
-    """Three-tab profile selection: existing / new / skip."""
-    profiles_dir = default_profiles_dir()
+    """Two-tab profile selection: login or register."""
 
     tab_existing, tab_new, tab_skip = st.tabs(
         [
-            "Bestehendes Profil laden",
-            "Neues Profil anlegen",
+            "Anmelden",
+            "Registrieren",
             "Ohne Profil weiter",
         ]
     )
 
     with tab_existing:
-        st.markdown("> Gib deinen Profilnamen ein.")
+        st.markdown("> Gib deinen Profilnamen und dein Passwort ein.")
         st.caption(
             "Ohne Leerzeichen im Namen, bitte "
             "(Bindestrich oder Unterstrich sind erlaubt).",
@@ -162,11 +232,16 @@ def _render_profile_choices() -> None:
             placeholder="z. B. thomas",
             key=KEY_EXISTING_NAME,
         )
+        existing_pw = st.text_input(
+            "Passwort",
+            type="password",
+            key=KEY_EXISTING_PASSWORD,
+        )
         if st.button("Anmelden", key=KEY_PROFILE_SIGN_IN):
             if not (existing_name or "").strip():
                 st.error("Bitte gib einen Profilnamen ein.")
             else:
-                _sign_in(profiles_dir, existing_name)
+                _sign_in(existing_name, existing_pw)
 
     with tab_new:
         st.caption(
@@ -177,10 +252,20 @@ def _render_profile_choices() -> None:
             "Profilname",
             value="",
             placeholder="z. B. thomas",
-            key=KEY_PROFILE_NAME,
+            key=KEY_NEW_NAME,
+        )
+        new_pw = st.text_input(
+            "Passwort",
+            type="password",
+            key=KEY_NEW_PASSWORD,
+        )
+        new_pw_confirm = st.text_input(
+            "Passwort bestätigen",
+            type="password",
+            key=KEY_NEW_PASSWORD_CONFIRM,
         )
         if st.button("Profil erstellen", key="profil_page_create"):
-            _create_new(profiles_dir, name_raw)
+            _create_new(name_raw, new_pw, new_pw_confirm)
 
     with tab_skip:
         st.markdown(
@@ -194,7 +279,7 @@ def _render_profile_choices() -> None:
             width="stretch",
         ):
             st.session_state.pop(ACTIVE_PROFILE_SESSION_KEY, None)
-            clear_active_profile_slug_cookie()
+            clear_session_token_cookie()
             st.session_state["flow_mode"] = None
             st.switch_page("pages/0b_Einstieg.py")
 
@@ -209,7 +294,7 @@ def main() -> None:
         '<div class="profil-hero">'
         '<p class="profil-title">Profil</p>'
         '<p class="profil-subtitle">'
-        "Melde dich an, um deinen Musikgeschmack zu speichern"
+        "Melde dich an oder erstelle ein neues Profil"
         "</p>"
         "</div>",
         unsafe_allow_html=True,
@@ -218,9 +303,9 @@ def main() -> None:
     st.markdown(
         '<div class="profil-body">'
         "<p>"
-        "Die App ist zunächst für den Freundeskreis gedacht. "
-        "Dein Profilname genügt &mdash; bewusst ohne Passwort, "
-        "weil wir uns vertrauen."
+        "Dein Musikgeschmack wird unter deinem Profilnamen gespeichert "
+        "und mit einem Passwort geschützt. Beim nächsten Besuch kannst du "
+        "direkt weitermachen."
         "</p>"
         "</div>",
         unsafe_allow_html=True,
@@ -237,16 +322,10 @@ def main() -> None:
         unsafe_allow_html=True,
     )
 
-    st.caption(
-        "Damit die Anmeldung beim Wechseln der Seiten zuverlässig bleibt, "
-        "speichert dein Browser den Profilnamen als Cookie (SameSite Lax). "
-        "Abmelden oder „Ohne Profil weiter“ entfernt ihn wieder.",
-    )
-
     with st.expander("Filter und Stile zurücksetzen"):
         st.markdown(
             "Leert Stil- und Filtereinstellungen in dieser Sitzung. "
-            "Dein Profil auf der Platte bleibt unverändert, bis du "
+            "Dein gespeichertes Profil bleibt unverändert, bis du "
             "in der Seitenleiste **Speichern** wählst."
         )
         confirm = st.checkbox(

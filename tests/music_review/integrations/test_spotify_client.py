@@ -48,6 +48,84 @@ def test_spotify_auth_config_from_env_missing_client_id(
         SpotifyAuthConfig.from_env()
 
 
+class TestFromUserCredentials:
+    def test_builds_config_with_explicit_redirect(self) -> None:
+        cfg = SpotifyAuthConfig.from_user_credentials(
+            client_id="test-id",
+            client_secret="test-secret",
+            redirect_uri="http://127.0.0.1:8501/spotify_playlists",
+        )
+        assert cfg.client_id == "test-id"
+        assert cfg.client_secret == "test-secret"
+        assert cfg.redirect_uri == "http://127.0.0.1:8501/spotify_playlists"
+        assert "playlist-modify-public" in cfg.scopes
+
+    def test_falls_back_to_env_redirect_uri(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        monkeypatch.setenv(
+            "SPOTIFY_REDIRECT_URI",
+            "http://example.com/spotify_playlists",
+        )
+        cfg = SpotifyAuthConfig.from_user_credentials(
+            client_id="cid",
+            client_secret="csec",
+        )
+        assert cfg.redirect_uri == "http://example.com/spotify_playlists"
+
+    def test_raises_when_empty_client_id(self) -> None:
+        with pytest.raises(SpotifyConfigError):
+            SpotifyAuthConfig.from_user_credentials(
+                client_id="",
+                client_secret="sec",
+                redirect_uri="http://x/callback",
+            )
+
+    def test_raises_when_empty_client_secret(self) -> None:
+        with pytest.raises(SpotifyConfigError):
+            SpotifyAuthConfig.from_user_credentials(
+                client_id="cid",
+                client_secret="",
+                redirect_uri="http://x/callback",
+            )
+
+    def test_raises_when_no_redirect_uri_available(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        monkeypatch.delenv("SPOTIFY_REDIRECT_URI", raising=False)
+        with pytest.raises(SpotifyConfigError):
+            SpotifyAuthConfig.from_user_credentials(
+                client_id="cid",
+                client_secret="csec",
+            )
+
+    def test_normalizes_redirect_uri_casing(self) -> None:
+        cfg = SpotifyAuthConfig.from_user_credentials(
+            client_id="cid",
+            client_secret="csec",
+            redirect_uri="http://host/Spotify_Playlists",
+        )
+        assert cfg.redirect_uri == "http://host/spotify_playlists"
+
+    def test_custom_scopes(self) -> None:
+        cfg = SpotifyAuthConfig.from_user_credentials(
+            client_id="cid",
+            client_secret="csec",
+            redirect_uri="http://x/callback",
+            scopes=("user-read-email",),
+        )
+        assert cfg.scopes == ("user-read-email",)
+
+    def test_trims_whitespace_on_credentials(self) -> None:
+        cfg = SpotifyAuthConfig.from_user_credentials(
+            client_id="  cid  ",
+            client_secret="  csec  ",
+            redirect_uri="http://x/callback",
+        )
+        assert cfg.client_id == "cid"
+        assert cfg.client_secret == "csec"
+
+
 def test_spotify_auth_config_from_env_defaults_scopes(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:

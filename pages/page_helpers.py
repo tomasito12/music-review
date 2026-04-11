@@ -19,6 +19,15 @@ from music_review.dashboard.taste_setup import (
     is_taste_setup_complete,
     mark_taste_wizard_reset_pending,
 )
+from music_review.dashboard.user_db import (
+    create_session_token,
+    delete_session_token,
+    load_user_profile,
+    validate_session_token,
+)
+from music_review.dashboard.user_db import (
+    get_connection as get_db_connection,
+)
 from music_review.dashboard.user_profile_store import (
     ACTIVE_PROFILE_COOKIE_NAME,
     ACTIVE_PROFILE_SESSION_KEY,
@@ -27,7 +36,6 @@ from music_review.dashboard.user_profile_store import (
     build_profile_payload,
     default_profiles_dir,
     ensure_active_profile_hydrated,
-    load_profile,
     normalize_profile_slug,
     save_profile,
 )
@@ -179,6 +187,9 @@ SEMANTIC_CHAT_RESET_BUTTON_KEY = "rec_chat_reset_button"
 SEMANTIC_CHAT_INPUT_KEY = "rec_chat_input"
 SEMANTIC_RAG_MAX_DISTANCE_KEY = "rec_rag_max_distance"
 SEMANTIC_CHAT_MESSAGES_KEY = "rec_chat_messages"
+
+# Browser cookie for session-token-based login (replaces plain slug cookie).
+SESSION_TOKEN_COOKIE_NAME = "mr_session_token"
 
 # Spotify OAuth CSRF state (browser cookie; survives URL navigation / new session).
 SPOTIFY_OAUTH_STATE_COOKIE_NAME = "mr_spotify_oauth_state"
@@ -1208,9 +1219,10 @@ def reset_taste_preferences() -> None:
 
 
 def logout_active_profile() -> None:
-    """Sign out: remove slug, clear cookie, clear taste keys in this session."""
+    """Sign out: invalidate session token, clear cookie, clear taste keys."""
+    _invalidate_current_session_token()
     st.session_state.pop(ACTIVE_PROFILE_SESSION_KEY, None)
-    clear_active_profile_slug_cookie()
+    clear_session_token_cookie()
     reset_taste_preferences()
 
 
@@ -1241,30 +1253,82 @@ def _safe_cookie_manager_delete(cm: Any, cookie_name: str, *, key: str) -> None:
         cm.delete(cookie_name, key=key)
 
 
-def persist_active_profile_slug_cookie(slug: str) -> None:
-    """Remember the active profile slug in the browser (same-site lax, 180 days)."""
-    try:
-        safe = normalize_profile_slug(slug)
-    except ValueError:
+def persist_session_token_cookie(token: str) -> None:
+    """Store a session token in the browser (same-site lax, 30 days)."""
+    if not isinstance(token, str) or not token.strip():
         return
     cm = profile_cookie_manager()
     cm.set(
-        ACTIVE_PROFILE_COOKIE_NAME,
-        safe,
-        key="mr_cookie_set_profile",
-        max_age=60.0 * 60 * 24 * 180,
+        SESSION_TOKEN_COOKIE_NAME,
+        token,
+        key="mr_cookie_set_session_token",
+        max_age=60.0 * 60 * 24 * 30,
         same_site="lax",
     )
 
 
-def clear_active_profile_slug_cookie() -> None:
-    """Remove client-side profile slug (call on logout or invalid profile file)."""
+def clear_session_token_cookie() -> None:
+    """Remove the session-token cookie (logout or invalid token)."""
     cm = profile_cookie_manager()
+    _safe_cookie_manager_delete(
+        cm,
+        SESSION_TOKEN_COOKIE_NAME,
+        key="mr_cookie_del_session_token",
+    )
     _safe_cookie_manager_delete(
         cm,
         ACTIVE_PROFILE_COOKIE_NAME,
         key="mr_cookie_del_profile",
     )
+
+
+def persist_active_profile_slug_cookie(slug: str) -> None:
+    """Create a DB session and store its token in the browser cookie.
+
+    This is the main login-persistence entry point used by the profile page
+    after successful authentication.
+    """
+    try:
+        safe = normalize_profile_slug(slug)
+    except ValueError:
+        return
+    conn = get_db_connection()
+    token = create_session_token(conn, safe)
+    persist_session_token_cookie(token)
+
+
+def clear_active_profile_slug_cookie() -> None:
+    """Remove session cookie and invalidate DB session token."""
+    _invalidate_current_session_token()
+    clear_session_token_cookie()
+
+
+def _invalidate_current_session_token() -> None:
+    """Delete the current session token from the DB (if present in cookie)."""
+    token = _read_session_token_from_cookies()
+    if token is None:
+        return
+    conn = get_db_connection()
+    delete_session_token(conn, token)
+
+
+def _read_session_token_from_cookies() -> str | None:
+    """Read session token from CookieManager or context cookies."""
+    token_ctx = peek_session_token_from_context_cookies()
+    if token_ctx:
+        return token_ctx
+    cm = profile_cookie_manager()
+    raw = cm.get(SESSION_TOKEN_COOKIE_NAME)
+    return raw.strip() if isinstance(raw, str) and raw.strip() else None
+
+
+def peek_session_token_from_context_cookies() -> str | None:
+    """Return session token from HTTP request cookies (faster than CookieManager)."""
+    try:
+        raw = st.context.cookies.to_dict().get(SESSION_TOKEN_COOKIE_NAME)
+    except Exception:
+        return None
+    return raw.strip() if isinstance(raw, str) and raw.strip() else None
 
 
 def persist_spotify_oauth_state_cookie(state: str) -> None:
@@ -1443,60 +1507,42 @@ def apply_spotify_oauth_session_snapshot(
 
 
 def peek_active_profile_slug_from_context_cookies() -> str | None:
-    """Return active profile slug from HTTP request cookies when CookieManager lags.
+    """Resolve a profile slug from the session-token cookie (context cookies).
 
-    After an external OAuth redirect, ``extra_streamlit_components`` may not have
-    mirrored document cookies into Python yet, while ``st.context.cookies`` already
-    reflects the browser-sent cookies (same pattern as Spotify OAuth ``state``).
+    Validates the token against the DB and returns the associated slug, or
+    ``None`` if no valid token is present.
     """
-    try:
-        raw = st.context.cookies.to_dict().get(ACTIVE_PROFILE_COOKIE_NAME)
-    except Exception:
+    token = peek_session_token_from_context_cookies()
+    if not token:
         return None
-    return raw.strip() if isinstance(raw, str) and raw.strip() else None
+    conn = get_db_connection()
+    return validate_session_token(conn, token)
 
 
 def restore_active_profile_from_cookie_if_needed() -> None:
-    """If server session lost the slug, restore login from cookie + JSON on disk."""
+    """If server session lost the slug, restore login from session-token cookie."""
     if st.session_state.get(ACTIVE_PROFILE_SESSION_KEY):
         return
-    cm = profile_cookie_manager()
-    cm_raw = cm.get(ACTIVE_PROFILE_COOKIE_NAME)
-    ctx_slug = peek_active_profile_slug_from_context_cookies()
-    if isinstance(cm_raw, str) and cm_raw.strip():
-        raw: str | None = cm_raw
-    else:
-        raw = ctx_slug
-    if not isinstance(raw, str) or not raw.strip():
+    token = _read_session_token_from_cookies()
+    if not token:
         return
-    try:
-        slug = normalize_profile_slug(raw)
-    except ValueError:
-        _safe_cookie_manager_delete(
-            cm,
-            ACTIVE_PROFILE_COOKIE_NAME,
-            key="mr_cookie_del_bad_slug",
-        )
+    conn = get_db_connection()
+    slug = validate_session_token(conn, token)
+    if slug is None:
+        clear_session_token_cookie()
         return
-    profiles_dir = default_profiles_dir()
-    data = load_profile(profiles_dir, slug)
-    if data is None:
-        _safe_cookie_manager_delete(
-            cm,
-            ACTIVE_PROFILE_COOKIE_NAME,
-            key="mr_cookie_del_orphan",
-        )
-        return
+    data = load_user_profile(conn, slug)
     st.session_state[ACTIVE_PROFILE_SESSION_KEY] = slug
-    apply_profile_to_session(st.session_state, data)
+    if data is not None:
+        apply_profile_to_session(st.session_state, data)
 
 
 def bootstrap_profile_session() -> None:
-    """Restore profile from cookie and re-hydrate from disk (entrypoint only)."""
+    """Restore profile from session-token cookie and re-hydrate (entrypoint only)."""
     restore_active_profile_from_cookie_if_needed()
     res = ensure_active_profile_hydrated(st.session_state)
     if res == ProfileHydrationResult.CLEARED_MISSING_PROFILE_FILE:
-        clear_active_profile_slug_cookie()
+        clear_session_token_cookie()
         st.warning(
             "Gespeichertes Profil wurde nicht gefunden. "
             "Die Anmeldung wurde zurückgesetzt (Cookie entfernt).",
@@ -1507,7 +1553,7 @@ def render_profile_sidebar() -> None:
     """Profile status and actions in the sidebar (entrypoint; runs every rerun)."""
     res = ensure_active_profile_hydrated(st.session_state)
     if res == ProfileHydrationResult.CLEARED_MISSING_PROFILE_FILE:
-        clear_active_profile_slug_cookie()
+        clear_session_token_cookie()
 
     st.sidebar.markdown("### Profil")
     active = st.session_state.get(ACTIVE_PROFILE_SESSION_KEY)

@@ -22,10 +22,18 @@ from music_review.dashboard.newest_spotify_playlist import (
     build_playlist_candidates,
     resolve_track_uri_strict,
 )
+from music_review.dashboard.user_db import (
+    get_connection as get_db_connection,
+)
+from music_review.dashboard.user_db import (
+    load_spotify_credentials,
+)
 from music_review.dashboard.user_profile_store import (
+    ACTIVE_PROFILE_SESSION_KEY,
     SPOTIFY_PREVIEW_COOLDOWN_SECONDS,
     default_profiles_dir,
     get_spotify_preview_last_generated_at,
+    normalize_profile_slug,
     record_spotify_preview_generated,
     spotify_preview_cooldown_seconds_remaining,
 )
@@ -38,6 +46,31 @@ from music_review.integrations.spotify_client import (
 )
 
 SPOTIFY_TOKEN_KEY = "spotify_token"
+
+
+def _try_load_user_spotify_config() -> SpotifyAuthConfig | None:
+    """Load Spotify config from the logged-in user's DB credentials."""
+    raw = st.session_state.get(ACTIVE_PROFILE_SESSION_KEY)
+    if not isinstance(raw, str) or not raw.strip():
+        return None
+    try:
+        slug = normalize_profile_slug(raw)
+    except ValueError:
+        return None
+    conn = get_db_connection()
+    creds = load_spotify_credentials(conn, slug)
+    if creds is None:
+        return None
+    client_id, client_secret = creds
+    try:
+        return SpotifyAuthConfig.from_user_credentials(
+            client_id=client_id,
+            client_secret=client_secret,
+        )
+    except SpotifyConfigError:
+        return None
+
+
 NEWEST_SPOTIFY_PREVIEW_KEY = "newest_spotify_preview"
 NEWEST_SPOTIFY_PLAYLIST_NAME_KEY = "newest-spotify-playlist-name"
 
@@ -232,17 +265,14 @@ def render_neueste_spotify_playlist_section(
             key="newest-spotify-playlist-public",
         )
 
-    client: SpotifyClient | None = None
-    config_error: str | None = None
-    try:
-        client = SpotifyClient(SpotifyAuthConfig.from_env())
-    except SpotifyConfigError as exc:
-        config_error = str(exc)
-
-    if config_error:
-        st.error(f"Spotify-Konfiguration fehlt: {config_error}")
-        return
-    assert client is not None
+    cfg = _try_load_user_spotify_config()
+    if cfg is None:
+        try:
+            cfg = SpotifyAuthConfig.from_env()
+        except SpotifyConfigError as exc:
+            st.error(f"Spotify-Konfiguration fehlt: {exc}")
+            return
+    client = SpotifyClient(cfg)
 
     token = _stored_spotify_token()
 

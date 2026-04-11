@@ -877,16 +877,28 @@ def test_safe_cookie_manager_delete_suppresses_keyerror() -> None:
 
 
 class TestPersistActiveProfileFromSession:
-    def test_writes_json_when_slug_active(
+    def test_writes_to_db_when_slug_active(
         self,
         tmp_path: Path,
         monkeypatch: pytest.MonkeyPatch,
     ) -> None:
-        """Logged-in session is written under data/user_profiles via save_profile."""
+        """Logged-in session is written to DB via save_profile."""
+        from music_review.dashboard.user_db import (
+            create_user,
+            get_connection,
+            load_user_profile,
+        )
+
+        db_path = tmp_path / "test.db"
+        conn = get_connection(db_path)
+        create_user(conn, "ada", "pw")
         monkeypatch.setattr(
-            page_helpers_module,
-            "default_profiles_dir",
-            lambda: tmp_path,
+            "music_review.dashboard.user_profile_store.get_connection",
+            lambda: conn,
+        )
+        monkeypatch.setattr(
+            "music_review.dashboard.user_profile_store._db_conn",
+            lambda: conn,
         )
         sess: dict[str, object] = {
             ACTIVE_PROFILE_SESSION_KEY: "ada",
@@ -903,10 +915,9 @@ class TestPersistActiveProfileFromSession:
         monkeypatch.setattr(page_helpers_module.st, "session_state", sess)
         slug = persist_active_profile_from_session()
         assert slug == "ada"
-        out = tmp_path / "ada.json"
-        assert out.is_file()
-        text = out.read_text(encoding="utf-8")
-        assert '"10"' in text
+        profile = load_user_profile(conn, "ada")
+        assert profile is not None
+        assert "10" in str(profile.get("selected_communities"))
 
     def test_returns_none_without_active_slug(
         self,
@@ -985,7 +996,7 @@ class TestTasteSetupSessionHelpers:
         monkeypatch.setattr(page_helpers_module.st, "session_state", sess)
         assert session_taste_setup_complete() is True
 
-    def test_logout_active_profile_clears_slug_cookie_and_taste(
+    def test_logout_active_profile_clears_session_and_taste(
         self,
         monkeypatch: pytest.MonkeyPatch,
     ) -> None:
@@ -998,14 +1009,15 @@ class TestTasteSetupSessionHelpers:
         }
         monkeypatch.setattr(page_helpers_module.st, "session_state", sess)
         cleared: list[str] = []
-
-        def fake_clear_cookie() -> None:
-            cleared.append("cookie")
-
         monkeypatch.setattr(
             page_helpers_module,
-            "clear_active_profile_slug_cookie",
-            fake_clear_cookie,
+            "_invalidate_current_session_token",
+            lambda: None,
+        )
+        monkeypatch.setattr(
+            page_helpers_module,
+            "clear_session_token_cookie",
+            lambda: cleared.append("cookie"),
         )
         logout_active_profile()
         assert ACTIVE_PROFILE_SESSION_KEY not in sess
