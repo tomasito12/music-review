@@ -7,10 +7,12 @@ from pathlib import Path
 
 import pytest
 
+from music_review.dashboard.spotify_oauth_token_json import spotify_token_to_json_str
 from music_review.dashboard.user_db import (
     authenticate_user,
     change_password,
     clear_spotify_credentials,
+    clear_spotify_oauth_token,
     create_session_token,
     create_user,
     delete_all_sessions_for_user,
@@ -19,14 +21,17 @@ from music_review.dashboard.user_db import (
     list_user_slugs,
     load_spotify_credentials,
     load_spotify_last_preview_at,
+    load_spotify_oauth_token_json,
     load_user_profile,
     purge_expired_sessions,
     save_spotify_credentials,
     save_spotify_last_preview_at,
+    save_spotify_oauth_token,
     save_user_profile,
     user_exists,
     validate_session_token,
 )
+from music_review.integrations.spotify_client import SpotifyToken
 
 
 @pytest.fixture()
@@ -147,6 +152,69 @@ class TestSpotifyCredentials:
         )
         db.commit()
         assert load_spotify_credentials(db, "alice") is None
+
+    def test_save_credentials_clears_stored_oauth_token_json(self, db):
+        create_user(db, "alice", "pw")
+        token = SpotifyToken(
+            access_token="a",
+            token_type="Bearer",
+            expires_at=datetime.now(UTC).replace(microsecond=0),
+            refresh_token="r",
+            scope="user-read-email",
+        )
+        save_spotify_oauth_token(db, "alice", spotify_token_to_json_str(token))
+        assert load_spotify_oauth_token_json(db, "alice") is not None
+        save_spotify_credentials(db, "alice", "cid", "csec")
+        assert load_spotify_oauth_token_json(db, "alice") is None
+
+    def test_clear_credentials_clears_oauth_token_json(self, db):
+        create_user(db, "alice", "pw")
+        save_spotify_credentials(db, "alice", "cid", "csec")
+        token = SpotifyToken(
+            access_token="a",
+            token_type="Bearer",
+            expires_at=datetime.now(UTC).replace(microsecond=0),
+            refresh_token="r",
+            scope=None,
+        )
+        save_spotify_oauth_token(db, "alice", spotify_token_to_json_str(token))
+        clear_spotify_credentials(db, "alice")
+        assert load_spotify_oauth_token_json(db, "alice") is None
+        assert load_spotify_credentials(db, "alice") is None
+
+
+class TestSpotifyOauthTokenJson:
+    def test_save_load_roundtrip(self, db):
+        create_user(db, "alice", "pw")
+        token = SpotifyToken(
+            access_token="acc",
+            token_type="Bearer",
+            expires_at=datetime(2031, 3, 1, 10, 30, 0, tzinfo=UTC),
+            refresh_token="ref",
+            scope="playlist-modify-private",
+        )
+        blob = spotify_token_to_json_str(token)
+        save_spotify_oauth_token(db, "alice", blob)
+        loaded = load_spotify_oauth_token_json(db, "alice")
+        assert loaded == blob
+
+    def test_clear_oauth_token(self, db):
+        create_user(db, "alice", "pw")
+        token = SpotifyToken(
+            access_token="x",
+            token_type="Bearer",
+            expires_at=datetime.now(UTC).replace(microsecond=0),
+            refresh_token="y",
+            scope=None,
+        )
+        save_spotify_oauth_token(db, "alice", spotify_token_to_json_str(token))
+        clear_spotify_oauth_token(db, "alice")
+        assert load_spotify_oauth_token_json(db, "alice") is None
+
+    def test_users_table_has_oauth_column_after_migration(self, db):
+        create_user(db, "alice", "pw")
+        cols = {row[1] for row in db.execute("PRAGMA table_info(users)").fetchall()}
+        assert "spotify_oauth_token_json" in cols
 
 
 class TestSessionTokens:

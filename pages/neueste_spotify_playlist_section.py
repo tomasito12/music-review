@@ -13,7 +13,11 @@ from pages.neueste_reviews_pool import (
     configure_spotify_playlist_logging_from_env,
     preference_rank_rows_for_reviews,
 )
-from pages.page_helpers import SPOTIFY_SURFACE_CONNECTION_UI_KEY
+from pages.spotify_oauth_kickoff import render_spotify_login_link_under_preview
+from pages.spotify_token_persist import (
+    persist_spotify_token,
+    read_spotify_token_from_session,
+)
 
 from music_review.dashboard.newest_spotify_playlist import (
     PlaylistCandidate,
@@ -44,8 +48,6 @@ from music_review.integrations.spotify_client import (
     SpotifyConfigError,
     SpotifyToken,
 )
-
-SPOTIFY_TOKEN_KEY = "spotify_token"
 
 
 def _try_load_user_spotify_config() -> SpotifyAuthConfig | None:
@@ -132,29 +134,7 @@ def _default_newest_spotify_playlist_name() -> str:
 
 
 def _stored_spotify_token() -> SpotifyToken | None:
-    raw = st.session_state.get(SPOTIFY_TOKEN_KEY)
-    if not isinstance(raw, dict):
-        return None
-    try:
-        return SpotifyToken(
-            access_token=str(raw["access_token"]),
-            token_type=str(raw.get("token_type", "Bearer")),
-            expires_at=raw["expires_at"],
-            refresh_token=raw.get("refresh_token"),
-            scope=raw.get("scope"),
-        )
-    except Exception:
-        return None
-
-
-def _store_spotify_token(token: SpotifyToken) -> None:
-    st.session_state[SPOTIFY_TOKEN_KEY] = {
-        "access_token": token.access_token,
-        "token_type": token.token_type,
-        "expires_at": token.expires_at,
-        "refresh_token": token.refresh_token,
-        "scope": token.scope,
-    }
+    return read_spotify_token_from_session()
 
 
 def _ensure_valid_spotify_token(
@@ -166,11 +146,11 @@ def _ensure_valid_spotify_token(
         return token
     if not token.refresh_token:
         raise RuntimeError(
-            "Die Spotify-Sitzung ist abgelaufen. Bitte erneut auf "
-            "„Mit Spotify verbinden“ klicken."
+            "Die Spotify-Sitzung ist abgelaufen. Bitte erneut bei Spotify anmelden "
+            "(Link „Zum Spotify-Login wechseln“ unter „Vorschau erzeugen“)."
         )
     refreshed = client.refresh_access_token(refresh_token=token.refresh_token)
-    _store_spotify_token(refreshed)
+    persist_spotify_token(refreshed)
     return refreshed
 
 
@@ -303,6 +283,9 @@ def render_neueste_spotify_playlist_section(
         disabled=not can_start_preview,
     )
 
+    if token is None:
+        render_spotify_login_link_under_preview(client)
+
     scope_check_token = _stored_spotify_token()
     if (
         scope_check_token is not None
@@ -340,8 +323,10 @@ def render_neueste_spotify_playlist_section(
                 "Wartezeit abwarten.",
             )
         elif _stored_spotify_token() is None:
-            st.session_state[SPOTIFY_SURFACE_CONNECTION_UI_KEY] = True
-            st.rerun()
+            st.warning(
+                "Für die Vorschau musst du bei Spotify angemeldet sein. "
+                "Nutze den Link unter dem Button „Vorschau erzeugen“."
+            )
         else:
             ranked_rows = (
                 None

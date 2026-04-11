@@ -3,8 +3,6 @@ from __future__ import annotations
 import hashlib
 import html
 import json
-import secrets
-from dataclasses import asdict
 from typing import Any
 
 import streamlit as st
@@ -18,7 +16,6 @@ from pages.neueste_spotify_playlist_section import (
     render_neueste_spotify_playlist_section,
 )
 from pages.page_helpers import (
-    SPOTIFY_SURFACE_CONNECTION_UI_KEY,
     apply_spotify_oauth_session_snapshot,
     clear_spotify_oauth_state_cookie,
     clear_spotify_pkce_verifier_cookie,
@@ -26,14 +23,23 @@ from pages.page_helpers import (
     inject_recommendation_flow_shell_css,
     peek_spotify_oauth_state_cookie,
     peek_spotify_oauth_state_from_context_cookies,
-    peek_spotify_pkce_verifier_cookie,
-    peek_spotify_pkce_verifier_from_context_cookies,
     peek_spotify_session_snapshot_cookie,
     persist_active_profile_slug_cookie,
-    persist_spotify_oauth_state_cookie,
-    persist_spotify_pkce_verifier_cookie,
-    persist_spotify_session_snapshot_cookie,
     render_toolbar,
+)
+from pages.spotify_oauth_kickoff import (
+    SPOTIFY_AUTH_STATE_KEY,
+    SPOTIFY_PKCE_VERIFIER_KEY,
+    spotify_pkce_verifier_raw,
+)
+from pages.spotify_token_persist import (
+    SPOTIFY_TOKEN_SESSION_KEY as SPOTIFY_TOKEN_KEY,
+)
+from pages.spotify_token_persist import (
+    clear_persisted_spotify_token_for_active_user,
+    hydrate_spotify_token_from_db_for_active_user,
+    persist_spotify_token,
+    read_spotify_token_from_session,
 )
 
 from music_review.dashboard.user_db import (
@@ -56,14 +62,9 @@ from music_review.integrations.spotify_client import (
     SpotifyClient,
     SpotifyConfigError,
     SpotifyToken,
-    generate_pkce_pair,
-    pkce_challenge_from_verifier,
     resolve_spotify_redirect_uri,
 )
 
-SPOTIFY_AUTH_STATE_KEY = "spotify_auth_state"
-SPOTIFY_PKCE_VERIFIER_KEY = "spotify_pkce_verifier"
-SPOTIFY_TOKEN_KEY = "spotify_token"
 # SHA256 prefix of authorization ``code`` already exchanged or dead (invalid_grant).
 SPOTIFY_OAUTH_SPENT_CODE_DIGESTS_KEY = "spotify_oauth_spent_code_digests"
 _MAX_SPENT_AUTH_CODE_DIGESTS = 24
@@ -88,71 +89,6 @@ def _spotify_oauth_mark_code_digest_spent(digest: str) -> None:
         cur.append(digest)
     cap = _MAX_SPENT_AUTH_CODE_DIGESTS
     st.session_state[SPOTIFY_OAUTH_SPENT_CODE_DIGESTS_KEY] = cur[-cap:]
-
-
-# Widget session keys to preserve across Spotify OAuth redirect (cookie snapshot).
-_SPOTIFY_OAUTH_SNAPSHOT_WIDGET_KEYS: tuple[str, ...] = (
-    "spotify-page-pool-count",
-    "newest-spotify-taste-orientation",
-    "newest-spotify-playlist-name",
-    "newest-spotify-playlist-public",
-    "newest-spotify-song-count",
-)
-
-
-def _spotify_oauth_session_snapshot_dict() -> dict[str, Any]:
-    """Collect taste/filter state from the current session for OAuth round-trip."""
-    out: dict[str, Any] = {"snapshot_version": 1}
-    fs = st.session_state.get("filter_settings")
-    if isinstance(fs, dict):
-        out["filter_settings"] = dict(fs)
-    cw = st.session_state.get("community_weights_raw")
-    if isinstance(cw, dict):
-        out["community_weights_raw"] = {
-            str(k): float(v) for k, v in cw.items() if isinstance(v, (int, float))
-        }
-    for key in (
-        "selected_communities",
-        "artist_flow_selected_communities",
-        "genre_flow_selected_communities",
-    ):
-        val = st.session_state.get(key)
-        if isinstance(val, set):
-            out[key] = sorted(str(x) for x in val)
-        elif isinstance(val, list):
-            out[key] = [str(x) for x in val]
-    fm = st.session_state.get("flow_mode")
-    if fm is None or isinstance(fm, str):
-        out["flow_mode"] = fm
-    ft = st.session_state.get("free_text_query")
-    if isinstance(ft, str):
-        out["free_text_query"] = ft
-    widgets: dict[str, bool | int | float | str] = {}
-    for wkey in _SPOTIFY_OAUTH_SNAPSHOT_WIDGET_KEYS:
-        if wkey not in st.session_state:
-            continue
-        val = st.session_state[wkey]
-        if isinstance(val, (bool, int, float, str)):
-            widgets[wkey] = val
-    if widgets:
-        out["widgets"] = widgets
-    return out
-
-
-def _persist_spotify_oauth_session_snapshot() -> None:
-    """Persist snapshot in a short-lived cookie (browser outlives server session)."""
-    payload = _spotify_oauth_session_snapshot_dict()
-    raw = json.dumps(payload, separators=(",", ":"), ensure_ascii=False)
-
-    def _utf8_fits(blob: str, limit: int = 3900) -> bool:
-        return len(blob.encode("utf-8")) <= limit
-
-    if not _utf8_fits(raw):
-        payload.pop("widgets", None)
-        raw = json.dumps(payload, separators=(",", ":"), ensure_ascii=False)
-    if not _utf8_fits(raw):
-        return
-    persist_spotify_session_snapshot_cookie(raw)
 
 
 def _maybe_restore_spotify_oauth_session_snapshot() -> None:
@@ -335,23 +271,11 @@ def _load_client_and_redirect_hint() -> tuple[SpotifyClient | None, str | None]:
 
 
 def _get_stored_token() -> SpotifyToken | None:
-    raw = st.session_state.get(SPOTIFY_TOKEN_KEY)
-    if not isinstance(raw, dict):
-        return None
-    try:
-        return SpotifyToken(
-            access_token=str(raw["access_token"]),
-            token_type=str(raw.get("token_type", "Bearer")),
-            expires_at=raw["expires_at"],
-            refresh_token=raw.get("refresh_token"),
-            scope=raw.get("scope"),
-        )
-    except Exception:
-        return None
+    return read_spotify_token_from_session()
 
 
 def _store_token(token: SpotifyToken) -> None:
-    st.session_state[SPOTIFY_TOKEN_KEY] = asdict(token)
+    persist_spotify_token(token)
 
 
 def _query_param_single(raw: Any) -> str | None:
@@ -363,23 +287,6 @@ def _query_param_single(raw: Any) -> str | None:
             return None
         return str(raw[0])
     return str(raw)
-
-
-def _spotify_pkce_verifier_raw() -> str | None:
-    """Return PKCE verifier from session or browser cookies (OAuth return path)."""
-    raw = st.session_state.get(SPOTIFY_PKCE_VERIFIER_KEY)
-    if isinstance(raw, str) and raw.strip():
-        return raw.strip()
-    return (
-        peek_spotify_pkce_verifier_from_context_cookies()
-        or peek_spotify_pkce_verifier_cookie()
-    )
-
-
-def _spotify_code_challenge_for_authorize() -> str | None:
-    """S256 challenge for the authorize URL, or None if verifier is missing."""
-    ver = _spotify_pkce_verifier_raw()
-    return pkce_challenge_from_verifier(ver) if ver else None
 
 
 def _clear_spotify_oauth_browser_cookies() -> None:
@@ -413,18 +320,6 @@ def _split_spotify_oauth_callback_state(state_param: str) -> tuple[str, str | No
     except ValueError:
         return state_param, None
     return left, right
-
-
-def _spotify_oauth_state_for_authorize_url(csrf: str) -> str:
-    """Build ``state`` query value: CSRF plus profile slug when logged in."""
-    slug_any = st.session_state.get(ACTIVE_PROFILE_SESSION_KEY)
-    if not isinstance(slug_any, str) or not slug_any.strip():
-        return csrf
-    try:
-        safe = normalize_profile_slug(slug_any.strip())
-    except ValueError:
-        return csrf
-    return f"{csrf}.{safe}"
 
 
 def _restore_profile_from_oauth_callback_slug(slug: str) -> None:
@@ -466,8 +361,8 @@ def _handle_oauth_callback(client: SpotifyClient) -> None:
             return
         st.info(
             "Dieser Spotify-Anmeldeschritt wurde schon verarbeitet (oder der Code "
-            "war nur einmal gültig). Bitte bei Bedarf erneut „Mit Spotify verbinden“ "
-            "starten, ohne die Seite mit alten Parametern neu zu laden."
+            "war nur einmal gültig). Bitte die Seite ohne alte URL-Parameter neu laden "
+            "und unten erneut bei Spotify anmelden."
         )
         return
 
@@ -494,19 +389,19 @@ def _handle_oauth_callback(client: SpotifyClient) -> None:
         st.error(
             "Sicherheitsüberprüfung für den Spotify-Login fehlgeschlagen "
             "(Sitzung abgelaufen oder neuer Tab ohne Cookie). "
-            "Bitte „Mit Spotify verbinden“ erneut wählen.",
+            "Bitte unten erneut bei Spotify anmelden.",
         )
         return
     if profile_slug_from_state:
         _restore_profile_from_oauth_callback_slug(profile_slug_from_state)
-    pkce_verifier = _spotify_pkce_verifier_raw()
+    pkce_verifier = spotify_pkce_verifier_raw()
     if not pkce_verifier:
         _clear_oauth_query_params()
         _clear_spotify_oauth_browser_cookies()
         st.session_state.pop(SPOTIFY_AUTH_STATE_KEY, None)
         st.error(
             "Spotify-Login: interne PKCE-Daten fehlen (z. B. neuer Tab oder "
-            "Cookies blockiert). Bitte „Mit Spotify verbinden“ erneut starten.",
+            "Cookies blockiert). Bitte unten erneut bei Spotify anmelden.",
         )
         return
     with st.spinner("Spotify-Verbindung wird hergestellt …"):
@@ -530,14 +425,14 @@ def _handle_oauth_callback(client: SpotifyClient) -> None:
                     "Spotify hat diesen Anmeldecode nicht mehr akzeptiert "
                     "(meist: zweiter Aufruf nach erfolgreicher Anmeldung oder "
                     "Seite mit altem Link neu geladen). "
-                    "Bitte einmal „Mit Spotify verbinden“ neu starten."
+                    "Bitte unten erneut bei Spotify anmelden."
                 )
             else:
                 st.error(f"Spotify-Token konnte nicht abgerufen werden. Details: {exc}")
                 st.caption(
                     "Typische Ursachen: Redirect-URI weicht von der Spotify-App ab, "
-                    "oder Netzwerkfehler. Bei wiederholtem Fehler "
-                    "„Mit Spotify verbinden“ von vorn beginnen."
+                    "oder Netzwerkfehler. Bei wiederholtem Fehler unten erneut "
+                    "bei Spotify anmelden."
                 )
             return
     # Persist token before clearing URL so a fast Streamlit rerun cannot retry the code.
@@ -550,46 +445,11 @@ def _handle_oauth_callback(client: SpotifyClient) -> None:
     st.success("Du bist jetzt mit Spotify verbunden.")
 
 
-def _normalized_spotify_oauth_pending_state(raw: object) -> str | None:
-    """Return stripped OAuth state if ``raw`` is a non-empty string, otherwise None."""
-    if isinstance(raw, str) and raw.strip():
-        return raw.strip()
-    return None
-
-
-def _render_spotify_oauth_continue_ui(
-    client: SpotifyClient,
-    *,
-    oauth_state: str,
-    code_challenge: str,
-) -> None:
-    """Show redirect hint, Spotify link, and short guidance mid-OAuth."""
-    st.caption(
-        "An Spotify wird **`SPOTIFY_REDIRECT_URI` aus der `.env`** verwendet: "
-        f"`{client.redirect_uri}`. Dieselbe Zeichenkette muss im "
-        "[Spotify Developer Dashboard](https://developer.spotify.com/dashboard) "
-        "unter **Redirect URIs** stehen (ohne Leerzeichen am Ende, in der Regel "
-        "**ohne** Schrägstrich am Ende des Pfads)."
-    )
-    st.link_button(
-        "Zum Spotify-Login wechseln",
-        client.build_authorize_url(
-            state=oauth_state,
-            code_challenge=code_challenge,
-        ),
-        use_container_width=True,
-    )
-    st.caption(
-        "Als Nächstes bei Spotify anmelden und freigeben. "
-        "Dieser Link bleibt sichtbar, bis du dich angemeldet hast oder abbrichst."
-    )
-
-
 def _render_connection_section(
     client: SpotifyClient | None,
     redirect_hint: str | None,
 ) -> SpotifyToken | None:
-    """Show Spotify OAuth UI only when needed (connected, OAuth flow, or surfaced)."""
+    """Show connection status when logged in; optional redirect URI hint otherwise."""
     if client is None:
         st.markdown(
             '<div class="rec-callout rec-callout-info">'
@@ -600,19 +460,6 @@ def _render_connection_section(
         return None
 
     token = _get_stored_token()
-    pending_state = _normalized_spotify_oauth_pending_state(
-        st.session_state.get(SPOTIFY_AUTH_STATE_KEY),
-    )
-    surface = bool(st.session_state.get(SPOTIFY_SURFACE_CONNECTION_UI_KEY))
-    must_show = (
-        token is not None
-        or redirect_hint is not None
-        or pending_state is not None
-        or surface
-    )
-    if not must_show:
-        return None
-
     if token is not None:
         _section_label("Verbindung zu Spotify")
         col_status, col_action = st.columns([3, 1])
@@ -620,65 +467,16 @@ def _render_connection_section(
             st.success("Mit Spotify verbunden.")
         with col_action:
             if st.button("Verbindung trennen", key="spotify_disconnect"):
-                st.session_state.pop(SPOTIFY_TOKEN_KEY, None)
-                st.session_state.pop(SPOTIFY_SURFACE_CONNECTION_UI_KEY, None)
+                clear_persisted_spotify_token_for_active_user()
                 _clear_spotify_oauth_browser_cookies()
                 st.rerun()
         return token
 
-    with st.expander("Verbindung zu Spotify", expanded=True):
-        if redirect_hint:
-            st.markdown(
-                f'<div class="rec-callout rec-callout-info">{redirect_hint}</div>',
-                unsafe_allow_html=True,
-            )
-
-        # OAuth start is a two-step flow (primary button, then link). Streamlit only
-        # reports the primary button as clicked for a single rerun; CookieManager or
-        # other widgets can rerun the script immediately, which would otherwise hide
-        # the link and show only the "not connected" info again.
-        if pending_state is not None:
-            code_challenge = _spotify_code_challenge_for_authorize()
-            if not code_challenge:
-                st.error(
-                    "OAuth-Daten sind unvollständig (PKCE fehlt). "
-                    "Bitte „Mit Spotify verbinden“ erneut wählen.",
-                )
-                st.session_state.pop(SPOTIFY_AUTH_STATE_KEY, None)
-                _clear_spotify_oauth_browser_cookies()
-                st.rerun()
-                return None
-            _render_spotify_oauth_continue_ui(
-                client,
-                oauth_state=_spotify_oauth_state_for_authorize_url(pending_state),
-                code_challenge=code_challenge,
-            )
-            if st.button("Login abbrechen", key="spotify_oauth_cancel"):
-                st.session_state.pop(SPOTIFY_AUTH_STATE_KEY, None)
-                _clear_spotify_oauth_browser_cookies()
-                st.rerun()
-            return None
-
-        if st.button("Mit Spotify verbinden", type="primary"):
-            _persist_spotify_oauth_session_snapshot()
-            state = secrets.token_urlsafe(32)
-            pkce_verifier, pkce_challenge = generate_pkce_pair()
-            st.session_state[SPOTIFY_AUTH_STATE_KEY] = state
-            st.session_state[SPOTIFY_PKCE_VERIFIER_KEY] = pkce_verifier
-            persist_spotify_oauth_state_cookie(state)
-            persist_spotify_pkce_verifier_cookie(pkce_verifier)
-            _render_spotify_oauth_continue_ui(
-                client,
-                oauth_state=_spotify_oauth_state_for_authorize_url(state),
-                code_challenge=pkce_challenge,
-            )
-        else:
-            st.markdown(
-                '<div class="rec-callout rec-callout-info">'
-                "Noch nicht mit Spotify verbunden. Klicke auf "
-                "„Mit Spotify verbinden“, um den Login zu starten.</div>",
-                unsafe_allow_html=True,
-            )
+    if redirect_hint:
+        st.markdown(
+            f'<div class="rec-callout rec-callout-info">{redirect_hint}</div>',
+            unsafe_allow_html=True,
+        )
     return None
 
 
@@ -821,10 +619,9 @@ def main() -> None:
         _render_spotify_credentials_management()
 
     _maybe_restore_spotify_oauth_session_snapshot()
+    hydrate_spotify_token_from_db_for_active_user()
     if client is not None:
         _handle_oauth_callback(client)
-    if _get_stored_token() is not None:
-        st.session_state.pop(SPOTIFY_SURFACE_CONNECTION_UI_KEY, None)
     _render_connection_section(client, redirect_hint)
     _section_divider()
 

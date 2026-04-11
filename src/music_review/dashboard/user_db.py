@@ -51,6 +51,7 @@ CREATE TABLE IF NOT EXISTS sessions (
 _MIGRATE_SPOTIFY_COLS_SQL = (
     "ALTER TABLE users ADD COLUMN spotify_client_id TEXT",
     "ALTER TABLE users ADD COLUMN spotify_client_secret TEXT",
+    "ALTER TABLE users ADD COLUMN spotify_oauth_token_json TEXT",
 )
 
 
@@ -247,11 +248,15 @@ def save_spotify_credentials(
     client_id: str,
     client_secret: str,
 ) -> None:
-    """Store the user's own Spotify Developer App credentials."""
+    """Store the user's own Spotify Developer App credentials.
+
+    Clears any stored OAuth token JSON because a new app id/secret invalidates
+    prior refresh tokens for the old app.
+    """
     now = _utc_now_iso()
     conn.execute(
         "UPDATE users SET spotify_client_id = ?, spotify_client_secret = ?, "
-        "updated_at = ? WHERE slug = ?",
+        "spotify_oauth_token_json = NULL, updated_at = ? WHERE slug = ?",
         (client_id.strip(), client_secret.strip(), now, slug),
     )
     conn.commit()
@@ -279,11 +284,53 @@ def clear_spotify_credentials(
     conn: sqlite3.Connection,
     slug: str,
 ) -> None:
-    """Remove stored Spotify credentials for a user."""
+    """Remove stored Spotify credentials and OAuth token JSON for a user."""
     now = _utc_now_iso()
     conn.execute(
         "UPDATE users SET spotify_client_id = NULL, spotify_client_secret = NULL, "
-        "updated_at = ? WHERE slug = ?",
+        "spotify_oauth_token_json = NULL, updated_at = ? WHERE slug = ?",
+        (now, slug),
+    )
+    conn.commit()
+
+
+def save_spotify_oauth_token(
+    conn: sqlite3.Connection,
+    slug: str,
+    oauth_token_json: str,
+) -> None:
+    """Persist serialized Spotify OAuth tokens (access + refresh) for the user."""
+    now = _utc_now_iso()
+    conn.execute(
+        "UPDATE users SET spotify_oauth_token_json = ?, updated_at = ? WHERE slug = ?",
+        (oauth_token_json, now, slug),
+    )
+    conn.commit()
+
+
+def load_spotify_oauth_token_json(
+    conn: sqlite3.Connection,
+    slug: str,
+) -> str | None:
+    """Return the raw JSON blob from ``spotify_oauth_token_json``, or None."""
+    row = conn.execute(
+        "SELECT spotify_oauth_token_json FROM users WHERE slug = ?",
+        (slug,),
+    ).fetchone()
+    if row is None:
+        return None
+    val: str | None = row["spotify_oauth_token_json"]
+    if not val or not str(val).strip():
+        return None
+    return str(val).strip()
+
+
+def clear_spotify_oauth_token(conn: sqlite3.Connection, slug: str) -> None:
+    """Remove stored Spotify OAuth token JSON for the user."""
+    now = _utc_now_iso()
+    conn.execute(
+        "UPDATE users SET spotify_oauth_token_json = NULL, updated_at = ? "
+        "WHERE slug = ?",
         (now, slug),
     )
     conn.commit()

@@ -36,21 +36,6 @@ def test_spotify_page_importable() -> None:
     assert hasattr(module, "main")
 
 
-def test_normalized_spotify_oauth_pending_state_accepts_nonempty_string() -> None:
-    module = _spotify_playlists_module()
-    norm = module._normalized_spotify_oauth_pending_state
-    assert norm("  abc  ") == "abc"
-
-
-def test_normalized_spotify_oauth_pending_state_rejects_empty_or_non_string() -> None:
-    module = _spotify_playlists_module()
-    norm = module._normalized_spotify_oauth_pending_state
-    assert norm(None) is None
-    assert norm("") is None
-    assert norm("   ") is None
-    assert norm(42) is None
-
-
 def test_oauth_redirect_urls_equivalent_ignores_trailing_slash() -> None:
     module = _spotify_playlists_module()
     eq = module._oauth_redirect_urls_equivalent
@@ -91,30 +76,30 @@ def test_split_spotify_oauth_callback_state_invalid_slug_suffix_is_legacy() -> N
 def test_spotify_oauth_state_for_authorize_url_appends_slug(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    module = _spotify_playlists_module()
+    kickoff = importlib.import_module("pages.spotify_oauth_kickoff")
     monkeypatch.setattr(
-        module.st,
+        kickoff.st,
         "session_state",
         {"active_profile_slug": "demo_user"},
     )
-    out = module._spotify_oauth_state_for_authorize_url("csrf123")
+    out = kickoff.spotify_oauth_state_for_authorize_url("csrf123")
     assert out == "csrf123.demo_user"
 
 
 def test_spotify_oauth_state_for_authorize_url_skips_without_profile(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    module = _spotify_playlists_module()
-    monkeypatch.setattr(module.st, "session_state", {})
-    assert module._spotify_oauth_state_for_authorize_url("csrf123") == "csrf123"
+    kickoff = importlib.import_module("pages.spotify_oauth_kickoff")
+    monkeypatch.setattr(kickoff.st, "session_state", {})
+    assert kickoff.spotify_oauth_state_for_authorize_url("csrf123") == "csrf123"
 
 
 def test_spotify_oauth_session_snapshot_dict_builds_expected(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    module = _spotify_playlists_module()
+    kickoff = importlib.import_module("pages.spotify_oauth_kickoff")
     monkeypatch.setattr(
-        module.st,
+        kickoff.st,
         "session_state",
         {
             "filter_settings": {"year_min": 2000},
@@ -128,7 +113,7 @@ def test_spotify_oauth_session_snapshot_dict_builds_expected(
             "newest-spotify-taste-orientation": "stark",
         },
     )
-    d = module._spotify_oauth_session_snapshot_dict()
+    d = kickoff.spotify_oauth_session_snapshot_dict()
     assert d["snapshot_version"] == 1
     assert d["filter_settings"]["year_min"] == 2000
     assert d["community_weights_raw"]["C001"] == 0.5

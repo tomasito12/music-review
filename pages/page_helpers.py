@@ -197,8 +197,6 @@ SPOTIFY_OAUTH_STATE_COOKIE_NAME = "mr_spotify_oauth_state"
 SPOTIFY_PKCE_VERIFIER_COOKIE_NAME = "mr_spotify_pkce_verifier"
 # Filter/taste session snapshot before Spotify redirect (survives profile re-hydrate).
 SPOTIFY_SESSION_SNAPSHOT_COOKIE_NAME = "mr_spotify_session_snapshot"
-# Open Spotify connection UI after "Vorschau erzeugen" without a token (Streamlit).
-SPOTIFY_SURFACE_CONNECTION_UI_KEY = "spotify_surface_connection_ui"
 
 # Streamlit widget session keys for Schritt 3 sliders (cleared on taste reset).
 FILTER_FLOW_WIDGET_KEY_YEAR_RANGE = "filter_flow_year_range"
