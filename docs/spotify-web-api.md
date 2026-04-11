@@ -55,7 +55,7 @@ See: [Rate limits](https://developer.spotify.com/documentation/web-api/concepts/
 
 1. Register the app in the [Developer Dashboard](https://developer.spotify.com/dashboard); set redirect URI to match `.env`.
 2. In development mode, **allowlist** every beta tester (max 5).
-3. Request OAuth scopes actually needed (e.g. playlist read/modify); reconnect after scope changes.
+3. Request OAuth scopes actually needed (defaults include `playlist-read-private` for `GET /me/playlists` name matching plus playlist modify scopes); reconnect after scope changes.
 4. Monitor dashboard **API traffic** graphs when debugging 429s.
 5. For large production audiences, extended quota requires **Spotify approval** under current **organization-focused** criteria—not something individuals can assume.
 

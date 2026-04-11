@@ -166,7 +166,11 @@ def spotify_preview_cooldown_seconds_remaining(
     last_generated_at_utc: datetime | None,
     cooldown_seconds: int = SPOTIFY_PREVIEW_COOLDOWN_SECONDS,
 ) -> int:
-    """Seconds until another Spotify preview; ``0`` means allowed."""
+    """Seconds until another Spotify playlist generation; ``0`` means allowed.
+
+    Despite the ``preview`` name, ``last_generated_at_utc`` is the timestamp of the
+    last successful **playlist publish** (same DB column ``spotify_last_preview_at``).
+    """
     if last_generated_at_utc is None:
         return 0
     now = now_utc if now_utc.tzinfo else now_utc.replace(tzinfo=UTC)
@@ -214,7 +218,7 @@ def record_spotify_preview_generated(
     profiles_dir: Path,
     when_utc: datetime,
 ) -> None:
-    """Persist preview timestamp to DB or guest session_state."""
+    """Persist last playlist-generation timestamp to DB or guest session_state."""
     when = when_utc if when_utc.tzinfo else when_utc.replace(tzinfo=UTC)
     iso = when.replace(microsecond=0).isoformat().replace("+00:00", "Z")
     raw_slug = session.get(ACTIVE_PROFILE_SESSION_KEY)

@@ -214,7 +214,7 @@ def load_spotify_last_preview_at(
     conn: sqlite3.Connection,
     slug: str,
 ) -> str | None:
-    """Return the ISO timestamp of the last Spotify preview, or None."""
+    """Return the ISO timestamp of the last Spotify playlist generation, or None."""
     row = conn.execute(
         "SELECT spotify_last_preview_at FROM users WHERE slug = ?",
         (slug,),
@@ -230,7 +230,7 @@ def save_spotify_last_preview_at(
     slug: str,
     iso_ts: str,
 ) -> None:
-    """Persist the Spotify preview timestamp."""
+    """Persist the Spotify playlist-generation timestamp (column name is legacy)."""
     now = _utc_now_iso()
     conn.execute(
         "UPDATE users SET spotify_last_preview_at = ?, updated_at = ? WHERE slug = ?",

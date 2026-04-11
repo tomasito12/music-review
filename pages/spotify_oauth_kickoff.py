@@ -1,7 +1,7 @@
 """Shared Spotify OAuth PKCE helpers for the Streamlit Spotify playlist page.
 
 Prepares PKCE/state/cookies and renders the authorize ``link_button`` inline
-under the playlist preview controls when no token is stored.
+under the Spotify playlist controls when no token is stored.
 """
 
 from __future__ import annotations

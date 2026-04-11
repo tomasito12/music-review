@@ -6,9 +6,9 @@ import logging
 import random
 import secrets
 from datetime import UTC, date, datetime
-from typing import Any
 
 import streamlit as st
+import streamlit.components.v1 as components
 from pages.neueste_reviews_pool import (
     configure_spotify_playlist_logging_from_env,
     preference_rank_rows_for_reviews,
@@ -19,8 +19,10 @@ from pages.spotify_token_persist import (
     read_spotify_token_from_session,
 )
 
+from music_review.dashboard.neueste_spotify_publish import (
+    publish_playlist_for_candidates,
+)
 from music_review.dashboard.newest_spotify_playlist import (
-    PlaylistCandidate,
     amplify_preference_weights,
     build_album_weights,
     build_playlist_candidates,
@@ -73,8 +75,8 @@ def _try_load_user_spotify_config() -> SpotifyAuthConfig | None:
         return None
 
 
-NEWEST_SPOTIFY_PREVIEW_KEY = "newest_spotify_preview"
 NEWEST_SPOTIFY_PLAYLIST_NAME_KEY = "newest-spotify-playlist-name"
+NEWEST_SPOTIFY_LAST_PUBLISH_KEY = "newest_spotify_last_publish"
 
 # Discrete taste-orientation steps for the select slider (German UI labels).
 _SPOTIFY_TASTE_ORIENTATION_OPTIONS: tuple[str, ...] = (
@@ -94,7 +96,7 @@ _LOGGER = logging.getLogger(__name__)
 
 
 def _german_cooldown_hint(seconds_remaining: int) -> str:
-    """User-facing countdown for the Spotify preview rate limit."""
+    """User-facing countdown for the Spotify playlist generation rate limit."""
     if seconds_remaining <= 0:
         return ""
     minutes, secs = divmod(seconds_remaining, 60)
@@ -105,9 +107,9 @@ def _german_cooldown_hint(seconds_remaining: int) -> str:
         parts.append("1 Sekunde" if secs == 1 else f"{secs} Sekunden")
     duration = " und ".join(parts) if len(parts) > 1 else parts[0]
     return (
-        f"Nächste Vorschau frühestens in {duration} "
+        f"Nächste Playlist-Erstellung frühestens in {duration} "
         f"(Sperre {SPOTIFY_PREVIEW_COOLDOWN_SECONDS // 60} Minuten nach "
-        "„Vorschau erzeugen“; gespeichert im Profil bzw. in dieser Sitzung)."
+        "„Spotify-Playlist erzeugen“; gespeichert im Profil bzw. in dieser Sitzung)."
     )
 
 
@@ -160,40 +162,32 @@ def _token_declares_spotify_scope(token: SpotifyToken, scope: str) -> bool:
     return scope in granted
 
 
-def _render_playlist_preview_table(
-    items: list[PlaylistCandidate],
-    *,
-    target_count: int,
-) -> None:
-    rows: list[dict[str, Any]] = []
-    for idx, item in enumerate(items, start=1):
-        w = float(item.score_weight)
-        ideal = float(item.strat_ideal_slots)
-        rows.append(
-            {
-                "#": idx,
-                "Künstler": item.artist,
-                "Album": item.album,
-                "Rohscore": round(float(item.raw_score), 4),
-                "Anteil (norm.)": round(w, 4),
-                "Ziel * Anteil": f"{target_count} * {w:.4f} = {round(ideal, 4)}",
-                "Ideale Slots": round(ideal, 4),
-                "Abrunden": int(item.strat_floor_slots),
-                "+Rest": int(item.strat_remainder_extra_slots),
-                "Ziel-Slots": int(item.playlist_slot_quota),
-                "Song": item.track_title,
-                "Quelle": (
-                    "Highlight" if item.source_kind == "highlight" else "Tracklist"
-                ),
-                "Spotify URI": item.spotify_uri,
-            }
-        )
-    st.dataframe(rows, width="stretch", hide_index=True)
-    st.caption(
-        "Ideale Slots = Zielanzahl mal Anteil; falls die Anteile nicht exakt Summe 1 "
-        "haben: Zielanzahl mal (Anteil / Summe). Abrunden ist der ganzzahlige Anteil "
-        "davon. +Rest verteilt die noch fehlenden Plätze nach dem größten Rest "
-        "(bei Gleichstand höherer Album-Index zuerst). Ziel-Slots = Abrunden + Rest."
+def _render_last_spotify_publish_if_any() -> None:
+    """Show link and embed for the last successfully published playlist."""
+    raw = st.session_state.get(NEWEST_SPOTIFY_LAST_PUBLISH_KEY)
+    if not isinstance(raw, dict):
+        return
+    pid_any = raw.get("playlist_id")
+    if not isinstance(pid_any, str) or not pid_any.strip():
+        return
+    pid = pid_any.strip()
+    ext_any = raw.get("external_url")
+    url = (
+        ext_any.strip()
+        if isinstance(ext_any, str) and ext_any.strip()
+        else f"https://open.spotify.com/playlist/{pid}"
+    )
+    st.link_button("In Spotify öffnen", url, use_container_width=True)
+    embed_src = f"https://open.spotify.com/embed/playlist/{pid}"
+    components.html(
+        (
+            f'<iframe title="Spotify" style="border-radius:12px" '
+            f'src="{embed_src}?utm_source=generator" width="100%" height="720" '
+            'frameBorder="0" allowfullscreen="" '
+            'allow="autoplay; clipboard-write; encrypted-media; fullscreen; '
+            'picture-in-picture" loading="lazy"></iframe>'
+        ),
+        height=400,
     )
 
 
@@ -203,6 +197,7 @@ def render_neueste_spotify_playlist_section(
 ) -> None:
     """Build a random playlist from the same pool as Neueste Rezensionen."""
     configure_spotify_playlist_logging_from_env()
+    st.session_state.pop("newest_spotify_preview", None)
     if not reviews:
         st.info("Keine Rezensionen verfügbar.")
         return
@@ -244,6 +239,12 @@ def render_neueste_spotify_playlist_section(
             value=False,
             key="newest-spotify-playlist-public",
         )
+    st.caption(
+        "Gleicher Name (Groß-/Kleinschreibung wird ignoriert) wie eine Playlist in "
+        "deiner Spotify-Bibliothek: **nur die Songs** dieser Playlist werden ersetzt. "
+        "Wenn mehrere Playlists gleich heißen, zählt die erste in der "
+        "Bibliotheks-Reihenfolge von Spotify."
+    )
 
     cfg = _try_load_user_spotify_config()
     if cfg is None:
@@ -266,7 +267,7 @@ def render_neueste_spotify_playlist_section(
         now_utc=now_utc,
         last_generated_at_utc=last_preview_at,
     )
-    can_start_preview = cooldown_remaining == 0
+    can_publish_playlist = cooldown_remaining == 0
 
     if cooldown_remaining > 0:
         st.warning(_german_cooldown_hint(cooldown_remaining))
@@ -280,11 +281,11 @@ def render_neueste_spotify_playlist_section(
         generate_clicked = False
     else:
         generate_clicked = st.button(
-            "Vorschau erzeugen",
+            "Spotify-Playlist erzeugen",
             type="primary",
             key="newest-spotify-generate",
             width="stretch",
-            disabled=not can_start_preview,
+            disabled=not can_publish_playlist,
         )
 
     scope_check_token = _stored_spotify_token()
@@ -318,12 +319,24 @@ def render_neueste_spotify_playlist_section(
             "Zugangsdaten entfernen und erneut verbinden, oder `SPOTIFY_SCOPES` "
             "in der `.env` prüfen."
         )
+    if scope_check_token is not None and not _token_declares_spotify_scope(
+        scope_check_token,
+        "playlist-read-private",
+    ):
+        st.warning(
+            "Zum Prüfen bestehender Playlists gleichen Namens braucht Spotify das "
+            "Scope „playlist-read-private“. Ohne dieses Recht schlägt die API bei "
+            "„Spotify-Playlist erzeugen“ oft mit 403 (Insufficient client scope) "
+            "fehl. Bitte unter „Spotify-App verwalten“ die Zugangsdaten entfernen "
+            "und erneut verbinden, und in der `.env` sicherstellen, dass "
+            "`SPOTIFY_SCOPES` dieses Scope enthält."
+        )
 
     if generate_clicked:
-        if not can_start_preview:
+        if not can_publish_playlist:
             st.warning(
-                "Eine neue Vorschau ist noch nicht möglich. Bitte die angezeigte "
-                "Wartezeit abwarten.",
+                "Eine neue Playlist-Erstellung ist noch nicht möglich. Bitte die "
+                "angezeigte Wartezeit abwarten.",
             )
         else:
             ranked_rows = (
@@ -356,16 +369,16 @@ def render_neueste_spotify_playlist_section(
                 exponent=taste_exponent,
             )
             _LOGGER.info(
-                "newest spotify preview: start build_playlist_candidates "
+                "newest spotify publish: start build_playlist_candidates "
                 "n_albums=%s target_count=%s taste_orientation=%s taste_exponent=%s",
                 len(chosen_reviews),
                 target_count,
                 taste_orientation,
                 taste_exponent,
             )
-            with st.spinner("Playlist-Vorschau wird erzeugt..."):
-                token_for_search = _ensure_valid_spotify_token(client, token)
-                preview = build_playlist_candidates(
+            with st.spinner("Spotify-Playlist wird erzeugt …"):
+                token_for_publish = _ensure_valid_spotify_token(client, token)
+                candidates = build_playlist_candidates(
                     reviews=chosen_reviews,
                     weights=alloc_weights,
                     raw_scores=raw_scores,
@@ -373,95 +386,90 @@ def render_neueste_spotify_playlist_section(
                     rng=rng,
                     resolve_fn=lambda *, artist, track_title: resolve_track_uri_strict(
                         client,
-                        token_for_search,
+                        token_for_publish,
                         artist=artist,
                         track_title=track_title,
                     ),
                 )
             _LOGGER.info(
-                "newest spotify preview: finished n_candidates=%s (target was %s)",
-                len(preview),
+                "newest spotify publish: finished n_candidates=%s (target was %s)",
+                len(candidates),
                 target_count,
             )
             _LOGGER.debug(
-                "newest spotify preview: candidate review_ids=%s",
-                [c.review_id for c in preview[:25]],
+                "newest spotify publish: candidate review_ids=%s",
+                [c.review_id for c in candidates[:25]],
             )
-            st.session_state[NEWEST_SPOTIFY_PREVIEW_KEY] = preview
-            record_spotify_preview_generated(
-                session=st.session_state,
-                profiles_dir=profiles_dir,
-                when_utc=datetime.now(UTC),
-            )
-
-    preview_items_any = st.session_state.get(NEWEST_SPOTIFY_PREVIEW_KEY)
-    preview_items = preview_items_any if isinstance(preview_items_any, list) else []
-    valid_preview_items = [x for x in preview_items if isinstance(x, PlaylistCandidate)]
-    if valid_preview_items:
-        _render_playlist_preview_table(
-            valid_preview_items,
-            target_count=target_count,
-        )
-        if len(valid_preview_items) < target_count:
-            st.warning(
-                "Es konnten nicht genug eindeutige Spotify-Treffer "
-                "gefunden werden. "
-                f"Gefunden: {len(valid_preview_items)} von {target_count}."
-            )
-        if st.button(
-            "Als Spotify-Playlist speichern",
-            key="newest-spotify-save",
-            width="stretch",
-        ):
-            try:
-                with st.spinner("Spotify-Playlist wird gespeichert..."):
-                    token_for_save = _ensure_valid_spotify_token(client, token)
-                    save_name = (
-                        playlist_name.strip() or _default_newest_spotify_playlist_name()
-                    )
-                    _LOGGER.info(
-                        "newest spotify save: create_playlist name=%r public=%s "
-                        "n_tracks=%s",
-                        save_name,
-                        make_playlist_public,
-                        len(valid_preview_items),
-                    )
-                    playlist = client.create_playlist(
-                        name=save_name,
-                        description=(
-                            "Playlist aus aktuellen Album-Rezensionen von "
-                            "plattentests.de - passend zu Deinem persönlichen "
-                            "Musikgeschmack."
-                        ),
+            if len(candidates) < target_count:
+                st.warning(
+                    "Es konnten nicht genug eindeutige Spotify-Treffer gefunden "
+                    "werden. "
+                    f"Gefunden: {len(candidates)} von {target_count}. Die Playlist "
+                    "wird nur mit diesen Songs befüllt."
+                )
+            if not candidates:
+                st.error(
+                    "Keine Spotify-Treffer für die Auswahl. Bitte Einstellungen "
+                    "oder den Rezensionen-Pool prüfen."
+                )
+            else:
+                resolved_name = (
+                    playlist_name.strip() or _default_newest_spotify_playlist_name()
+                )
+                try:
+                    playlist, created = publish_playlist_for_candidates(
+                        client,
+                        token_for_publish,
+                        candidates=candidates,
+                        resolved_name=resolved_name,
                         public=make_playlist_public,
-                        token=token_for_save,
                     )
-                    uris = [item.spotify_uri for item in valid_preview_items]
-                    for idx in range(0, len(uris), 100):
-                        client.add_tracks_to_playlist(
-                            playlist_id=playlist.id,
-                            track_uris=uris[idx : idx + 100],
-                            token=token_for_save,
+                except ValueError as exc:
+                    st.error(str(exc))
+                except RuntimeError as exc:
+                    st.error(
+                        "Spotify-Playlist konnte nicht erzeugt werden. "
+                        "Bitte Verbindung und Berechtigungen prüfen."
+                    )
+                    st.caption(f"Technische Details: {exc}")
+                    detail = str(exc)
+                    if "403" in detail or "forbidden" in detail.casefold():
+                        st.caption(
+                            "Hinweis: HTTP 403 bedeutet oft fehlende "
+                            "OAuth-Berechtigungen: private Playlists brauchen "
+                            "„playlist-modify-private“, öffentliche "
+                            "„playlist-modify-public“. Zum Auflisten eigener "
+                            "Playlists (Namensabgleich) braucht Spotify "
+                            "„playlist-read-private“. Unter „Spotify-App verwalten“ "
+                            "Zugangsdaten entfernen, `.env`/`SPOTIFY_SCOPES` prüfen, "
+                            "erneut „Verbindung mit Spotify herstellen“."
                         )
+                else:
+                    record_spotify_preview_generated(
+                        session=st.session_state,
+                        profiles_dir=profiles_dir,
+                        when_utc=datetime.now(UTC),
+                    )
+                    st.session_state[NEWEST_SPOTIFY_LAST_PUBLISH_KEY] = {
+                        "playlist_id": playlist.id,
+                        "external_url": playlist.external_url or "",
+                        "created": created,
+                    }
                     _LOGGER.info(
-                        "newest spotify save: done playlist_id=%s url=%r",
+                        "newest spotify publish: done playlist_id=%s created=%s url=%r",
                         playlist.id,
+                        created,
                         playlist.external_url,
                     )
-                st.success("Spotify-Playlist erfolgreich gespeichert.")
-            except RuntimeError as exc:
-                st.error(
-                    "Spotify-Playlist konnte nicht gespeichert werden. "
-                    "Bitte Spotify-Verbindung prüfen und erneut versuchen."
-                )
-                st.caption(f"Technische Details: {exc}")
-                detail = str(exc)
-                if "403" in detail or "forbidden" in detail.casefold():
-                    st.caption(
-                        "Hinweis: HTTP 403 bei Spotify bedeutet oft fehlende "
-                        "OAuth-Berechtigungen (z. B. private Playlist ohne "
-                        "„playlist-modify-private“). Unter „Spotify-App verwalten“ "
-                        "Zugangsdaten entfernen, `.env`/`SPOTIFY_SCOPES` prüfen, "
-                        "erneut „Verbindung mit Spotify herstellen“, "
-                        "oder die Option „Playlist öffentlich machen“ testen."
-                    )
+                    if created:
+                        st.success(
+                            "Neue Spotify-Playlist wurde angelegt und mit Songs "
+                            "befüllt."
+                        )
+                    else:
+                        st.success(
+                            "Eine bestehende Playlist gleichen Namens wurde "
+                            "aktualisiert (Songs ersetzt)."
+                        )
+
+    _render_last_spotify_publish_if_any()

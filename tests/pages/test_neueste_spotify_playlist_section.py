@@ -52,7 +52,7 @@ def test_german_cooldown_hint_formats_minutes_and_seconds() -> None:
     text = module._german_cooldown_hint(125)
     assert "2 Minuten" in text
     assert "5 Sekunden" in text
-    assert "Nächste Vorschau" in text
+    assert "Nächste Playlist-Erstellung" in text
 
 
 def test_german_cooldown_hint_empty_when_allowed() -> None:

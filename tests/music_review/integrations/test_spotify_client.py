@@ -17,6 +17,7 @@ from music_review.integrations.spotify_client import (
     SpotifyToken,
     SpotifyTrack,
     generate_pkce_pair,
+    normalize_playlist_display_name_for_match,
     normalize_streamlit_spotify_redirect_uri,
     pkce_challenge_from_verifier,
     resolve_spotify_redirect_uri,
@@ -29,7 +30,9 @@ def _sample_token_payload() -> dict[str, Any]:
         "token_type": "Bearer",
         "expires_in": 3600,
         "refresh_token": "refresh123",
-        "scope": "playlist-modify-public playlist-modify-private",
+        "scope": (
+            "playlist-read-private playlist-modify-public playlist-modify-private"
+        ),
     }
 
 
@@ -58,7 +61,9 @@ class TestFromUserCredentials:
         assert cfg.client_id == "test-id"
         assert cfg.client_secret == "test-secret"
         assert cfg.redirect_uri == "http://127.0.0.1:8501/spotify_playlists"
+        assert "playlist-read-private" in cfg.scopes
         assert "playlist-modify-public" in cfg.scopes
+        assert "playlist-modify-private" in cfg.scopes
 
     def test_falls_back_to_env_redirect_uri(
         self, monkeypatch: pytest.MonkeyPatch
@@ -133,6 +138,7 @@ def test_spotify_auth_config_from_env_defaults_scopes(
     monkeypatch.setenv("SPOTIFY_REDIRECT_URI", "http://localhost/callback")
     monkeypatch.delenv("SPOTIFY_SCOPES", raising=False)
     cfg = SpotifyAuthConfig.from_env()
+    assert "playlist-read-private" in cfg.scopes
     assert "playlist-modify-public" in cfg.scopes
     assert "playlist-modify-private" in cfg.scopes
 
@@ -523,3 +529,90 @@ def test_create_playlist_and_add_tracks(mock_req: MagicMock) -> None:
     assert "/playlists/" in add_url
     assert "/items" in add_url
     assert "/tracks" not in add_url
+
+
+def test_normalize_playlist_display_name_for_match_trims_and_casefolds() -> None:
+    a = normalize_playlist_display_name_for_match("  My Playlist  ")
+    b = normalize_playlist_display_name_for_match("MY PLAYLIST")
+    assert a == b
+
+
+@patch("music_review.integrations.spotify_client.requests.request")
+def test_find_owned_playlist_id_returns_first_name_match(mock_req: MagicMock) -> None:
+    cfg = SpotifyAuthConfig(
+        client_id="cid",
+        redirect_uri="http://localhost/callback",
+        scopes=("playlist-modify-public",),
+    )
+    client = SpotifyClient(cfg)
+    token = SpotifyToken.from_token_response(_sample_token_payload())
+    mock_resp = MagicMock()
+    mock_resp.status_code = 200
+    mock_resp.ok = True
+    mock_resp.json.return_value = {
+        "items": [
+            {"name": "Alpha", "id": "p0"},
+            {"name": "Target", "id": "p1"},
+            {"name": "target", "id": "p2"},
+        ],
+    }
+    mock_req.return_value = mock_resp
+    out = client.find_owned_playlist_id_by_display_name(
+        display_name="TARGET",
+        token=token,
+    )
+    assert out == "p1"
+
+
+@patch("music_review.integrations.spotify_client.requests.request")
+def test_replace_all_playlist_tracks_put_empty(mock_req: MagicMock) -> None:
+    cfg = SpotifyAuthConfig(
+        client_id="cid",
+        redirect_uri="http://localhost/callback",
+        scopes=("playlist-modify-public",),
+    )
+    client = SpotifyClient(cfg)
+    token = SpotifyToken.from_token_response(_sample_token_payload())
+    mock_resp = MagicMock()
+    mock_resp.status_code = 200
+    mock_resp.ok = True
+    mock_resp.json.return_value = {"snapshot_id": "s"}
+    mock_req.return_value = mock_resp
+    client.replace_all_playlist_tracks(
+        playlist_id="plx",
+        track_uris=[],
+        token=token,
+    )
+    assert mock_req.call_count == 1
+    kw = mock_req.call_args.kwargs
+    assert kw.get("method", "").upper() == "PUT"
+    assert kw.get("json") == {"uris": []}
+
+
+@patch("music_review.integrations.spotify_client.requests.request")
+def test_replace_all_playlist_tracks_put_then_post_for_101(mock_req: MagicMock) -> None:
+    cfg = SpotifyAuthConfig(
+        client_id="cid",
+        redirect_uri="http://localhost/callback",
+        scopes=("playlist-modify-public",),
+    )
+    client = SpotifyClient(cfg)
+    token = SpotifyToken.from_token_response(_sample_token_payload())
+    uris = [f"spotify:track:{i:03d}" for i in range(101)]
+    mock_put = MagicMock()
+    mock_put.status_code = 200
+    mock_put.ok = True
+    mock_put.json.return_value = {"snapshot_id": "s"}
+    mock_post = MagicMock()
+    mock_post.status_code = 201
+    mock_post.ok = True
+    mock_post.json.return_value = {"snapshot_id": "s2"}
+    mock_req.side_effect = [mock_put, mock_post]
+    client.replace_all_playlist_tracks(
+        playlist_id="plx",
+        track_uris=uris,
+        token=token,
+    )
+    assert mock_req.call_count == 2
+    assert mock_req.call_args_list[0].kwargs.get("json", {}).get("uris") == uris[:100]
+    assert mock_req.call_args_list[1].kwargs.get("method", "").upper() == "POST"

@@ -7,6 +7,7 @@ import base64
 import hashlib
 import logging
 import secrets
+import unicodedata
 import urllib.parse
 from collections.abc import Mapping
 from dataclasses import dataclass, replace
@@ -149,7 +150,8 @@ class SpotifyAuthConfig:
           letter case from Streamlit's ``url_path``.)
         - ``SPOTIFY_OAUTH_USE_BROWSER_REDIRECT_URI`` (optional; truthy uses
           ``st.context.url`` for OAuth when ``http(s)``; may diverge from dashboard.)
-        - ``SPOTIFY_SCOPES`` (optional, space-separated)
+        - ``SPOTIFY_SCOPES`` (optional, space-separated; defaults include
+          ``playlist-read-private`` for listing the user's playlists)
         - ``SPOTIFY_CLIENT_SECRET`` (optional; the Streamlit Spotify page uses PKCE so
           token exchange works without a secret when the Spotify app allows it)
         """
@@ -201,6 +203,7 @@ class SpotifyAuthConfig:
             scopes = tuple(scope for scope in scopes_raw.split() if scope)
         else:
             scopes = (
+                "playlist-read-private",
                 "playlist-modify-public",
                 "playlist-modify-private",
             )
@@ -225,7 +228,7 @@ class SpotifyAuthConfig:
 
         ``redirect_uri`` defaults to ``SPOTIFY_REDIRECT_URI`` from the
         environment (the deploy-wide endpoint); ``scopes`` default to the
-        standard playlist scopes.
+        standard playlist scopes (including read access for ``/me/playlists``).
         """
         if not client_id or not client_secret:
             raise SpotifyConfigError(
@@ -238,6 +241,7 @@ class SpotifyAuthConfig:
         redirect_uri = normalize_streamlit_spotify_redirect_uri(redirect_uri)
         if scopes is None:
             scopes = (
+                "playlist-read-private",
                 "playlist-modify-public",
                 "playlist-modify-private",
             )
@@ -334,6 +338,11 @@ def pkce_challenge_from_verifier(verifier: str) -> str:
     """Return the S256 PKCE challenge for an existing ``code_verifier``."""
     digest = hashlib.sha256(verifier.encode("ascii")).digest()
     return base64.urlsafe_b64encode(digest).decode("ascii").rstrip("=")
+
+
+def normalize_playlist_display_name_for_match(name: str) -> str:
+    """Normalize a playlist title for case-insensitive equality (user library scan)."""
+    return unicodedata.normalize("NFKC", name.strip()).casefold()
 
 
 def generate_pkce_pair() -> tuple[str, str]:
@@ -701,4 +710,166 @@ class SpotifyClient:
             path,
             access_token=token.access_token,
             json_body=payload,
+        )
+
+    def find_owned_playlist_id_by_display_name(
+        self,
+        *,
+        display_name: str,
+        token: SpotifyToken,
+    ) -> str | None:
+        """Return the first owned playlist id whose title matches ``display_name``.
+
+        Comparison uses :func:`normalize_playlist_display_name_for_match`. Pagination
+        walks ``GET /me/playlists`` in API order; if several playlists share the
+        same name, the first encountered page wins.
+        """
+        target = normalize_playlist_display_name_for_match(display_name)
+        if not target:
+            return None
+        limit = 50
+        offset = 0
+        LOGGER.info(
+            "Scanning current user playlists for display name match (limit=%s)",
+            limit,
+        )
+        while True:
+            data = self._request(
+                "GET",
+                "/me/playlists",
+                access_token=token.access_token,
+                params={"limit": limit, "offset": offset},
+            )
+            items = data.get("items")
+            if not isinstance(items, list):
+                break
+            for item in items:
+                if not isinstance(item, Mapping):
+                    continue
+                pname = item.get("name")
+                pid = item.get("id")
+                if not (isinstance(pname, str) and isinstance(pid, str)):
+                    continue
+                if normalize_playlist_display_name_for_match(pname) == target:
+                    LOGGER.info(
+                        "Found owned playlist by name: id=%s spotify_name=%r",
+                        pid,
+                        pname,
+                    )
+                    return pid
+            if len(items) < limit:
+                break
+            offset += limit
+            LOGGER.debug("Playlist name scan continues at offset=%s", offset)
+        return None
+
+    def replace_all_playlist_tracks(
+        self,
+        *,
+        playlist_id: str,
+        track_uris: list[str],
+        token: SpotifyToken,
+    ) -> None:
+        """Replace the entire playlist with ``track_uris`` (Spotify order).
+
+        The Web API allows at most 100 URIs per ``PUT``; longer lists use one
+        ``PUT`` for the first chunk and :meth:`add_tracks_to_playlist` for the rest.
+        """
+        path = f"/playlists/{urllib.parse.quote(playlist_id)}/tracks"
+        if not track_uris:
+            LOGGER.info(
+                "replace_all_playlist_tracks: clearing playlist id=%s",
+                playlist_id,
+            )
+            self._request(
+                "PUT",
+                path,
+                access_token=token.access_token,
+                json_body={"uris": []},
+            )
+            return
+        first = track_uris[:100]
+        LOGGER.info(
+            "replace_all_playlist_tracks: PUT n_first=%s total=%s playlist_id=%s",
+            len(first),
+            len(track_uris),
+            playlist_id,
+        )
+        self._request(
+            "PUT",
+            path,
+            access_token=token.access_token,
+            json_body={"uris": first},
+        )
+        rest = track_uris[100:]
+        for idx in range(0, len(rest), 100):
+            chunk = rest[idx : idx + 100]
+            LOGGER.debug(
+                "replace_all_playlist_tracks: POST append chunk size=%s",
+                len(chunk),
+            )
+            self.add_tracks_to_playlist(
+                playlist_id=playlist_id,
+                track_uris=chunk,
+                token=token,
+            )
+
+    def patch_playlist_details(
+        self,
+        *,
+        playlist_id: str,
+        token: SpotifyToken,
+        public: bool | None = None,
+        name: str | None = None,
+        description: str | None = None,
+    ) -> None:
+        """PATCH playlist metadata (only non-``None`` fields are sent)."""
+        body: dict[str, Any] = {}
+        if public is not None:
+            body["public"] = bool(public)
+        if name is not None:
+            body["name"] = name
+        if description is not None:
+            body["description"] = description
+        if not body:
+            return
+        path = f"/playlists/{urllib.parse.quote(playlist_id)}"
+        LOGGER.info("patch_playlist_details playlist_id=%s keys=%s", playlist_id, body)
+        self._request(
+            "PATCH",
+            path,
+            access_token=token.access_token,
+            json_body=body,
+        )
+
+    def get_playlist(
+        self,
+        *,
+        playlist_id: str,
+        token: SpotifyToken,
+    ) -> SpotifyPlaylist:
+        """Load playlist id, name, uri, and external Spotify URL."""
+        data = self._request(
+            "GET",
+            f"/playlists/{urllib.parse.quote(playlist_id)}",
+            access_token=token.access_token,
+        )
+        pid = data.get("id")
+        pname = data.get("name")
+        uri = data.get("uri")
+        if not (
+            isinstance(pid, str) and isinstance(pname, str) and isinstance(uri, str)
+        ):
+            raise RuntimeError("Spotify get playlist response missing id/name/uri")
+        external_url: str | None = None
+        ext_urls = data.get("external_urls")
+        if isinstance(ext_urls, Mapping):
+            spotify_url = ext_urls.get("spotify")
+            if isinstance(spotify_url, str):
+                external_url = spotify_url
+        return SpotifyPlaylist(
+            id=pid,
+            name=pname,
+            uri=uri,
+            external_url=external_url,
         )
