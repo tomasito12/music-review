@@ -94,11 +94,46 @@ def test_render_spotify_login_link_under_preview_shows_authorize_link(
             )
 
     render_spotify_login_link_under_preview(_FakeClient())
-    assert captured["label"] == "Zum Spotify-Login wechseln"
+    assert captured["label"] == "Verbindung mit Spotify herstellen"
     assert captured["url"] == (
         "https://accounts.example/authorize?"
         "state=state-for-url:csrf-raw&code_challenge=s256-challenge"
     )
+
+
+def test_render_spotify_login_link_under_preview_custom_label(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    module = importlib.import_module("pages.spotify_oauth_kickoff")
+    captured: dict[str, object] = {}
+
+    def _link_button(label: str, url: str, **_kwargs: object) -> None:
+        captured["label"] = label
+
+    monkeypatch.setattr(module.st, "link_button", _link_button)
+    monkeypatch.setattr(
+        module.st,
+        "session_state",
+        {SPOTIFY_AUTH_STATE_KEY: "csrf-raw"},
+    )
+    monkeypatch.setattr(
+        module,
+        "spotify_oauth_code_challenge_for_authorize",
+        lambda: "c",
+    )
+    monkeypatch.setattr(module, "spotify_oauth_state_for_authorize_url", lambda s: s)
+
+    class _FakeClient:
+        redirect_uri = "http://127.0.0.1:8501/spotify_playlists"
+
+        def build_authorize_url(self, *, state: str, code_challenge: str) -> str:
+            return f"https://example/?s={state}"
+
+    render_spotify_login_link_under_preview(
+        _FakeClient(),
+        link_label="Custom Spotify label",
+    )
+    assert captured["label"] == "Custom Spotify label"
 
 
 def test_render_spotify_login_link_under_preview_calls_start_when_state_missing(

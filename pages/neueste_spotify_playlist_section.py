@@ -146,8 +146,8 @@ def _ensure_valid_spotify_token(
         return token
     if not token.refresh_token:
         raise RuntimeError(
-            "Die Spotify-Sitzung ist abgelaufen. Bitte erneut bei Spotify anmelden "
-            "(Link „Zum Spotify-Login wechseln“ unter „Vorschau erzeugen“)."
+            "Die Spotify-Sitzung ist abgelaufen. Bitte erneut "
+            "„Verbindung mit Spotify herstellen“ wählen."
         )
     refreshed = client.refresh_access_token(refresh_token=token.refresh_token)
     persist_spotify_token(refreshed)
@@ -275,16 +275,17 @@ def render_neueste_spotify_playlist_section(
         '<div style="min-height: 2.5rem;" aria-hidden="true"></div>',
         unsafe_allow_html=True,
     )
-    generate_clicked = st.button(
-        "Vorschau erzeugen",
-        type="primary",
-        key="newest-spotify-generate",
-        width="stretch",
-        disabled=not can_start_preview,
-    )
-
     if token is None:
         render_spotify_login_link_under_preview(client)
+        generate_clicked = False
+    else:
+        generate_clicked = st.button(
+            "Vorschau erzeugen",
+            type="primary",
+            key="newest-spotify-generate",
+            width="stretch",
+            disabled=not can_start_preview,
+        )
 
     scope_check_token = _stored_spotify_token()
     if (
@@ -298,8 +299,9 @@ def render_neueste_spotify_playlist_section(
         st.warning(
             "Für eine private Playlist braucht Spotify das OAuth-Scope "
             "„playlist-modify-private“. Ohne dieses Recht antwortet die API "
-            "oft mit 403 Forbidden. Bitte Verbindung trennen und erneut "
-            "verbinden, und in der `.env` sicherstellen, dass "
+            "oft mit 403 Forbidden. Bitte unter „Spotify-App verwalten“ die "
+            "Zugangsdaten entfernen und erneut „Verbindung mit Spotify "
+            "herstellen“, und in der `.env` sicherstellen, dass "
             "`SPOTIFY_SCOPES` dieses Scope enthält."
         )
     if (
@@ -312,8 +314,9 @@ def render_neueste_spotify_playlist_section(
     ):
         st.warning(
             "Für eine öffentliche Playlist braucht Spotify das Scope "
-            "„playlist-modify-public“. Bitte Verbindung erneuern oder "
-            "`SPOTIFY_SCOPES` in der `.env` prüfen."
+            "„playlist-modify-public“. Bitte unter „Spotify-App verwalten“ die "
+            "Zugangsdaten entfernen und erneut verbinden, oder `SPOTIFY_SCOPES` "
+            "in der `.env` prüfen."
         )
 
     if generate_clicked:
@@ -321,11 +324,6 @@ def render_neueste_spotify_playlist_section(
             st.warning(
                 "Eine neue Vorschau ist noch nicht möglich. Bitte die angezeigte "
                 "Wartezeit abwarten.",
-            )
-        elif _stored_spotify_token() is None:
-            st.warning(
-                "Für die Vorschau musst du bei Spotify angemeldet sein. "
-                "Nutze den Link unter dem Button „Vorschau erzeugen“."
             )
         else:
             ranked_rows = (
@@ -462,7 +460,8 @@ def render_neueste_spotify_playlist_section(
                     st.caption(
                         "Hinweis: HTTP 403 bei Spotify bedeutet oft fehlende "
                         "OAuth-Berechtigungen (z. B. private Playlist ohne "
-                        "„playlist-modify-private“). Verbindung trennen, "
-                        "`.env`/`SPOTIFY_SCOPES` prüfen, erneut verbinden, "
+                        "„playlist-modify-private“). Unter „Spotify-App verwalten“ "
+                        "Zugangsdaten entfernen, `.env`/`SPOTIFY_SCOPES` prüfen, "
+                        "erneut „Verbindung mit Spotify herstellen“, "
                         "oder die Option „Playlist öffentlich machen“ testen."
                     )

@@ -138,8 +138,12 @@ def spotify_oauth_state_for_authorize_url(csrf: str) -> str:
     return f"{csrf}.{safe}"
 
 
-def render_spotify_login_link_under_preview(client: SpotifyClient) -> None:
-    """Show a single Spotify authorize link (no extra captions or expander).
+def render_spotify_login_link_under_preview(
+    client: SpotifyClient,
+    *,
+    link_label: str = "Verbindung mit Spotify herstellen",
+) -> None:
+    """Show a single Spotify authorize ``link_button`` (no extra captions).
 
     Omits ``key=`` because some installed Streamlit versions reject it for
     ``st.link_button``.
@@ -162,7 +166,7 @@ def render_spotify_login_link_under_preview(client: SpotifyClient) -> None:
         code_challenge=challenge,
     )
     st.link_button(
-        "Zum Spotify-Login wechseln",
+        link_label,
         url,
         use_container_width=True,
     )

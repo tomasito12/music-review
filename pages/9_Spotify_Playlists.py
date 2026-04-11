@@ -36,7 +36,6 @@ from pages.spotify_token_persist import (
     SPOTIFY_TOKEN_SESSION_KEY as SPOTIFY_TOKEN_KEY,
 )
 from pages.spotify_token_persist import (
-    clear_persisted_spotify_token_for_active_user,
     hydrate_spotify_token_from_db_for_active_user,
     persist_spotify_token,
     read_spotify_token_from_session,
@@ -461,15 +460,6 @@ def _render_connection_section(
 
     token = _get_stored_token()
     if token is not None:
-        _section_label("Verbindung zu Spotify")
-        col_status, col_action = st.columns([3, 1])
-        with col_status:
-            st.success("Mit Spotify verbunden.")
-        with col_action:
-            if st.button("Verbindung trennen", key="spotify_disconnect"):
-                clear_persisted_spotify_token_for_active_user()
-                _clear_spotify_oauth_browser_cookies()
-                st.rerun()
         return token
 
     if redirect_hint:
