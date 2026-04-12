@@ -7,11 +7,7 @@ from pages.page_helpers import (
     ACTIVE_PROFILE_SESSION_KEY,
     session_taste_setup_complete,
 )
-from pages.profil_auth_actions import (
-    GUEST_FLOW_REGISTER,
-    PROFIL_GUEST_FLOW_PENDING_KEY,
-    run_sign_in,
-)
+from pages.profil_auth_actions import run_sign_in
 
 
 def _anmelden_css() -> None:
@@ -29,11 +25,6 @@ def _anmelden_css() -> None:
             margin-bottom: 0.35rem;
             color: #111827;
         }
-        .anmelden-subtitle {
-            font-size: 1rem;
-            color: #6b7280;
-            margin-bottom: 0.5rem;
-        }
         .anmelden-card {
             max-width: 22rem;
             margin: 0 auto 1.5rem auto;
@@ -44,7 +35,7 @@ def _anmelden_css() -> None:
             font-size: 0.95rem;
             color: #4b5563;
         }
-        .anmelden-back {
+        .anmelden-skip-login {
             text-align: center;
             margin-top: 0.75rem;
         }
@@ -68,23 +59,14 @@ def main() -> None:
     _anmelden_css()
 
     st.markdown(
-        '<div class="anmelden-hero">'
-        '<p class="anmelden-title">Anmelden</p>'
-        '<p class="anmelden-subtitle">'
-        "Mit Profilnamen und Passwort auf diesem Gerät"
-        "</p>"
-        "</div>",
+        '<div class="anmelden-hero"><p class="anmelden-title">Anmelden</p></div>',
         unsafe_allow_html=True,
     )
 
     st.markdown('<div class="anmelden-card">', unsafe_allow_html=True)
-    st.caption(
-        "Ohne Leerzeichen im Namen (Bindestrich oder Unterstrich sind erlaubt).",
-    )
     with st.form("anmelden_form", clear_on_submit=False):
         username = st.text_input(
             "Benutzername",
-            placeholder="z. B. thomas",
             key=KEY_ANMELDEN_USERNAME,
         )
         password = st.text_input(
@@ -110,16 +92,15 @@ def main() -> None:
         key="anmelden_to_register",
         width="stretch",
     ):
-        st.session_state[PROFIL_GUEST_FLOW_PENDING_KEY] = GUEST_FLOW_REGISTER
-        st.switch_page("pages/0_Profil.py")
+        st.switch_page("pages/0d_Nutzerkonto_anlegen.py")
 
-    st.markdown('<div class="anmelden-back">', unsafe_allow_html=True)
+    st.markdown('<div class="anmelden-skip-login">', unsafe_allow_html=True)
     if st.button(
-        "Zurück zum Start",
-        key="anmelden_back_start",
+        "Weiter ohne Login",
+        key="anmelden_skip_login",
         width="stretch",
     ):
-        st.switch_page("streamlit_app.py")
+        st.switch_page("pages/0b_Einstieg.py")
     st.markdown("</div>", unsafe_allow_html=True)
 
 

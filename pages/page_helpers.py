@@ -1553,7 +1553,7 @@ def render_profile_sidebar() -> None:
     if res == ProfileHydrationResult.CLEARED_MISSING_PROFILE_FILE:
         clear_session_token_cookie()
 
-    st.sidebar.markdown("### Profil")
+    st.sidebar.markdown("### Konto")
     active = st.session_state.get(ACTIVE_PROFILE_SESSION_KEY)
     if active:
         st.sidebar.caption(f"Angemeldet als **{active}**")

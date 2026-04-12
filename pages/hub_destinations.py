@@ -42,10 +42,11 @@ HUB_DESTINATIONS: tuple[HubDestination, ...] = (
     HubDestination(
         title="Einstellungen speichern",
         description=(
-            "Profil anlegen oder laden, damit du Filter und Stile "
-            "beim nächsten Besuch nicht neu einrichten musst."
+            "Anmelden, damit Filter und Stile mit deinem Nutzerkonto "
+            "gespeichert werden. Ein neues Konto legst du über "
+            "»Konto anlegen« in der Seitenleiste an."
         ),
-        page_path="pages/0_Profil.py",
+        page_path="pages/0c_Anmelden.py",
     ),
 )
 
