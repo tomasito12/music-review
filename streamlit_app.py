@@ -16,6 +16,9 @@ from pages.page_helpers import (
 )
 
 from music_review.config import resolve_data_path
+from music_review.dashboard.streamlit_background import (
+    inject_streamlit_app_background_image,
+)
 from music_review.io.reviews_jsonl import max_review_id_in_jsonl
 
 
@@ -269,6 +272,8 @@ def main() -> None:
         page_icon=None,
         layout="centered",
     )
+
+    inject_streamlit_app_background_image()
 
     configure_spotify_playlist_logging_from_env()
     bootstrap_profile_session()
