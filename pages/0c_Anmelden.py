@@ -1,13 +1,37 @@
-"""Dedicated sign-in page (German UI)."""
+"""Sign-in for guests and account management when logged in (German UI)."""
 
 from __future__ import annotations
 
 import streamlit as st
-from pages.page_helpers import (
-    ACTIVE_PROFILE_SESSION_KEY,
-    session_taste_setup_complete,
-)
+from pages.konto_session_panel import render_logged_in_konto_panel
+from pages.page_helpers import ACTIVE_PROFILE_SESSION_KEY
 from pages.profil_auth_actions import run_sign_in
+
+
+def _konto_logged_in_css() -> None:
+    st.markdown(
+        """
+        <style>
+        .anmelden-konto-hero {
+            text-align: center;
+            padding: 1.25rem 1rem 0.75rem 1rem;
+        }
+        .anmelden-konto-title {
+            font-size: 1.85rem;
+            font-weight: 700;
+            letter-spacing: -0.03em;
+            margin-bottom: 0.35rem;
+            color: #111827;
+        }
+        .anmelden-konto-subtitle {
+            font-size: 1rem;
+            color: #6b7280;
+            margin-bottom: 0.5rem;
+        }
+        </style>
+        """,
+        unsafe_allow_html=True,
+    )
 
 
 def _anmelden_css() -> None:
@@ -50,11 +74,22 @@ KEY_ANMELDEN_PASSWORD = "anmelden_page_password"
 
 
 def main() -> None:
+    if "flow_mode" not in st.session_state:
+        st.session_state["flow_mode"] = None
+
     if st.session_state.get(ACTIVE_PROFILE_SESSION_KEY):
-        if session_taste_setup_complete():
-            st.switch_page("pages/2_Entdecken.py")
-        else:
-            st.switch_page("pages/0b_Einstieg.py")
+        _konto_logged_in_css()
+        st.markdown(
+            '<div class="anmelden-konto-hero">'
+            '<p class="anmelden-konto-title">Konto</p>'
+            '<p class="anmelden-konto-subtitle">'
+            "Passwort, Abmelden und Sitzungs-Einstellungen"
+            "</p>"
+            "</div>",
+            unsafe_allow_html=True,
+        )
+        render_logged_in_konto_panel()
+        return
 
     _anmelden_css()
 

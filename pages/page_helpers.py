@@ -1582,7 +1582,7 @@ def render_profile_sidebar() -> None:
         # Use switch_page, not page_link: after OAuth return URLs with query
         # params, Streamlit's page_link registry can lack url_pathname and raise.
         if st.sidebar.button(
-            "Anmelden",
+            "Konto",
             key="sb_prof_login",
             use_container_width=True,
         ):

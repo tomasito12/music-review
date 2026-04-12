@@ -10,16 +10,21 @@ from pages.page_helpers import (
     load_broad_categories_res_10,
     load_communities_res_10,
     load_genre_labels_res_10,
-    persist_active_profile_from_session,
     render_toolbar,
 )
 
 
 def _feinwahl_css() -> None:
-    """Visual alignment with Einstieg/Profil: centered, compact, red accent."""
+    """Visual alignment with Einstieg/Profil: centered, compact."""
     st.markdown(
         """
         <style>
+        /* One centered column for eyebrow, title, and intro (matches visual width). */
+        .feinwahl-intro {
+            max-width: 34rem;
+            margin: 0 auto 0.85rem auto;
+            text-align: center;
+        }
         .feinwahl-hero {
             text-align: center;
             padding: 1.1rem 0.75rem 0.35rem 0.75rem;
@@ -40,26 +45,15 @@ def _feinwahl_css() -> None:
             color: #111827;
         }
         .feinwahl-desc {
-            max-width: 34rem;
-            margin: 0 auto 0.85rem auto;
+            margin: 0;
             color: #6b7280;
             font-size: 0.92rem;
             line-height: 1.58;
             text-align: center;
         }
-        .feinwahl-hint {
-            max-width: 34rem;
-            margin: 0 auto 1.1rem auto;
-            background: #fef2f2;
-            border: 1px solid #fecaca;
-            border-radius: 8px;
-            padding: 0.8rem 1rem;
-            font-size: 0.86rem;
-            color: #44403c;
-            line-height: 1.55;
-            text-align: left;
+        div[data-testid="stMarkdownContainer"]:has(.feinwahl-intro) {
+            text-align: center !important;
         }
-        .feinwahl-hint strong { color: #991b1b; }
         .feinwahl-cta {
             text-align: center;
             margin-top: 1.5rem;
@@ -117,28 +111,18 @@ def main() -> None:
     _feinwahl_css()
 
     st.markdown(
+        '<div class="feinwahl-intro">'
         '<div class="feinwahl-hero">'
         '<p class="feinwahl-eyebrow">Schritt 2 von 4</p>'
         '<p class="feinwahl-title">Dein Sound im Detail</p>'
-        "</div>",
-        unsafe_allow_html=True,
-    )
-    st.markdown(
+        "</div>"
         '<p class="feinwahl-desc">'
         "Hier geht es um die Feinjustierung: Zu jeder groben Richtung von eben "
         "gibt es konkrete Genre-Bezeichnungen und typische Künstlerinnen "
         "und Künstler. "
         "<strong>Mehrfachauswahl ist erwünscht</strong>: je mehr Treffer, "
         "desto klarer wird dein Profil."
-        "</p>",
-        unsafe_allow_html=True,
-    )
-    st.markdown(
-        '<div class="feinwahl-hint">'
-        "<strong>So gehst du vor:</strong> Klappe die Stilbereiche auf, "
-        "die du auf der vorherigen Seite angekreuzt hast. "
-        "Setze überall ein Häkchen, wo du denkst: "
-        "<em>Das klingt nach mir.</em> Wenn nichts passt, lasse die Zeile leer."
+        "</p>"
         "</div>",
         unsafe_allow_html=True,
     )
@@ -186,48 +170,20 @@ def main() -> None:
 
         st.session_state["selected_communities"] = selected
 
-        if selected:
-            st.success("Super: deine Auswahl ist gespeichert. Als Nächstes: Filter.")
-        else:
-            st.info(
-                "Noch keine Zeile gewählt. Ohne Auswahl werden die Empfehlungen "
-                "später weniger persönlich."
-            )
-
     st.markdown('<div class="feinwahl-cta">', unsafe_allow_html=True)
-    col_back, col_next, col_save_next = st.columns(3)
+    col_back, col_next = st.columns(2)
     with col_back:
         st.page_link(
             "pages/0b_Einstieg.py",
-            label="Zurück",
+            label="Zurück zu Schritt 1",
             use_container_width=True,
         )
     with col_next:
         st.page_link(
             "pages/5_Filter_Flow.py",
-            label="Weiter zu den Filtern",
+            label="Weiter zu Schritt 3",
             use_container_width=True,
         )
-    with col_save_next:
-        if st.button(
-            "Speichern & Weiter zu den Filtern",
-            type="primary",
-            width="stretch",
-            key="feinwahl_save_next_to_filter",
-        ):
-            slug = persist_active_profile_from_session()
-            if slug:
-                st.toast(f"Profil '{slug}' auf der Platte gespeichert.")
-            else:
-                st.toast(
-                    "Ohne Profil: Auswahl nur in dieser Sitzung, nicht auf der Platte.",
-                )
-            st.switch_page("pages/5_Filter_Flow.py")
-    st.caption(
-        "**Weiter** legt die Auswahl nur in der aktuellen Sitzung ab. "
-        "Auf die Profil-Datei schreibt nur **Speichern & Weiter** oder "
-        "**Speichern** in der Seitenleiste (wenn du angemeldet bist)."
-    )
     st.markdown("</div>", unsafe_allow_html=True)
 
 

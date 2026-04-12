@@ -7,7 +7,7 @@ from pages.page_helpers import load_broad_categories_res_10, render_toolbar
 
 
 def _einstieg_css() -> None:
-    """Match Schritt-2-Seite: zentriert, rote Eyebrow, Hint-Box."""
+    """Match Schritt-2-Seite: zentriert, rote Eyebrow."""
     st.markdown(
         """
         <style>
@@ -42,18 +42,6 @@ def _einstieg_css() -> None:
             line-height: 1.58;
             text-align: center;
         }
-        .einstieg-hint {
-            margin: 0 0 1.1rem 0;
-            background: #fef2f2;
-            border: 1px solid #fecaca;
-            border-radius: 8px;
-            padding: 0.8rem 1rem;
-            font-size: 0.86rem;
-            color: #44403c;
-            line-height: 1.55;
-            text-align: center;
-        }
-        .einstieg-hint strong { color: #991b1b; }
         /* Streamlit markdown host: keep intro block centered */
         div[data-testid="stMarkdownContainer"]:has(.einstieg-column) {
             text-align: center !important;
@@ -93,11 +81,6 @@ def main() -> None:
         "und typische Künstler - dort markierst du, welcher Sound "
         "wirklich deinem Geschmack entspricht."
         "</p>"
-        '<div class="einstieg-hint">'
-        "<strong>So startest du:</strong> Es reicht, wenn du alles ankreuzt, "
-        "das grundsätzlich in Frage kommt. Feinjustierung und Künstler "
-        "kommen gleich danach in Schritt 2."
-        "</div>"
         "</div>",
         unsafe_allow_html=True,
     )

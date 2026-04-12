@@ -171,7 +171,7 @@ def render_start_page() -> None:
                 width="stretch",
                 key="start_to_profile_incomplete",
             ):
-                st.switch_page("pages/0_Profil.py")
+                st.switch_page("pages/0c_Anmelden.py")
         with inc2:
             if st.button("Abmelden", width="stretch", key="start_logout_incomplete"):
                 logout_active_profile()
@@ -227,13 +227,16 @@ def _navigation_pages() -> list[Any]:
     """Full app after taste setup; reduced sidebar during onboarding."""
     onboarding = [
         st.Page(render_start_page, title="Start", default=True),
-        st.Page("pages/0c_Anmelden.py", title="Anmelden", url_path="anmelden"),
+        st.Page(
+            "pages/0c_Anmelden.py",
+            title="Konto",
+            url_path="konto",
+        ),
         st.Page(
             "pages/0d_Nutzerkonto_anlegen.py",
             title="Konto anlegen",
             url_path="konto_anlegen",
         ),
-        st.Page("pages/0_Profil.py", title="Konto", url_path="konto"),
         st.Page("pages/0b_Einstieg.py", title="Einstieg"),
         st.Page("pages/1_Community_Auswahl.py", title="Genre / Stil"),
         st.Page("pages/5_Filter_Flow.py", title="Filter"),
@@ -244,13 +247,16 @@ def _navigation_pages() -> list[Any]:
     ]
     full_app = [
         st.Page(render_start_page, title="Start", default=True),
-        st.Page("pages/0c_Anmelden.py", title="Anmelden", url_path="anmelden"),
+        st.Page(
+            "pages/0c_Anmelden.py",
+            title="Konto",
+            url_path="konto",
+        ),
         st.Page(
             "pages/0d_Nutzerkonto_anlegen.py",
             title="Konto anlegen",
             url_path="konto_anlegen",
         ),
-        st.Page("pages/0_Profil.py", title="Konto", url_path="konto"),
         st.Page("pages/0b_Einstieg.py", title="Einstieg"),
         st.Page("pages/1_Community_Auswahl.py", title="Genre / Stil"),
         st.Page("pages/5_Filter_Flow.py", title="Filter"),
