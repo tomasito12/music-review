@@ -1,0 +1,127 @@
+"""Dedicated sign-in page (German UI)."""
+
+from __future__ import annotations
+
+import streamlit as st
+from pages.page_helpers import (
+    ACTIVE_PROFILE_SESSION_KEY,
+    session_taste_setup_complete,
+)
+from pages.profil_auth_actions import (
+    GUEST_FLOW_REGISTER,
+    PROFIL_GUEST_FLOW_PENDING_KEY,
+    run_sign_in,
+)
+
+
+def _anmelden_css() -> None:
+    st.markdown(
+        """
+        <style>
+        .anmelden-hero {
+            text-align: center;
+            padding: 1.25rem 1rem 0.75rem 1rem;
+        }
+        .anmelden-title {
+            font-size: 1.85rem;
+            font-weight: 700;
+            letter-spacing: -0.03em;
+            margin-bottom: 0.35rem;
+            color: #111827;
+        }
+        .anmelden-subtitle {
+            font-size: 1rem;
+            color: #6b7280;
+            margin-bottom: 0.5rem;
+        }
+        .anmelden-card {
+            max-width: 22rem;
+            margin: 0 auto 1.5rem auto;
+        }
+        .anmelden-register {
+            text-align: center;
+            margin-top: 1.25rem;
+            font-size: 0.95rem;
+            color: #4b5563;
+        }
+        .anmelden-back {
+            text-align: center;
+            margin-top: 0.75rem;
+        }
+        </style>
+        """,
+        unsafe_allow_html=True,
+    )
+
+
+KEY_ANMELDEN_USERNAME = "anmelden_page_username"
+KEY_ANMELDEN_PASSWORD = "anmelden_page_password"
+
+
+def main() -> None:
+    if st.session_state.get(ACTIVE_PROFILE_SESSION_KEY):
+        if session_taste_setup_complete():
+            st.switch_page("pages/2_Entdecken.py")
+        else:
+            st.switch_page("pages/0b_Einstieg.py")
+
+    _anmelden_css()
+
+    st.markdown(
+        '<div class="anmelden-hero">'
+        '<p class="anmelden-title">Anmelden</p>'
+        '<p class="anmelden-subtitle">'
+        "Mit Profilnamen und Passwort auf diesem Gerät"
+        "</p>"
+        "</div>",
+        unsafe_allow_html=True,
+    )
+
+    st.markdown('<div class="anmelden-card">', unsafe_allow_html=True)
+    st.caption(
+        "Ohne Leerzeichen im Namen (Bindestrich oder Unterstrich sind erlaubt).",
+    )
+    with st.form("anmelden_form", clear_on_submit=False):
+        username = st.text_input(
+            "Benutzername",
+            placeholder="z. B. thomas",
+            key=KEY_ANMELDEN_USERNAME,
+        )
+        password = st.text_input(
+            "Passwort",
+            type="password",
+            key=KEY_ANMELDEN_PASSWORD,
+        )
+        submitted = st.form_submit_button(
+            "Anmelden",
+            type="primary",
+            width="stretch",
+        )
+    if submitted:
+        run_sign_in(username, password)
+    st.markdown("</div>", unsafe_allow_html=True)
+
+    st.markdown(
+        '<p class="anmelden-register">Noch kein Konto?</p>',
+        unsafe_allow_html=True,
+    )
+    if st.button(
+        "Registrieren",
+        key="anmelden_to_register",
+        width="stretch",
+    ):
+        st.session_state[PROFIL_GUEST_FLOW_PENDING_KEY] = GUEST_FLOW_REGISTER
+        st.switch_page("pages/0_Profil.py")
+
+    st.markdown('<div class="anmelden-back">', unsafe_allow_html=True)
+    if st.button(
+        "Zurück zum Start",
+        key="anmelden_back_start",
+        width="stretch",
+    ):
+        st.switch_page("streamlit_app.py")
+    st.markdown("</div>", unsafe_allow_html=True)
+
+
+if __name__ == "__main__":
+    main()

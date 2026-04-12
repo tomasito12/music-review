@@ -14,6 +14,10 @@ from pages.page_helpers import (
     render_profile_sidebar,
     session_taste_setup_complete,
 )
+from pages.profil_auth_actions import (
+    GUEST_FLOW_REGISTER,
+    PROFIL_GUEST_FLOW_PENDING_KEY,
+)
 
 from music_review.config import resolve_data_path
 from music_review.io.reviews_jsonl import max_review_id_in_jsonl
@@ -165,6 +169,7 @@ def render_start_page() -> None:
             width="stretch",
             key="start_guest_profile",
         ):
+            st.session_state[PROFIL_GUEST_FLOW_PENDING_KEY] = GUEST_FLOW_REGISTER
             st.switch_page("pages/0_Profil.py")
     else:
         col_discover, col_login, col_register = st.columns([2, 1, 1])
@@ -178,13 +183,14 @@ def render_start_page() -> None:
                 st.switch_page("pages/0b_Einstieg.py")
         with col_login:
             if st.button("Einloggen", width="stretch", key="start_einloggen"):
-                st.switch_page("pages/0_Profil.py")
+                st.switch_page("pages/0c_Anmelden.py")
         with col_register:
             if st.button(
                 "Konto anlegen",
                 width="stretch",
                 key="start_konto_anlegen",
             ):
+                st.session_state[PROFIL_GUEST_FLOW_PENDING_KEY] = GUEST_FLOW_REGISTER
                 st.switch_page("pages/0_Profil.py")
 
     st.markdown("</div>", unsafe_allow_html=True)
@@ -204,6 +210,7 @@ def _navigation_pages() -> list[Any]:
     onboarding = [
         st.Page(render_start_page, title="Start", default=True),
         st.Page("pages/0_Profil.py", title="Profil"),
+        st.Page("pages/0c_Anmelden.py", title="Anmelden", url_path="anmelden"),
         st.Page("pages/0b_Einstieg.py", title="Einstieg"),
         st.Page("pages/1_Community_Auswahl.py", title="Genre / Stil"),
         st.Page("pages/5_Filter_Flow.py", title="Filter"),
@@ -215,6 +222,7 @@ def _navigation_pages() -> list[Any]:
     full_app = [
         st.Page(render_start_page, title="Start", default=True),
         st.Page("pages/0_Profil.py", title="Profil"),
+        st.Page("pages/0c_Anmelden.py", title="Anmelden", url_path="anmelden"),
         st.Page("pages/0b_Einstieg.py", title="Einstieg"),
         st.Page("pages/1_Community_Auswahl.py", title="Genre / Stil"),
         st.Page("pages/5_Filter_Flow.py", title="Filter"),

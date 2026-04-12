@@ -1586,7 +1586,7 @@ def render_profile_sidebar() -> None:
             key="sb_prof_login",
             use_container_width=True,
         ):
-            st.switch_page("pages/0_Profil.py")
+            st.switch_page("pages/0c_Anmelden.py")
 
 
 def render_toolbar(page_key: str) -> None:

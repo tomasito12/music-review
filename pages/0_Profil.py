@@ -11,18 +11,25 @@ from pages.page_helpers import (
     reset_taste_preferences,
     session_taste_setup_complete,
 )
+from pages.profil_auth_actions import (
+    GUEST_FLOW_LOGIN,
+    GUEST_FLOW_OPTIONS,
+    GUEST_FLOW_REGISTER,
+    GUEST_FLOW_SKIP,
+    PROFIL_GUEST_FLOW_RADIO_KEY,
+    apply_pending_guest_flow_to_radio_state,
+    run_sign_in,
+)
 
 from music_review.dashboard.user_db import (
     authenticate_user,
     change_password,
     create_user,
     get_connection,
-    user_exists,
 )
 from music_review.dashboard.user_profile_store import (
     ACTIVE_PROFILE_SESSION_KEY,
     apply_profile_to_session,
-    load_profile,
     normalize_profile_slug,
     save_profile,
 )
@@ -93,30 +100,6 @@ def _profil_css() -> None:
         """,
         unsafe_allow_html=True,
     )
-
-
-def _sign_in(slug: str, password: str) -> None:
-    try:
-        safe = normalize_profile_slug(slug)
-    except ValueError as err:
-        st.error(str(err))
-        return
-    if not password:
-        st.error("Bitte gib dein Passwort ein.")
-        return
-    conn = get_connection()
-    if not user_exists(conn, safe):
-        st.error("Profil nicht gefunden.")
-        return
-    if not authenticate_user(conn, safe, password):
-        st.error("Passwort ist falsch.")
-        return
-    data = load_profile(None, safe)  # type: ignore[arg-type]
-    if data is not None:
-        apply_profile_to_session(st.session_state, data)
-    st.session_state[ACTIVE_PROFILE_SESSION_KEY] = safe
-    persist_active_profile_slug_cookie(safe)
-    st.rerun()
 
 
 def _create_new(name_raw: str, password: str, password_confirm: str) -> None:
@@ -210,17 +193,16 @@ def _render_active_profile() -> None:
 
 
 def _render_profile_choices() -> None:
-    """Two-tab profile selection: login or register."""
-
-    tab_existing, tab_new, tab_skip = st.tabs(
-        [
-            "Anmelden",
-            "Registrieren",
-            "Ohne Profil weiter",
-        ]
+    """Guest flow: login, register, or continue without a profile (radio)."""
+    apply_pending_guest_flow_to_radio_state(st.session_state)
+    flow_choice = st.radio(
+        "Wie möchtest du fortfahren?",
+        options=list(GUEST_FLOW_OPTIONS),
+        horizontal=True,
+        key=PROFIL_GUEST_FLOW_RADIO_KEY,
     )
 
-    with tab_existing:
+    if flow_choice == GUEST_FLOW_LOGIN:
         st.markdown("> Gib deinen Profilnamen und dein Passwort ein.")
         st.caption(
             "Ohne Leerzeichen im Namen, bitte "
@@ -238,12 +220,9 @@ def _render_profile_choices() -> None:
             key=KEY_EXISTING_PASSWORD,
         )
         if st.button("Anmelden", key=KEY_PROFILE_SIGN_IN):
-            if not (existing_name or "").strip():
-                st.error("Bitte gib einen Profilnamen ein.")
-            else:
-                _sign_in(existing_name, existing_pw)
+            run_sign_in(existing_name, existing_pw)
 
-    with tab_new:
+    elif flow_choice == GUEST_FLOW_REGISTER:
         st.caption(
             "Ohne Leerzeichen im Namen, bitte "
             "(Bindestrich oder Unterstrich sind erlaubt).",
@@ -267,7 +246,7 @@ def _render_profile_choices() -> None:
         if st.button("Profil erstellen", key="profil_page_create"):
             _create_new(name_raw, new_pw, new_pw_confirm)
 
-    with tab_skip:
+    elif flow_choice == GUEST_FLOW_SKIP:
         st.markdown(
             "Du kannst die App auch ohne Profil nutzen. "
             "Deine Auswahl geht dann verloren, sobald du den "
