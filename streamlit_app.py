@@ -33,25 +33,39 @@ def _welcome_css() -> None:
     st.markdown(
         """
         <style>
+        /* Start page: tighter main column; avoid clipping large headings. */
+        section[data-testid="stMain"]:has(.welcome-hero) .block-container {
+            padding-top: 1.25rem !important;
+            overflow: visible !important;
+        }
+        section[data-testid="stMain"]:has(.welcome-hero)
+            [data-testid="stMarkdownContainer"] {
+            overflow: visible !important;
+        }
         .welcome-hero {
             text-align: center;
-            padding: 3rem 1rem 1.5rem 1rem;
+            padding: 0.75rem 1rem 1.35rem 1rem;
+            margin-bottom: 2rem;
+            overflow: visible;
         }
         .welcome-title {
             font-size: 2.4rem;
             font-weight: 700;
             letter-spacing: -0.03em;
-            margin-bottom: 0.3rem;
+            line-height: 1.15;
+            margin: 0 0 0.55rem 0;
+            padding-top: 0.08em;
             color: #111827;
+            overflow: visible;
         }
         .welcome-subtitle {
             font-size: 1.05rem;
             color: #6b7280;
-            margin-bottom: 2rem;
+            margin: 0;
         }
         .welcome-body {
             max-width: 38rem;
-            margin: 0 auto;
+            margin: 0 auto 2.5rem auto;
             font-size: 1rem;
             line-height: 1.7;
             color: #374151;
@@ -62,8 +76,8 @@ def _welcome_css() -> None:
         }
         .welcome-cta {
             text-align: center;
-            margin-top: 2.5rem;
-            margin-bottom: 2rem;
+            margin-top: 1.5rem;
+            margin-bottom: 1.75rem;
         }
         </style>
         """,
@@ -97,12 +111,6 @@ def render_start_page() -> None:
         "Genres, die man nie auf dem Schirm hatte, Platten, die in keiner "
         "Playlist auftauchen. Diese App öffnet dir das gesamte Universum "
         "dieses Kosmos, damit du genau solche Alben entdecken kannst."
-        "</p>"
-        "<p>"
-        "Die App ist zunächst zu Testzwecken für den Freundeskreis gedacht. "
-        "Ein Profilname genügt, um deine Einstellungen zu speichern und "
-        "später wiederzuverwenden &mdash; ganz ohne Passwort oder "
-        "Registrierung."
         "</p>"
         "</div>",
         unsafe_allow_html=True,
@@ -152,34 +160,32 @@ def render_start_page() -> None:
             key="start_guest_hub",
         ):
             st.switch_page("pages/2_Entdecken.py")
-        st.caption(
-            "Deine Filter und Stile sind eingerichtet. "
-            "Im nächsten Schritt wählst du, was du entdecken möchtest."
-        )
         if st.button(
-            "Profil anlegen",
+            "Konto anlegen",
             width="stretch",
             key="start_guest_profile",
         ):
             st.switch_page("pages/0_Profil.py")
-        st.caption("Ohne Profil bleiben Einstellungen nur in diesem Tab gültig.")
     else:
-        if st.button(
-            "Neu starten",
-            type="primary",
-            width="stretch",
-            key="start_new_wizard",
-        ):
-            st.switch_page("pages/0b_Einstieg.py")
-        if st.button("Profil laden", width="stretch", key="start_load_profile"):
-            st.switch_page("pages/0_Profil.py")
-
-    with st.expander("Was ist ein Profil?"):
-        st.markdown(
-            "Ein Profil ist nur ein Name auf diesem Gerät. Damit kannst du "
-            "deine Genre-Auswahl und Filter speichern und beim nächsten Besuch "
-            "weitermachen. Ohne Profil bleibt alles nur im offenen Tab gültig."
-        )
+        col_discover, col_login, col_register = st.columns([2, 1, 1])
+        with col_discover:
+            if st.button(
+                "Entdecken",
+                type="primary",
+                width="stretch",
+                key="start_entdecken_step1",
+            ):
+                st.switch_page("pages/0b_Einstieg.py")
+        with col_login:
+            if st.button("Einloggen", width="stretch", key="start_einloggen"):
+                st.switch_page("pages/0_Profil.py")
+        with col_register:
+            if st.button(
+                "Konto anlegen",
+                width="stretch",
+                key="start_konto_anlegen",
+            ):
+                st.switch_page("pages/0_Profil.py")
 
     st.markdown("</div>", unsafe_allow_html=True)
 
