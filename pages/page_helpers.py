@@ -13,6 +13,9 @@ from typing import Any
 import streamlit as st
 
 from music_review.config import resolve_data_path
+from music_review.dashboard.streamlit_branding import (
+    ensure_plattenradar_dashboard_chrome,
+)
 from music_review.dashboard.taste_setup import (
     clear_taste_wizard_reset_pending,
     data_implies_taste_setup_complete,
@@ -31,12 +34,14 @@ from music_review.dashboard.user_db import (
 from music_review.dashboard.user_profile_store import (
     ACTIVE_PROFILE_COOKIE_NAME,
     ACTIVE_PROFILE_SESSION_KEY,
+    LOGIN_GUEST_SESSION_PINNED_KEY,
+    LOGIN_PROFILE_MERGE_PENDING_KEY,
     ProfileHydrationResult,
-    apply_profile_to_session,
     build_profile_payload,
     default_profiles_dir,
     ensure_active_profile_hydrated,
     normalize_profile_slug,
+    post_login_maybe_defer_profile_apply,
     save_profile,
 )
 from music_review.io.jsonl import iter_jsonl_objects
@@ -137,6 +142,34 @@ def community_display_label(
     return "Stil-Cluster"
 
 
+def format_style_weight_example_artists(
+    top_artists: list[Any] | None,
+    *,
+    max_chars: int = 55,
+) -> str:
+    """Example artists for Finetuning cards, aligned with feine Auswahl (up to three).
+
+    Uses the same slice depth as ``build_community_broad_category_index`` (first
+    three ``top_artists`` strings). Prefix is ``z. B. ``. Prefer three names; if
+    ``len(caption) > max_chars``, use two; if still too long, use one.
+    """
+    prefix = "z. B. "
+    if not top_artists or not isinstance(top_artists, list):
+        return ""
+    names = [str(a).strip() for a in top_artists if str(a).strip()]
+    if not names:
+        return ""
+    pool = names[:3]
+    for n in (3, 2, 1):
+        chunk = pool[:n]
+        if not chunk:
+            continue
+        out = prefix + ", ".join(chunk)
+        if len(out) <= max_chars or n == 1:
+            return out
+    return ""
+
+
 def build_community_broad_category_index(
     communities: list[dict[str, Any]],
     genre_labels: dict[str, str],
@@ -182,7 +215,12 @@ YEAR_SLIDER_FALLBACK_FLOOR = 1990
 # Session-State-Schlüssel für das Plattenlabel-Multiselect auf der Filterseite.
 FILTER_PLATTENLABEL_MULTISELECT_KEY = "filter_plattenlabel_multiselect"
 
-# Semantische Freitext-Suche (Expander im Filter-Flow; Treffer auf Empfehlungen).
+# After Schritt 3 (Filter): optional save-to-account prompt (session flags).
+FILTER_ACCOUNT_SAVE_PROMPT_ACTIVE_KEY = "filter_account_save_prompt_active"
+WIZARD_ACCOUNT_SAVE_INTENT_KEY = "wizard_account_save_intent"
+
+# Semantische Freitext-Suche (Expander im Filter-Flow; siehe
+# ``DASHBOARD_SEMANTIC_SEARCH_ENABLED`` in ``music_review.config``).
 SEMANTIC_CHAT_RESET_BUTTON_KEY = "rec_chat_reset_button"
 SEMANTIC_CHAT_INPUT_KEY = "rec_chat_input"
 SEMANTIC_RAG_MAX_DISTANCE_KEY = "rec_rag_max_distance"
@@ -1164,6 +1202,7 @@ def persist_active_profile_from_session() -> str | None:
     profiles_dir = default_profiles_dir()
     payload = build_session_profile_payload(profile_slug=slug)
     save_profile(profiles_dir, slug, payload)
+    st.session_state.pop(LOGIN_GUEST_SESSION_PINNED_KEY, None)
     return slug
 
 
@@ -1220,6 +1259,10 @@ def logout_active_profile() -> None:
     """Sign out: invalidate session token, clear cookie, clear taste keys."""
     _invalidate_current_session_token()
     st.session_state.pop(ACTIVE_PROFILE_SESSION_KEY, None)
+    st.session_state.pop(LOGIN_PROFILE_MERGE_PENDING_KEY, None)
+    st.session_state.pop(LOGIN_GUEST_SESSION_PINNED_KEY, None)
+    st.session_state.pop(FILTER_ACCOUNT_SAVE_PROMPT_ACTIVE_KEY, None)
+    st.session_state.pop(WIZARD_ACCOUNT_SAVE_INTENT_KEY, None)
     clear_session_token_cookie()
     reset_taste_preferences()
 
@@ -1530,9 +1573,11 @@ def restore_active_profile_from_cookie_if_needed() -> None:
         clear_session_token_cookie()
         return
     data = load_user_profile(conn, slug)
-    st.session_state[ACTIVE_PROFILE_SESSION_KEY] = slug
-    if data is not None:
-        apply_profile_to_session(st.session_state, data)
+    post_login_maybe_defer_profile_apply(
+        st.session_state,
+        profile_slug=slug,
+        server_profile=data,
+    )
 
 
 def bootstrap_profile_session() -> None:
@@ -1564,13 +1609,6 @@ def render_profile_sidebar() -> None:
         ):
             save_current_profile_to_disk()
         if st.sidebar.button(
-            "Filter und Stile zurücksetzen",
-            key="sb_prof_reset",
-            use_container_width=True,
-        ):
-            reset_taste_preferences()
-            st.rerun()
-        if st.sidebar.button(
             "Abmelden",
             key="sb_prof_logout",
             use_container_width=True,
@@ -1591,4 +1629,5 @@ def render_profile_sidebar() -> None:
 
 def render_toolbar(page_key: str) -> None:
     """Reserved hook at page top; profile controls live in the entrypoint sidebar."""
+    ensure_plattenradar_dashboard_chrome()
     _ = page_key

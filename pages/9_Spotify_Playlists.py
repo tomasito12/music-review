@@ -51,10 +51,10 @@ from music_review.dashboard.user_db import (
 )
 from music_review.dashboard.user_profile_store import (
     ACTIVE_PROFILE_SESSION_KEY,
-    apply_profile_to_session,
     default_profiles_dir,
     load_profile,
     normalize_profile_slug,
+    post_login_maybe_defer_profile_apply,
 )
 from music_review.integrations.spotify_client import (
     SpotifyAuthConfig,
@@ -332,8 +332,11 @@ def _restore_profile_from_oauth_callback_slug(slug: str) -> None:
     data = load_profile(default_profiles_dir(), safe)
     if data is None:
         return
-    st.session_state[ACTIVE_PROFILE_SESSION_KEY] = safe
-    apply_profile_to_session(st.session_state, data)
+    post_login_maybe_defer_profile_apply(
+        st.session_state,
+        profile_slug=safe,
+        server_profile=data,
+    )
     persist_active_profile_slug_cookie(safe)
 
 

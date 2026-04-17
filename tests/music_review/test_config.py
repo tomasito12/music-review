@@ -7,6 +7,7 @@ from pathlib import Path
 import pytest
 
 from music_review.config import (
+    DASHBOARD_SEMANTIC_SEARCH_ENABLED,
     get_project_root,
     get_recommendation_overall_weights,
     normalize_overall_weights,
@@ -34,6 +35,11 @@ def test_resolve_data_path_relative_joins_project_root(
         resolve_data_path("data/reviews.jsonl") == fake_root / "data" / "reviews.jsonl"
     )
     assert resolve_data_path(Path("metadata.jsonl")) == fake_root / "metadata.jsonl"
+
+
+def test_dashboard_semantic_search_disabled_by_default() -> None:
+    """Product default: Filter-Flow Chroma chat expander stays off."""
+    assert DASHBOARD_SEMANTIC_SEARCH_ENABLED is False
 
 
 def test_get_recommendation_overall_weights_sum_to_one() -> None:

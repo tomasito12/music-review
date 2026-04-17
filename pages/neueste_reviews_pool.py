@@ -15,6 +15,9 @@ from music_review.dashboard.preference_ranking import (
     global_breadth_norm_by_review_id,
     preference_ranked_rows,
 )
+from music_review.dashboard.user_profile_store import (
+    profile_taste_from_account_applied_to_session,
+)
 from music_review.domain.models import Review
 from music_review.io.jsonl import iter_jsonl_objects
 from music_review.io.reviews_jsonl import load_reviews_from_jsonl
@@ -98,9 +101,11 @@ def _load_all_reviews_for_breadth_norm() -> list[Review]:
 
 @st.cache_data(ttl=300)
 def _cached_global_breadth_norm_map(
+    _account_taste_hydrated: bool,
     selected_key: tuple[str, ...],
     weights_key: tuple[tuple[str, float], ...],
 ) -> dict[int, float]:
+    """Breadth norms; first arg is cache-key only (hydrated vs. session-only taste)."""
     all_rev = _load_all_reviews_for_breadth_norm()
     if not all_rev:
         return {}
@@ -135,7 +140,10 @@ def preference_rank_rows_for_reviews(
     """Preference scores for exactly ``reviews`` (same rules as the Neueste page).
 
     Returns ``None`` when no communities are selected (callers use uniform
-    weights). Does not load reviews; only ranks the given list.
+    weights). Does not load reviews; only ranks the given list. Uses
+    ``st.session_state`` taste keys only; when the account profile is not
+    hydrated into the session (merge pending or guest session pinned), those
+    keys are the temporary in-tab preferences, not a parallel DB read.
     """
     configure_spotify_playlist_logging_from_env()
     ensure_neueste_session_defaults()
@@ -152,7 +160,9 @@ def preference_rank_rows_for_reviews(
     aff_map_full = _load_affinity_by_review_id()
     memberships = load_community_memberships()
     weights_key = tuple((str(k), float(v)) for k, v in sorted(weights_raw.items()))
+    taste_hydrated = profile_taste_from_account_applied_to_session(st.session_state)
     breadth_norm_global = _cached_global_breadth_norm_map(
+        taste_hydrated,
         tuple(sorted(selected_comms)),
         weights_key,
     )

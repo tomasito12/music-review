@@ -7,6 +7,7 @@ all data lives in ``data/plattenradar.db`` via :mod:`user_db`.
 
 from __future__ import annotations
 
+import copy
 import math
 import re
 import sqlite3
@@ -22,6 +23,7 @@ from music_review.dashboard.taste_setup import (
     clear_taste_wizard_reset_pending,
     data_implies_taste_setup_complete,
     mark_taste_wizard_reset_pending,
+    session_has_guest_taste_or_filter_prefs,
 )
 from music_review.dashboard.user_db import (
     get_connection,
@@ -36,6 +38,8 @@ SCHEMA_VERSION = 1
 MAX_SLUG_LEN = 48
 ACTIVE_PROFILE_SESSION_KEY = "active_profile_slug"
 ACTIVE_PROFILE_COOKIE_NAME = "mr_active_profile_slug"
+LOGIN_PROFILE_MERGE_PENDING_KEY = "login_profile_merge_pending"
+LOGIN_GUEST_SESSION_PINNED_KEY = "login_guest_session_pinned"
 _SLUG_PATTERN = re.compile(r"^[a-z0-9][a-z0-9_-]*$")
 
 SPOTIFY_PREVIEW_COOLDOWN_SECONDS = 600
@@ -335,6 +339,53 @@ def apply_profile_to_session(
         mark_taste_wizard_reset_pending(session)
 
 
+def profile_document_implies_taste_complete(data: Mapping[str, Any]) -> bool:
+    """True when a stored profile has communities plus merged filter bounds."""
+    fake: dict[str, Any] = {}
+    apply_profile_to_session(fake, data)
+    return data_implies_taste_setup_complete(fake)
+
+
+def profile_taste_from_account_applied_to_session(session: Mapping[str, Any]) -> bool:
+    """True when DB-backed profile taste may overwrite session keys (normal hydration).
+
+    If false, Empfehlungen / Neueste rankings must use only in-session taste keys, not a
+    profile document loaded aside from ``session_state``.
+    """
+    raw = session.get(ACTIVE_PROFILE_SESSION_KEY)
+    if not isinstance(raw, str) or not raw.strip():
+        return False
+    if session.get(LOGIN_PROFILE_MERGE_PENDING_KEY):
+        return False
+    return not bool(session.get(LOGIN_GUEST_SESSION_PINNED_KEY))
+
+
+def post_login_maybe_defer_profile_apply(
+    session: MutableMapping[str, Any],
+    *,
+    profile_slug: str,
+    server_profile: Mapping[str, Any] | None,
+) -> bool:
+    """Set merge pending when guest prefs exist; else apply server profile to session.
+
+    Returns:
+        True if the UI must resolve session vs. profile (merge pending set).
+        False if the server profile was applied immediately (or none to apply).
+    """
+    safe_slug = normalize_profile_slug(profile_slug)
+    if session_has_guest_taste_or_filter_prefs(session):
+        snapshot: dict[str, Any] = {}
+        if server_profile is not None:
+            snapshot = copy.deepcopy(dict(server_profile))
+        session[LOGIN_PROFILE_MERGE_PENDING_KEY] = {"server_profile": snapshot}
+        session[ACTIVE_PROFILE_SESSION_KEY] = safe_slug
+        return True
+    session[ACTIVE_PROFILE_SESSION_KEY] = safe_slug
+    if server_profile is not None:
+        apply_profile_to_session(session, server_profile)
+    return False
+
+
 # ---- Hydration from DB on every page run ------------------------------------
 
 
@@ -368,6 +419,12 @@ def ensure_active_profile_hydrated(
         session[ACTIVE_PROFILE_SESSION_KEY] = safe_slug
 
     if session.get(TASTE_WIZARD_RESET_PENDING_KEY):
+        return ProfileHydrationResult.HYDRATED
+
+    if session.get(LOGIN_PROFILE_MERGE_PENDING_KEY):
+        return ProfileHydrationResult.HYDRATED
+
+    if session.get(LOGIN_GUEST_SESSION_PINNED_KEY):
         return ProfileHydrationResult.HYDRATED
 
     data = load_user_profile(conn, safe_slug)

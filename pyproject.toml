@@ -29,7 +29,8 @@ dependencies = [
   "plotly>=5.18",
   "python-dotenv",
   "musicbrainzngs",
-  "requests",
+    "requests",
+    "pillow>=10.0",
     "extra-streamlit-components>=0.1.70",
     "streamlit>=1.50",
 ]

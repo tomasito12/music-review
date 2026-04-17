@@ -1,4 +1,4 @@
-"""Step 4 of 4: destination hub after filter and style setup (Streamlit page)."""
+"""Navigation hub after the three-step taste setup (not a numbered wizard step)."""
 
 from __future__ import annotations
 
@@ -7,7 +7,6 @@ from pages.hub_destinations import hub_destinations
 from pages.page_helpers import (
     ACTIVE_PROFILE_SESSION_KEY,
     render_toolbar,
-    reset_taste_preferences,
     session_taste_setup_complete,
 )
 
@@ -55,7 +54,7 @@ def main() -> None:
 
     st.markdown(
         '<div class="hub-hero">'
-        '<p class="hub-eyebrow">Schritt 4 von 4</p>'
+        '<p class="hub-eyebrow">Navigation</p>'
         '<p class="hub-title">Was möchtest du entdecken?</p>'
         "</div>",
         unsafe_allow_html=True,
@@ -95,47 +94,9 @@ def main() -> None:
                 if st.button("Öffnen", key=key, width="stretch"):
                     st.switch_page(dest.page_path)
 
-    st.markdown("---")
-    st.caption("Feintuning")
-    ft1, ft2 = st.columns(2)
-    with ft1:
-        st.page_link(
-            "pages/5_Filter_Flow.py",
-            label="Gewichte und Filter",
-            use_container_width=True,
-        )
-    with ft2:
-        st.page_link(
-            "pages/1_Community_Auswahl.py",
-            label="Stil-Schwerpunkte",
-            use_container_width=True,
-        )
-
-    with st.expander("Filter und Stile zurücksetzen"):
-        st.markdown(
-            "Alle Stil- und Filtereinstellungen in dieser Sitzung werden "
-            "gelöscht. Wenn du angemeldet bist, bleibt die gespeicherte "
-            "Profil-Datei unverändert, bis du in der Seitenleiste auf "
-            "**Speichern** klickst."
-        )
-        confirm = st.checkbox(
-            "Ja, Filter und Stile zurücksetzen.",
-            key="hub_reset_confirm",
-        )
-        if st.button(
-            "Filter und Stile zurücksetzen",
-            disabled=not confirm,
-            key="hub_reset_run",
-        ):
-            reset_taste_preferences()
-            st.switch_page("pages/0b_Einstieg.py")
-
     active = st.session_state.get(ACTIVE_PROFILE_SESSION_KEY)
     if active:
-        st.caption(
-            f"Angemeldet als **{active}** -- nach einem Reset ggf. "
-            "**Speichern**, damit das Profil auf der Platte mitzieht."
-        )
+        st.caption(f"Angemeldet als **{active}**.")
 
 
 if __name__ == "__main__":

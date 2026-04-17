@@ -4,8 +4,22 @@ from __future__ import annotations
 
 import streamlit as st
 from pages.konto_session_panel import render_logged_in_konto_panel
-from pages.page_helpers import ACTIVE_PROFILE_SESSION_KEY
+from pages.page_helpers import (
+    ACTIVE_PROFILE_SESSION_KEY,
+    WIZARD_ACCOUNT_SAVE_INTENT_KEY,
+    persist_active_profile_from_session,
+    session_taste_setup_complete,
+)
 from pages.profil_auth_actions import run_sign_in
+
+from music_review.dashboard.streamlit_branding import (
+    ensure_plattenradar_dashboard_chrome,
+)
+from music_review.dashboard.user_profile_store import (
+    LOGIN_GUEST_SESSION_PINNED_KEY,
+    LOGIN_PROFILE_MERGE_PENDING_KEY,
+    apply_profile_to_session,
+)
 
 
 def _konto_logged_in_css() -> None:
@@ -74,17 +88,72 @@ KEY_ANMELDEN_PASSWORD = "anmelden_page_password"
 
 
 def main() -> None:
+    ensure_plattenradar_dashboard_chrome()
     if "flow_mode" not in st.session_state:
         st.session_state["flow_mode"] = None
+
+    merge_pending = st.session_state.get(LOGIN_PROFILE_MERGE_PENDING_KEY)
+    if st.session_state.get(ACTIVE_PROFILE_SESSION_KEY) and merge_pending:
+        _konto_logged_in_css()
+        st.markdown(
+            '<div class="anmelden-konto-hero">'
+            '<p class="anmelden-konto-title">Profil und Sitzung</p>'
+            '<p class="anmelden-konto-subtitle">'
+            "Du hast dich angemeldet, während in dieser Sitzung bereits "
+            "Musikpräferenzen, Filter oder Gewichte eingestellt waren."
+            "</p>"
+            "</div>",
+            unsafe_allow_html=True,
+        )
+        st.markdown(
+            "Wähle, ob dein **gespeichertes Nutzerprofil** mit der aktuellen Sitzung "
+            "abgeglichen werden soll, die Sitzung unverändert bleiben soll "
+            "(ohne Speichern auf dem Profil), oder ob die **gespeicherten** "
+            "Einstellungen geladen und die Sitzung damit ersetzt werden soll."
+        )
+        col_overwrite, col_keep_session, col_load_server = st.columns(3)
+        with col_overwrite:
+            if st.button(
+                "Profil mit aktueller Auswahl überschreiben",
+                type="primary",
+                width="stretch",
+                key="login_merge_overwrite",
+            ):
+                persist_active_profile_from_session()
+                st.session_state.pop(LOGIN_PROFILE_MERGE_PENDING_KEY, None)
+                st.session_state.pop(LOGIN_GUEST_SESSION_PINNED_KEY, None)
+                st.session_state.pop(WIZARD_ACCOUNT_SAVE_INTENT_KEY, None)
+                st.rerun()
+        with col_keep_session:
+            if st.button(
+                "Profil nicht ändern, Sitzung behalten",
+                width="stretch",
+                key="login_merge_keep_session",
+            ):
+                st.session_state.pop(LOGIN_PROFILE_MERGE_PENDING_KEY, None)
+                st.session_state[LOGIN_GUEST_SESSION_PINNED_KEY] = True
+                st.session_state.pop(WIZARD_ACCOUNT_SAVE_INTENT_KEY, None)
+                st.rerun()
+        with col_load_server:
+            if st.button(
+                "Gespeichertes Profil laden",
+                width="stretch",
+                key="login_merge_load_server",
+            ):
+                server = merge_pending.get("server_profile")
+                if isinstance(server, dict) and server:
+                    apply_profile_to_session(st.session_state, server)
+                st.session_state.pop(LOGIN_PROFILE_MERGE_PENDING_KEY, None)
+                st.session_state.pop(LOGIN_GUEST_SESSION_PINNED_KEY, None)
+                st.session_state.pop(WIZARD_ACCOUNT_SAVE_INTENT_KEY, None)
+                st.rerun()
+        return
 
     if st.session_state.get(ACTIVE_PROFILE_SESSION_KEY):
         _konto_logged_in_css()
         st.markdown(
             '<div class="anmelden-konto-hero">'
             '<p class="anmelden-konto-title">Konto</p>'
-            '<p class="anmelden-konto-subtitle">'
-            "Passwort, Abmelden und Sitzungs-Einstellungen"
-            "</p>"
             "</div>",
             unsafe_allow_html=True,
         )
@@ -135,7 +204,11 @@ def main() -> None:
         key="anmelden_skip_login",
         width="stretch",
     ):
-        st.switch_page("pages/0b_Einstieg.py")
+        st.session_state.pop(WIZARD_ACCOUNT_SAVE_INTENT_KEY, None)
+        if session_taste_setup_complete():
+            st.switch_page("pages/2_Entdecken.py")
+        else:
+            st.switch_page("pages/0b_Einstieg.py")
     st.markdown("</div>", unsafe_allow_html=True)
 
 

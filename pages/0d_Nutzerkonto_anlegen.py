@@ -10,6 +10,10 @@ from pages.page_helpers import (
 )
 from pages.profil_auth_actions import run_register
 
+from music_review.dashboard.streamlit_branding import (
+    ensure_plattenradar_dashboard_chrome,
+)
+
 KEY_NUTZERKONTO_USERNAME = "nutzerkonto_page_username"
 KEY_NUTZERKONTO_PASSWORD = "nutzerkonto_page_password"
 KEY_NUTZERKONTO_PASSWORD_CONFIRM = "nutzerkonto_page_password_confirm"
@@ -49,6 +53,7 @@ def _nutzerkonto_css() -> None:
 
 
 def main() -> None:
+    ensure_plattenradar_dashboard_chrome()
     if st.session_state.get(ACTIVE_PROFILE_SESSION_KEY):
         if session_taste_setup_complete():
             st.switch_page("pages/2_Entdecken.py")

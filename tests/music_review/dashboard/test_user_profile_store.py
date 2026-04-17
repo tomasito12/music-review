@@ -11,6 +11,8 @@ from music_review.dashboard.taste_setup import TASTE_WIZARD_RESET_PENDING_KEY
 from music_review.dashboard.user_db import create_user, get_connection
 from music_review.dashboard.user_profile_store import (
     ACTIVE_PROFILE_SESSION_KEY,
+    LOGIN_GUEST_SESSION_PINNED_KEY,
+    LOGIN_PROFILE_MERGE_PENDING_KEY,
     SCHEMA_VERSION,
     ProfileHydrationResult,
     apply_profile_to_session,
@@ -20,6 +22,9 @@ from music_review.dashboard.user_profile_store import (
     load_profile,
     normalize_profile_slug,
     parse_iso_datetime_utc,
+    post_login_maybe_defer_profile_apply,
+    profile_document_implies_taste_complete,
+    profile_taste_from_account_applied_to_session,
     record_spotify_preview_generated,
     save_profile,
     spotify_preview_cooldown_seconds_remaining,
@@ -123,11 +128,198 @@ def test_apply_profile_to_session_with_selected_communities() -> None:
     assert TASTE_WIZARD_RESET_PENDING_KEY not in session
 
 
+def test_profile_taste_from_account_applied_to_session_false_without_slug() -> None:
+    assert not profile_taste_from_account_applied_to_session({})
+
+
+def test_profile_taste_from_account_applied_to_session_false_when_merge_pending() -> (
+    None
+):
+    session: dict[str, object] = {
+        ACTIVE_PROFILE_SESSION_KEY: "ada",
+        LOGIN_PROFILE_MERGE_PENDING_KEY: {"server_profile": {}},
+    }
+    assert not profile_taste_from_account_applied_to_session(session)
+
+
+def test_profile_taste_from_account_applied_to_session_false_when_guest_pinned() -> (
+    None
+):
+    session: dict[str, object] = {
+        ACTIVE_PROFILE_SESSION_KEY: "ada",
+        LOGIN_GUEST_SESSION_PINNED_KEY: True,
+    }
+    assert not profile_taste_from_account_applied_to_session(session)
+
+
+def test_profile_taste_from_account_applied_to_session_true_when_logged_in_clean() -> (
+    None
+):
+    session: dict[str, object] = {ACTIVE_PROFILE_SESSION_KEY: "ada"}
+    assert profile_taste_from_account_applied_to_session(session)
+
+
 def test_ensure_active_profile_hydrated_no_slug() -> None:
     session: dict[str, object] = {}
     assert (
         ensure_active_profile_hydrated(session) == ProfileHydrationResult.NO_ACTIVE_SLUG
     )
+
+
+def test_profile_document_implies_taste_complete_false_when_empty() -> None:
+    assert not profile_document_implies_taste_complete(
+        {
+            "selected_communities": [],
+            "filter_settings": {},
+            "community_weights_raw": {},
+        },
+    )
+
+
+def test_profile_document_implies_taste_complete_true_when_complete() -> None:
+    doc = build_profile_payload(
+        profile_slug="x",
+        flow_mode="combined",
+        selected_communities={"42"},
+        filter_settings={
+            "year_min": 1990,
+            "year_max": 2024,
+            "rating_min": 0,
+            "rating_max": 10,
+        },
+        community_weights_raw={"42": 1.0},
+    )
+    assert profile_document_implies_taste_complete(doc)
+
+
+def test_post_login_defer_profile_apply_sets_merge_pending(_use_test_db) -> None:
+    conn = _use_test_db
+    _register(conn, "defer-user")
+    payload = build_profile_payload(
+        profile_slug="defer-user",
+        flow_mode="combined",
+        selected_communities={"9"},
+        filter_settings={
+            "year_min": 2000,
+            "year_max": 2024,
+            "rating_min": 7,
+            "rating_max": 10,
+        },
+        community_weights_raw={"9": 1.0},
+    )
+    save_profile(None, "defer-user", payload)
+    session: dict[str, object] = {
+        "selected_communities": {"1"},
+        "artist_flow_selected_communities": {"1"},
+        "genre_flow_selected_communities": set(),
+        "filter_settings": {},
+        "community_weights_raw": {},
+    }
+    assert post_login_maybe_defer_profile_apply(
+        session,
+        profile_slug="defer-user",
+        server_profile=payload,
+    )
+    assert LOGIN_PROFILE_MERGE_PENDING_KEY in session
+    assert session[ACTIVE_PROFILE_SESSION_KEY] == "defer-user"
+    assert session["selected_communities"] == {"1"}
+
+
+def test_post_login_applies_server_when_session_has_no_guest_prefs(
+    _use_test_db,
+) -> None:
+    conn = _use_test_db
+    _register(conn, "clean-user")
+    payload = build_profile_payload(
+        profile_slug="clean-user",
+        flow_mode="combined",
+        selected_communities={"9"},
+        filter_settings={
+            "year_min": 2000,
+            "year_max": 2024,
+            "rating_min": 7,
+            "rating_max": 10,
+        },
+        community_weights_raw={"9": 1.0},
+    )
+    save_profile(None, "clean-user", payload)
+    session: dict[str, object] = {}
+    assert not post_login_maybe_defer_profile_apply(
+        session,
+        profile_slug="clean-user",
+        server_profile=payload,
+    )
+    assert LOGIN_PROFILE_MERGE_PENDING_KEY not in session
+    assert session["selected_communities"] == {"9"}
+
+
+def test_ensure_active_profile_hydrated_skips_disk_when_guest_session_pinned(
+    _use_test_db,
+) -> None:
+    conn = _use_test_db
+    _register(conn, "pin-user")
+    payload = build_profile_payload(
+        profile_slug="pin-user",
+        flow_mode="combined",
+        selected_communities={"1"},
+        filter_settings={
+            "year_min": 2000,
+            "year_max": 2024,
+            "rating_min": 7,
+            "rating_max": 10,
+        },
+        community_weights_raw={"1": 1.0},
+    )
+    save_profile(None, "pin-user", payload)
+    session: dict[str, object] = {
+        ACTIVE_PROFILE_SESSION_KEY: "pin-user",
+        LOGIN_GUEST_SESSION_PINNED_KEY: True,
+        "selected_communities": {"88"},
+        "filter_settings": {
+            "year_min": 1980,
+            "year_max": 2020,
+            "rating_min": 1,
+            "rating_max": 9,
+        },
+        "community_weights_raw": {"88": 0.5},
+    }
+    assert ensure_active_profile_hydrated(session) == ProfileHydrationResult.HYDRATED
+    assert session["selected_communities"] == {"88"}
+
+
+def test_ensure_active_profile_hydrated_skips_disk_when_merge_pending(
+    _use_test_db,
+) -> None:
+    conn = _use_test_db
+    _register(conn, "merge-skip")
+    payload = build_profile_payload(
+        profile_slug="merge-skip",
+        flow_mode="combined",
+        selected_communities={"1"},
+        filter_settings={
+            "year_min": 2000,
+            "year_max": 2024,
+            "rating_min": 7,
+            "rating_max": 10,
+        },
+        community_weights_raw={"1": 1.0},
+    )
+    save_profile(None, "merge-skip", payload)
+    session: dict[str, object] = {
+        ACTIVE_PROFILE_SESSION_KEY: "merge-skip",
+        LOGIN_PROFILE_MERGE_PENDING_KEY: {"server_profile": dict(payload)},
+        "selected_communities": {"9"},
+        "filter_settings": {
+            "year_min": 1980,
+            "year_max": 2020,
+            "rating_min": 1,
+            "rating_max": 9,
+        },
+        "community_weights_raw": {"9": 0.5},
+    }
+    assert ensure_active_profile_hydrated(session) == ProfileHydrationResult.HYDRATED
+    assert session["selected_communities"] == {"9"}
+    assert session["filter_settings"]["year_min"] == 1980
 
 
 def test_ensure_active_profile_hydrated_skips_disk_when_reset_pending(

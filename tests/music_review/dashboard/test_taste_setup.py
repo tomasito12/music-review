@@ -8,7 +8,30 @@ from music_review.dashboard.taste_setup import (
     data_implies_taste_setup_complete,
     is_taste_setup_complete,
     mark_taste_wizard_reset_pending,
+    session_has_guest_taste_or_filter_prefs,
 )
+
+
+def test_session_has_guest_prefs_false_when_empty() -> None:
+    assert not session_has_guest_taste_or_filter_prefs({})
+
+
+def test_session_has_guest_prefs_true_with_communities() -> None:
+    assert session_has_guest_taste_or_filter_prefs(
+        {"selected_communities": {"a"}},
+    )
+
+
+def test_session_has_guest_prefs_true_with_filter_settings() -> None:
+    assert session_has_guest_taste_or_filter_prefs(
+        {"filter_settings": {"year_min": 1990}},
+    )
+
+
+def test_session_has_guest_prefs_true_with_weights_only() -> None:
+    assert session_has_guest_taste_or_filter_prefs(
+        {"community_weights_raw": {"1": 1.0}},
+    )
 
 
 def test_communities_from_session_mapping_primary_set() -> None:

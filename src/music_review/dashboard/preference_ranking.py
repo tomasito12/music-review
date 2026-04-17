@@ -8,6 +8,7 @@ from typing import Any
 
 from music_review.config import (
     RECOMMENDATION_DEFAULT_COMMUNITY_CROSSOVER,
+    RECOMMENDATION_DEFAULT_COMMUNITY_WEIGHT_RAW,
     RECOMMENDATION_RATING_DEFAULT_WHEN_MISSING,
     REFERENCE_POSITION_W_MIN,
     get_recommendation_overall_weights,
@@ -127,7 +128,7 @@ def _preference_score_rows_sorted(
             if not isinstance(score_val, (int, float)):
                 continue
             val = float(score_val)
-            w = float(weights_raw.get(cid, 1.0))
+            w = float(weights_raw.get(cid, RECOMMENDATION_DEFAULT_COMMUNITY_WEIGHT_RAW))
             contrib = w * val
             s += contrib
             if val > 0:

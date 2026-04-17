@@ -113,7 +113,7 @@ def main() -> None:
     st.markdown(
         '<div class="feinwahl-intro">'
         '<div class="feinwahl-hero">'
-        '<p class="feinwahl-eyebrow">Schritt 2 von 4</p>'
+        '<p class="feinwahl-eyebrow">Schritt 2 von 3</p>'
         '<p class="feinwahl-title">Dein Sound im Detail</p>'
         "</div>"
         '<p class="feinwahl-desc">'
@@ -173,17 +173,21 @@ def main() -> None:
     st.markdown('<div class="feinwahl-cta">', unsafe_allow_html=True)
     col_back, col_next = st.columns(2)
     with col_back:
-        st.page_link(
-            "pages/0b_Einstieg.py",
-            label="Zurück zu Schritt 1",
-            use_container_width=True,
-        )
+        if st.button(
+            "Zurück zu Schritt 1",
+            type="secondary",
+            width="stretch",
+            key="feinwahl_back_step1",
+        ):
+            st.switch_page("pages/0b_Einstieg.py")
     with col_next:
-        st.page_link(
-            "pages/5_Filter_Flow.py",
-            label="Weiter zu Schritt 3",
-            use_container_width=True,
-        )
+        if st.button(
+            "Weiter zu Schritt 3",
+            type="primary",
+            width="stretch",
+            key="feinwahl_next_step3",
+        ):
+            st.switch_page("pages/5_Filter_Flow.py")
     st.markdown("</div>", unsafe_allow_html=True)
 
 

@@ -30,6 +30,7 @@ from pages.page_helpers import (
 
 from music_review.config import (
     RECOMMENDATION_DEFAULT_COMMUNITY_CROSSOVER,
+    RECOMMENDATION_DEFAULT_COMMUNITY_WEIGHT_RAW,
     RECOMMENDATION_RATING_DEFAULT_WHEN_MISSING,
     REFERENCE_POSITION_W_MIN,
     get_recommendation_overall_weights,
@@ -148,6 +149,10 @@ def _load_affinities() -> list[dict[str, Any]]:
 
 
 def _compute_recommendations() -> list[dict[str, Any]]:
+    """Score and sort from Streamlit session taste keys (no extra profile DB read).
+
+    When merge is pending or guest taste is pinned, hydration leaves those keys as-is.
+    """
     selected_comms = get_selected_communities()
     if not selected_comms:
         return []
@@ -243,7 +248,7 @@ def _compute_recommendations() -> list[dict[str, Any]]:
             if not isinstance(score_val, (int, float)):
                 continue
             val = float(score_val)
-            w = float(weights_raw.get(cid, 1.0))
+            w = float(weights_raw.get(cid, RECOMMENDATION_DEFAULT_COMMUNITY_WEIGHT_RAW))
             contrib = w * val
             s += contrib
             if val > 0:

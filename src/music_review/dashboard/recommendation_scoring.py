@@ -5,7 +5,10 @@ from __future__ import annotations
 import random
 from collections.abc import Iterable, Mapping, Sequence
 
-from music_review.config import RECOMMENDATION_SPECTRUM_MATCHING_GATE_HALF_SATURATION
+from music_review.config import (
+    RECOMMENDATION_DEFAULT_COMMUNITY_WEIGHT_RAW,
+    RECOMMENDATION_SPECTRUM_MATCHING_GATE_HALF_SATURATION,
+)
 
 
 def gini_coefficient(masses: Sequence[float]) -> float:
@@ -49,7 +52,8 @@ def breadth_raw_from_selected_community_masses(
     if not ordered:
         return 0.0
     masses = [
-        float(weights_raw.get(c, 1.0)) * float(raw_mass_by_cid.get(c, 0.0))
+        float(weights_raw.get(c, RECOMMENDATION_DEFAULT_COMMUNITY_WEIGHT_RAW))
+        * float(raw_mass_by_cid.get(c, 0.0))
         for c in ordered
     ]
     g = gini_coefficient(masses)

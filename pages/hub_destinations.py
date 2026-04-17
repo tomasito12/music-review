@@ -25,6 +25,14 @@ HUB_DESTINATIONS: tuple[HubDestination, ...] = (
         page_path="pages/8_Neueste_Rezensionen.py",
     ),
     HubDestination(
+        title="Musikpräferenzen ändern",
+        description=(
+            "Grobe Stilrichtungen, feine Auswahl und Filter erneut einstellen "
+            "(Schritt 1 bis 3)."
+        ),
+        page_path="pages/0b_Einstieg.py",
+    ),
+    HubDestination(
         title="Gesamtes Archiv durchsuchen",
         description=(
             "Empfehlungen über alle Alben im lokalen Bestand "

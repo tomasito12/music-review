@@ -1,13 +1,15 @@
-"""Filter und Gewichte (Schritt 3 von 4) -- zentriertes Karten-Layout."""
+"""Filter und Gewichte (Schritt 3 von 3) -- zentriertes Karten-Layout."""
 
 from __future__ import annotations
 
+import html
 from typing import Any
 
 import streamlit as st
 from pages.page_helpers import (
     DEFAULT_PLATTENTESTS_RATING_FILTER_MAX,
     DEFAULT_PLATTENTESTS_RATING_FILTER_MIN,
+    FILTER_ACCOUNT_SAVE_PROMPT_ACTIVE_KEY,
     FILTER_FLOW_WIDGET_KEY_OVERALL_ALPHA,
     FILTER_FLOW_WIDGET_KEY_OVERALL_BETA,
     FILTER_FLOW_WIDGET_KEY_OVERALL_GAMMA,
@@ -24,11 +26,13 @@ from pages.page_helpers import (
     SEMANTIC_SEARCH_CHAT_AVATAR_CSS,
     SPECTRUM_CROSSOVER_STOPS,
     STYLE_MATCH_FILTER_PERCENT_STEP,
+    WIZARD_ACCOUNT_SAVE_INTENT_KEY,
     clamp_plattentests_rating_filter_range,
     clamp_year_filter_bounds,
     collapse_plattenlabel_ui_selection,
     community_display_label,
     expand_plattenlabel_ui_selection,
+    format_style_weight_example_artists,
     get_selected_communities,
     load_communities_res_10,
     load_genre_labels_res_10,
@@ -36,8 +40,6 @@ from pages.page_helpers import (
     max_release_year_from_corpus,
     min_release_year_from_corpus,
     normalize_filter_expander_vspace_gap,
-    overall_weights_tradeoff_bar_html,
-    persist_active_profile_from_session,
     refresh_taste_wizard_after_filter_save,
     render_toolbar,
     snap_spectrum_crossover,
@@ -47,15 +49,23 @@ from pages.page_helpers import (
 )
 
 from music_review.config import (
+    DASHBOARD_SEMANTIC_SEARCH_ENABLED,
     RECOMMENDATION_DEFAULT_COMMUNITY_CROSSOVER,
+    RECOMMENDATION_DEFAULT_COMMUNITY_WEIGHT_RAW,
     RECOMMENDATION_OVERALL_ALPHA,
     RECOMMENDATION_OVERALL_BETA,
     RECOMMENDATION_OVERALL_GAMMA,
-    normalize_overall_weights,
+)
+from music_review.dashboard.community_weight_mapping import (
+    community_weight_bias_from_stored,
+    community_weight_stored_from_bias,
 )
 
 
 def _filter_css() -> None:
+    semantic_chat_css = (
+        SEMANTIC_SEARCH_CHAT_AVATAR_CSS if DASHBOARD_SEMANTIC_SEARCH_ENABLED else ""
+    )
     st.markdown(
         """
         <style>
@@ -96,19 +106,6 @@ def _filter_css() -> None:
             line-height: 1.58;
             text-align: center !important;
         }
-        .filter-hint {
-            max-width: 34rem;
-            margin: 0 auto 1.1rem auto;
-            background: #fef2f2;
-            border: 1px solid #fecaca;
-            border-radius: 8px;
-            padding: 0.8rem 1rem;
-            font-size: 0.86rem;
-            color: #44403c;
-            line-height: 1.55;
-            text-align: left;
-        }
-        .filter-hint strong { color: #991b1b; }
         /* Expander-Titel: einheitlich rot (Filterung + Gewichtung) */
         section[data-testid="stMain"] div[data-testid="stExpander"] summary,
         section[data-testid="stMain"] div[data-testid="stExpander"] summary p,
@@ -121,6 +118,91 @@ def _filter_css() -> None:
         }
         div[data-testid="stExpander"] {
             margin-bottom: 0.85rem;
+        }
+        .filter-style-weight-name {
+            font-size: 0.82rem;
+            font-weight: 600;
+            color: #374151;
+            margin: 0;
+            line-height: 1.35;
+        }
+        /*
+         * Artist line: same colour and line-height as weight questions, normal weight,
+         * smaller than .filter-style-weight-name. Streamlit markdown can override
+         * plain class rules; target stMarkdownContainer and use !important.
+         */
+        section[data-testid="stMain"]
+            div[data-testid="stMarkdownContainer"]
+            .filter-style-weight-artist-caption,
+        section[data-testid="stMain"]
+            .filter-style-weight-unit
+            .filter-style-weight-artist-caption {
+            font-size: 0.72rem !important;
+            font-weight: 400 !important;
+            color: #374151 !important;
+            line-height: 1.45 !important;
+            margin: 0 0 0.28rem 0 !important;
+            max-width: 40rem !important;
+        }
+        /*
+         * Style-weight units: bordered st.container plus key style_weight_unit_*.
+         * Match st-key-* and align fill/shadow with the filter page.
+         */
+        section[data-testid="stMain"] [class*="st-key-style_weight_unit"] {
+            background-color: #ffffff !important;
+            border-color: #e5e7eb !important;
+            border-radius: 10px !important;
+            box-shadow: 0 1px 3px rgba(15, 23, 42, 0.06) !important;
+            padding: 0.45rem 0.4rem 0.5rem !important;
+            margin-bottom: 0.6rem !important;
+        }
+        .filter-style-weight-unit .filter-style-weight-name:not(:last-child) {
+            margin-bottom: 0.2rem;
+        }
+        .filter-style-weight-unit {
+            margin-bottom: 0.3rem;
+        }
+        .filter-style-weight-end {
+            margin: 0.1rem 0 0 0;
+            padding: 0 0.05rem;
+            text-align: center;
+            font-size: 1.1rem;
+            font-weight: 700;
+            line-height: 1;
+            color: #6b7280;
+            user-select: none;
+        }
+        .filter-style-weight-end__line {
+            display: block;
+        }
+        div[data-testid="stHorizontalBlock"]:has(.filter-style-weight-end)
+            > div[data-testid="column"]
+            > div[data-testid="element-container"] {
+            margin-top: 0 !important;
+        }
+        div[data-testid="stHorizontalBlock"]:has(.filter-style-weight-end)
+            div[data-testid="stSlider"] {
+            margin-top: 0 !important;
+        }
+        /*
+         * Style-bias row (has end caps): flat inner track, thumb only.
+         */
+        div[data-testid="stHorizontalBlock"]:has(.filter-style-weight-end)
+            div[data-testid="stSlider"]
+            div:has([data-testid="stSliderThumbValue"])
+            + div {
+            background-image: none !important;
+            background: #d1d5db !important;
+        }
+        div[data-testid="stHorizontalBlock"]:has(.filter-style-weight-end)
+            div[data-testid="stSlider"]
+            div[style*="linear-gradient"] {
+            background-image: none !important;
+            background: #d1d5db !important;
+        }
+        div[data-testid="stHorizontalBlock"]:has(.filter-style-weight-end)
+            div[data-testid="stSlider"] [data-testid="stSliderTickBar"] {
+            display: none !important;
         }
         /* Vertikaler Rhythmus innerhalb der Expander (nur Finetuning) */
         .filter-vspace-sm {
@@ -228,30 +310,8 @@ def _filter_css() -> None:
             line-height: 1.45;
             max-width: 40rem;
         }
-        .ow-tradeoff-wrap {
-            margin: 1rem 0 0.75rem 0;
-        }
-        .ow-tradeoff-legend {
-            font-size: 0.82rem;
-            color: #6b7280;
-            margin: 0 0 0.45rem 0;
-            line-height: 1.45;
-        }
-        .ow-tradeoff-bar {
-            display: flex;
-            height: 14px;
-            border-radius: 6px;
-            overflow: hidden;
-            border: 1px solid #e5e7eb;
-            background: #f3f4f6;
-        }
-        .ow-tradeoff-seg {
-            display: block;
-            min-width: 0;
-            height: 100%;
-        }
         """
-        + SEMANTIC_SEARCH_CHAT_AVATAR_CSS
+        + semantic_chat_css
         + """
         </style>
         """,
@@ -296,8 +356,8 @@ def _render_style_weights(
 
     st.markdown(
         '<p class="filter-section-caption filter-section-caption--lead">'
-        "Vergebe pro Stil-Schwerpunkt einen Wert zwischen 0 und 1. "
-        "Höhere Werte betonen diesen Schwerpunkt stärker in den Empfehlungen."
+        "Hier kannst du bei der Sortierung bestimmte Stilrichtungen "
+        "stärker oder schwächer gewichten."
         "</p>",
         unsafe_allow_html=True,
     )
@@ -310,23 +370,105 @@ def _render_style_weights(
         top_artists = c.get("top_artists") if isinstance(c, dict) else None
         if not isinstance(top_artists, list):
             top_artists = []
-        top_artists_str = ", ".join(str(a) for a in top_artists[:2])
+        top_artists_str = format_style_weight_example_artists(top_artists)
         comm_dict = c if isinstance(c, dict) else None
         base = community_display_label(cid, genre_labels, comm_dict)
-        display_label = f"{base} ({top_artists_str})" if top_artists_str else base
 
         col = cols[idx % len(cols)]
         with col:
-            raw_val = float(raw_weights.get(cid, 1.0))
-            raw_weights[cid] = st.slider(
-                display_label,
-                min_value=0.0,
-                max_value=1.0,
-                value=raw_val,
-                step=0.05,
-                key=f"weight_comm_{cid}",
-            )
+            unit_key = f"style_weight_unit_{cid}"
+            with st.container(border=True, key=unit_key):
+                default_w = RECOMMENDATION_DEFAULT_COMMUNITY_WEIGHT_RAW
+                raw_val = float(raw_weights.get(cid, default_w))
+                bias = community_weight_bias_from_stored(raw_val)
+                head_html = [
+                    '<div class="filter-style-weight-unit">',
+                    f'<p class="filter-style-weight-name">{html.escape(base)}</p>',
+                ]
+                if top_artists_str:
+                    head_html.append(
+                        '<div class="filter-style-weight-artist-caption">'
+                        f"{html.escape(top_artists_str)}</div>"
+                    )
+                head_html.append("</div>")
+                st.markdown("".join(head_html), unsafe_allow_html=True)
+                cap_l, mid, cap_r = st.columns([0.65, 7.7, 0.65])
+                with cap_l:
+                    st.markdown(
+                        '<p class="filter-style-weight-end" '
+                        'title="Geringeres Gewicht für diese Stilrichtung">'
+                        '<span class="filter-style-weight-end__line">&#8722;</span>'
+                        "</p>",
+                        unsafe_allow_html=True,
+                    )
+                with mid:
+                    new_bias = st.slider(
+                        "style_weight_bias",
+                        min_value=-1.0,
+                        max_value=1.0,
+                        value=bias,
+                        step=0.1,
+                        label_visibility="collapsed",
+                        key=f"weight_comm_{cid}",
+                        help=(
+                            "Mitte = neutral. Nach rechts mehr Gewicht für diese "
+                            "Stilrichtung, nach links weniger."
+                        ),
+                    )
+                with cap_r:
+                    st.markdown(
+                        '<p class="filter-style-weight-end" '
+                        'title="Stärkeres Gewicht für diese Stilrichtung">'
+                        '<span class="filter-style-weight-end__line">+</span>'
+                        "</p>",
+                        unsafe_allow_html=True,
+                    )
+                raw_weights[cid] = community_weight_stored_from_bias(float(new_bias))
     return raw_weights
+
+
+def _render_filter_account_save_prompt() -> bool:
+    """Show post-step-3 save prompt; return True if this view handled the page."""
+    if not st.session_state.get(FILTER_ACCOUNT_SAVE_PROMPT_ACTIVE_KEY):
+        return False
+    st.markdown(
+        '<div class="filter-hero"><p class="filter-eyebrow">Speichern</p></div>',
+        unsafe_allow_html=True,
+    )
+    st.markdown(
+        '<div id="filter-page-desc-wrap" class="filter-desc-wrap" '
+        'style="text-align:center;width:100%;">'
+        '<p class="filter-desc" style="text-align:center;margin-left:auto;'
+        'margin-right:auto;max-width:34rem;">'
+        "Sollen die vorgenommenen Einstellungen zu deiner Musikauswahl in einem "
+        "Nutzerkonto gespeichert werden? Dann musst du diese Auswahl nicht jedes "
+        "Mal wieder vornehmen, wenn du auf die Seite kommst."
+        "</p></div>",
+        unsafe_allow_html=True,
+    )
+    st.markdown('<div class="filter-cta">', unsafe_allow_html=True)
+    col_yes, col_no = st.columns(2)
+    with col_yes:
+        if st.button(
+            "Ja, ich möchte die Auswahl speichern",
+            type="primary",
+            width="stretch",
+            key="filter_account_save_yes",
+        ):
+            st.session_state[WIZARD_ACCOUNT_SAVE_INTENT_KEY] = True
+            st.session_state.pop(FILTER_ACCOUNT_SAVE_PROMPT_ACTIVE_KEY, None)
+            st.switch_page("pages/0c_Anmelden.py")
+    with col_no:
+        if st.button(
+            "Nein, ohne Speichern weiter",
+            width="stretch",
+            key="filter_account_save_no",
+        ):
+            st.session_state.pop(FILTER_ACCOUNT_SAVE_PROMPT_ACTIVE_KEY, None)
+            st.session_state.pop(WIZARD_ACCOUNT_SAVE_INTENT_KEY, None)
+            st.switch_page("pages/2_Entdecken.py")
+    st.markdown("</div>", unsafe_allow_html=True)
+    return True
 
 
 def main() -> None:
@@ -334,6 +476,8 @@ def main() -> None:
     # Styles vor dem oberen Trennstrich: Hero direkt unter --- wie auf Schritt 1/2.
     _filter_css()
     render_toolbar("filter_flow")
+    if _render_filter_account_save_prompt():
+        return
 
     selected_comms = get_selected_communities()
     existing_settings: dict[str, Any] = st.session_state.get("filter_settings") or {}
@@ -341,7 +485,7 @@ def main() -> None:
     # ── Hero ──────────────────────────────────────────────────────
     st.markdown(
         '<div class="filter-hero">'
-        '<p class="filter-eyebrow">Schritt 3 von 4</p>'
+        '<p class="filter-eyebrow">Schritt 3 von 3</p>'
         '<p class="filter-title">Finetuning</p>'
         "</div>",
         unsafe_allow_html=True,
@@ -352,17 +496,10 @@ def main() -> None:
         '<p class="filter-desc" style="text-align:center;margin-left:auto;'
         'margin-right:auto;max-width:34rem;">'
         "Stelle ein, wonach die Empfehlungen sortiert und gefiltert "
-        "werden sollen. Die Standardwerte liefern bereits gute "
-        "Ergebnisse - passe nur an, was du bewusst verändern möchtest."
+        "werden sollen.<br>"
+        "Die Standardwerte liefern bereits gute Ergebnisse -<br>"
+        "passe nur an, was du bewusst verändern möchtest."
         "</p></div>",
-        unsafe_allow_html=True,
-    )
-    st.markdown(
-        '<div class="filter-hint">'
-        "<strong>Tipp:</strong> Die Voreinstellungen funktionieren gut "
-        "als Startpunkt. Du kannst jederzeit hierher zurückkehren "
-        "und nachjustieren."
-        "</div>",
         unsafe_allow_html=True,
     )
 
@@ -605,14 +742,6 @@ def main() -> None:
                 ),
             ),
         )
-        st.markdown(
-            '<p class="filter-section-caption">'
-            "Reine Bedeutungs-Skala (fünf Stufen, keine Zahlen). "
-            "Voreinstellung: <strong>Ausgewogen</strong>. Im Gesamtscore "
-            "wirkt das über <strong>gamma</strong> (Abschnitt darunter)."
-            "</p>",
-            unsafe_allow_html=True,
-        )
         st.markdown("</div>", unsafe_allow_html=True)
 
         _filter_vertical_space("xl")
@@ -621,15 +750,6 @@ def main() -> None:
         st.markdown(
             '<div class="filter-section accent-weight">'
             '<p class="filter-section-label">Gewichtung des Gesamtscores</p>',
-            unsafe_allow_html=True,
-        )
-        st.markdown(
-            '<p class="filter-section-caption filter-section-caption--lead">'
-            "Die drei Regler stehen für <strong>relative Wichtigkeit</strong>. "
-            "Zusammen bestimmen sie zu 100&nbsp;% den Einfluss auf den "
-            "Gesamtscore (vor der Sortierung werden die Anteile automatisch "
-            "normalisiert)."
-            "</p>",
             unsafe_allow_html=True,
         )
         _filter_vertical_space("md")
@@ -716,15 +836,6 @@ def main() -> None:
                 "Bei 0 wirkst du diesen Teil des Scores ab."
             ),
         )
-        ah, bh, gh = normalize_overall_weights(
-            overall_weight_alpha,
-            overall_weight_beta,
-            overall_weight_gamma,
-        )
-        st.markdown(
-            overall_weights_tradeoff_bar_html(ah, bh, gh),
-            unsafe_allow_html=True,
-        )
         st.markdown("</div>", unsafe_allow_html=True)
 
         _filter_vertical_space("xl")
@@ -741,87 +852,88 @@ def main() -> None:
 
     st.markdown('<div style="margin-top:1rem;"></div>', unsafe_allow_html=True)
 
-    with st.expander("Semantische Suche"):
-        st.markdown(
-            '<div class="filter-expander-desc-wrap" '
-            'style="text-align:center;width:100%;">'
-            '<p class="filter-desc" style="text-align:center;margin-left:auto;'
-            'margin-right:auto;max-width:34rem;">'
-            "Beschreibe Stimmung, Klang oder Inhalte. Auf der Seite "
-            "<strong>Empfehlungen</strong> erscheinen darauf passende Alben "
-            "(Schnittmenge mit deiner Rangliste und weitere semantische "
-            "Treffer)."
-            "</p></div>",
-            unsafe_allow_html=True,
-        )
-        _filter_vertical_space("md")
+    if DASHBOARD_SEMANTIC_SEARCH_ENABLED:
+        with st.expander("Semantische Suche"):
+            st.markdown(
+                '<div class="filter-expander-desc-wrap" '
+                'style="text-align:center;width:100%;">'
+                '<p class="filter-desc" style="text-align:center;margin-left:auto;'
+                'margin-right:auto;max-width:34rem;">'
+                "Beschreibe Stimmung, Klang oder Inhalte. Auf der Seite "
+                "<strong>Empfehlungen</strong> erscheinen darauf passende Alben "
+                "(Schnittmenge mit deiner Rangliste und weitere semantische "
+                "Treffer)."
+                "</p></div>",
+                unsafe_allow_html=True,
+            )
+            _filter_vertical_space("md")
 
-        chat_reset = st.button(
-            "Chat zurücksetzen",
-            key=SEMANTIC_CHAT_RESET_BUTTON_KEY,
-        )
-        if chat_reset:
-            st.session_state["free_text_query"] = ""
-            st.session_state[SEMANTIC_CHAT_MESSAGES_KEY] = []
+            chat_reset = st.button(
+                "Chat zurücksetzen",
+                key=SEMANTIC_CHAT_RESET_BUTTON_KEY,
+            )
+            if chat_reset:
+                st.session_state["free_text_query"] = ""
+                st.session_state[SEMANTIC_CHAT_MESSAGES_KEY] = []
 
-        chat_messages = st.session_state.get(SEMANTIC_CHAT_MESSAGES_KEY)
-        if not isinstance(chat_messages, list):
-            chat_messages = []
-        if not chat_messages:
-            chat_messages = [
-                {
-                    "role": "assistant",
-                    "content": (
-                        "Kannst du mir beschreiben, nach welcher Musik du "
-                        "gerade suchst?"
-                    ),
-                }
-            ]
-
-        chat_input = st.chat_input(
-            "Stimmung oder Inhalte beschreiben …",
-            key=SEMANTIC_CHAT_INPUT_KEY,
-        )
-        if chat_input is not None:
-            chat_input_clean = chat_input.strip()
-            st.session_state["free_text_query"] = chat_input_clean
-            if chat_input_clean:
-                chat_messages.append({"role": "user", "content": chat_input_clean})
-                chat_messages.append(
+            chat_messages = st.session_state.get(SEMANTIC_CHAT_MESSAGES_KEY)
+            if not isinstance(chat_messages, list):
+                chat_messages = []
+            if not chat_messages:
+                chat_messages = [
                     {
                         "role": "assistant",
                         "content": (
-                            "Alles klar - ich passe die Trefferliste "
-                            "an deine Beschreibung an."
+                            "Kannst du mir beschreiben, nach welcher Musik du "
+                            "gerade suchst?"
                         ),
                     },
-                )
-        st.session_state[SEMANTIC_CHAT_MESSAGES_KEY] = chat_messages
+                ]
 
-        for msg in chat_messages:
-            role = msg.get("role")
-            content = msg.get("content")
-            if role not in {"assistant", "user"}:
-                continue
-            if not isinstance(content, str):
-                continue
-            with st.chat_message(role):
-                st.markdown(content)
+            chat_input = st.chat_input(
+                "Stimmung oder Inhalte beschreiben …",
+                key=SEMANTIC_CHAT_INPUT_KEY,
+            )
+            if chat_input is not None:
+                chat_input_clean = chat_input.strip()
+                st.session_state["free_text_query"] = chat_input_clean
+                if chat_input_clean:
+                    chat_messages.append({"role": "user", "content": chat_input_clean})
+                    chat_messages.append(
+                        {
+                            "role": "assistant",
+                            "content": (
+                                "Alles klar - ich passe die Trefferliste "
+                                "an deine Beschreibung an."
+                            ),
+                        },
+                    )
+            st.session_state[SEMANTIC_CHAT_MESSAGES_KEY] = chat_messages
 
-        q_show = (st.session_state.get("free_text_query") or "").strip()
-        if q_show:
-            st.caption(f"**Aktuelle Freitext-Suche:** {q_show}")
+            for msg in chat_messages:
+                role = msg.get("role")
+                content = msg.get("content")
+                if role not in {"assistant", "user"}:
+                    continue
+                if not isinstance(content, str):
+                    continue
+                with st.chat_message(role):
+                    st.markdown(content)
 
-        free_text_semantic = (st.session_state.get("free_text_query") or "").strip()
-        st.slider(
-            "Ähnlichkeit (niedriger = passender)",
-            min_value=0.0,
-            max_value=2.0,
-            value=1.0,
-            step=0.05,
-            disabled=not bool(free_text_semantic),
-            key=SEMANTIC_RAG_MAX_DISTANCE_KEY,
-        )
+            q_show = (st.session_state.get("free_text_query") or "").strip()
+            if q_show:
+                st.caption(f"**Aktuelle Freitext-Suche:** {q_show}")
+
+            free_text_semantic = (st.session_state.get("free_text_query") or "").strip()
+            st.slider(
+                "Ähnlichkeit (niedriger = passender)",
+                min_value=0.0,
+                max_value=2.0,
+                value=1.0,
+                step=0.05,
+                disabled=not bool(free_text_semantic),
+                key=SEMANTIC_RAG_MAX_DISTANCE_KEY,
+            )
 
     # ── Session State speichern ──────────────────────────────────
     # Sortierung/Serendipity: Empfehlungsseite; Freitext-Strategie fest B (kein UI).
@@ -863,39 +975,24 @@ def main() -> None:
 
     # ── CTA ──────────────────────────────────────────────────────
     st.markdown('<div class="filter-cta">', unsafe_allow_html=True)
-    col_back, col_next, col_save_next = st.columns(3)
+    col_back, col_next = st.columns(2)
     with col_back:
-        st.page_link(
-            "pages/1_Community_Auswahl.py",
-            label="Zurück",
-            use_container_width=True,
-        )
-    with col_next:
-        st.page_link(
-            "pages/2_Entdecken.py",
-            label="Weiter zur Auswahl",
-            use_container_width=True,
-        )
-    with col_save_next:
         if st.button(
-            "Speichern & Weiter zur Auswahl",
+            "Zurück zu Schritt 2",
+            type="secondary",
+            width="stretch",
+            key="filter_flow_back_step2",
+        ):
+            st.switch_page("pages/1_Community_Auswahl.py")
+    with col_next:
+        if st.button(
+            "Weiter",
             type="primary",
             width="stretch",
-            key="filter_save_next_to_hub",
+            key="filter_flow_continue_to_save_prompt",
         ):
-            slug = persist_active_profile_from_session()
-            if slug:
-                st.toast(f"Profil '{slug}' auf der Platte gespeichert.")
-            else:
-                st.toast(
-                    "Ohne Profil: Filter nur in dieser Sitzung, nicht auf der Platte.",
-                )
-            st.switch_page("pages/2_Entdecken.py")
-    st.caption(
-        "**Weiter zur Auswahl** übernimmt Filter und Gewichte nur in der Sitzung. "
-        "Auf die Profil-Datei schreibt nur **Speichern & Weiter** oder "
-        "**Speichern** in der Seitenleiste (wenn du angemeldet bist)."
-    )
+            st.session_state[FILTER_ACCOUNT_SAVE_PROMPT_ACTIVE_KEY] = True
+            st.rerun()
     st.markdown("</div>", unsafe_allow_html=True)
 
 

@@ -29,6 +29,17 @@ def communities_from_session_mapping(state: Mapping[str, Any]) -> set[str]:
     return {str(c) for c in artist} | {str(c) for c in genre}
 
 
+def session_has_guest_taste_or_filter_prefs(state: Mapping[str, Any]) -> bool:
+    """True when the session holds communities, filter settings, or style weights."""
+    if communities_from_session_mapping(state):
+        return True
+    fs = state.get("filter_settings")
+    if isinstance(fs, dict) and fs:
+        return True
+    cw = state.get("community_weights_raw")
+    return bool(isinstance(cw, dict) and cw)
+
+
 def data_implies_taste_setup_complete(state: Mapping[str, Any]) -> bool:
     """True when the user has chosen communities and completed the filter merge step."""
     fs = state.get("filter_settings")

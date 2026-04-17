@@ -4,8 +4,10 @@ from __future__ import annotations
 
 import streamlit as st
 from pages.page_helpers import (
+    WIZARD_ACCOUNT_SAVE_INTENT_KEY,
     build_session_profile_payload,
     persist_active_profile_slug_cookie,
+    session_taste_setup_complete,
 )
 
 from music_review.dashboard.user_db import (
@@ -19,6 +21,7 @@ from music_review.dashboard.user_profile_store import (
     apply_profile_to_session,
     load_profile,
     normalize_profile_slug,
+    post_login_maybe_defer_profile_apply,
     save_profile,
 )
 
@@ -46,9 +49,12 @@ def run_sign_in(name_raw: str, password: str) -> None:
         st.error("Passwort ist falsch.")
         return
     data = load_profile(None, safe)  # type: ignore[arg-type]
-    if data is not None:
-        apply_profile_to_session(st.session_state, data)
-    st.session_state[ACTIVE_PROFILE_SESSION_KEY] = safe
+    st.session_state.pop(WIZARD_ACCOUNT_SAVE_INTENT_KEY, None)
+    post_login_maybe_defer_profile_apply(
+        st.session_state,
+        profile_slug=safe,
+        server_profile=data,
+    )
     persist_active_profile_slug_cookie(safe)
     st.rerun()
 
@@ -84,4 +90,8 @@ def run_register(name_raw: str, password: str, password_confirm: str) -> None:
     st.session_state[ACTIVE_PROFILE_SESSION_KEY] = slug
     persist_active_profile_slug_cookie(slug)
     apply_profile_to_session(st.session_state, payload)
-    st.switch_page("pages/0b_Einstieg.py")
+    st.session_state.pop(WIZARD_ACCOUNT_SAVE_INTENT_KEY, None)
+    if session_taste_setup_complete():
+        st.switch_page("pages/2_Entdecken.py")
+    else:
+        st.switch_page("pages/0b_Einstieg.py")

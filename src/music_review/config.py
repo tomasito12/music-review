@@ -59,6 +59,10 @@ RECOMMENDATION_OVERALL_GAMMA: float = 0.25
 RECOMMENDATION_RATING_DEFAULT_WHEN_MISSING: float = 7.0
 # Stil-Präferenz: 0 = ein Stil, 0.5 = ausgewogen, 1 = breite Abdeckung (Finetuning).
 RECOMMENDATION_DEFAULT_COMMUNITY_CROSSOVER: float = 0.5
+# Raw per-community weight in [0, 1] when missing (UI center / neutral bias 0).
+RECOMMENDATION_DEFAULT_COMMUNITY_WEIGHT_RAW: float = 0.5
+# Filter-Flow (Streamlit): expander for Chroma / chat-style free-text search.
+DASHBOARD_SEMANTIC_SEARCH_ENABLED: bool = False
 # Probeweise: Community-Spektrum-Term wird mit g(S_a) moduliert, g(s)=s/(s+k).
 # Bei S_a == k ist g = 0.5. <= 0 schaltet die Kopplung aus (g = 1).
 RECOMMENDATION_SPECTRUM_MATCHING_GATE_HALF_SATURATION: float = 0.2

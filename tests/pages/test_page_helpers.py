@@ -29,6 +29,7 @@ from pages.page_helpers import (
     format_record_labels_for_card,
     format_release_date,
     format_style_match_range_display,
+    format_style_weight_example_artists,
     logout_active_profile,
     max_release_year_in_jsonl,
     min_release_year_in_jsonl,
@@ -67,6 +68,10 @@ def test_render_toolbar_does_not_emit_markdown(
     def capture_markdown(*args: object, **kwargs: object) -> None:
         calls.append(True)
 
+    monkeypatch.setattr(
+        "pages.page_helpers.ensure_plattenradar_dashboard_chrome",
+        lambda: None,
+    )
     monkeypatch.setattr(page_helpers_module.st, "markdown", capture_markdown)
     page_helpers_module.render_toolbar("any_page")
     assert calls == []
@@ -306,6 +311,34 @@ class TestCommunityDisplayLabel:
 
     def test_empty_community_dict_without_genre(self) -> None:
         assert community_display_label("C100", {}, {}) == "Stil-Cluster"
+
+
+class TestFormatStyleWeightExampleArtists:
+    def test_empty_and_none(self) -> None:
+        assert format_style_weight_example_artists(None) == ""
+        assert format_style_weight_example_artists([]) == ""
+
+    def test_prefix_and_three_short_names(self) -> None:
+        assert format_style_weight_example_artists(["A", "B", "C"]) == "z. B. A, B, C"
+
+    def test_uses_up_to_three_like_feine_auswahl(self) -> None:
+        names = ["Eins", "Zwei", "Drei", "Vier"]
+        assert format_style_weight_example_artists(names) == "z. B. Eins, Zwei, Drei"
+
+    def test_falls_back_to_two_when_three_exceeds_max_chars(self) -> None:
+        a, b, c = "X" * 18, "Y" * 18, "Z" * 18
+        out = format_style_weight_example_artists([a, b, c], max_chars=55)
+        assert out == f"z. B. {a}, {b}"
+        assert len(out) <= 55
+
+    def test_falls_back_to_one_when_two_still_too_long(self) -> None:
+        long_name = "W" * 60
+        out = format_style_weight_example_artists([long_name, "B"], max_chars=55)
+        assert out == f"z. B. {long_name}"
+        assert len(out) > 55
+
+    def test_single_artist(self) -> None:
+        assert format_style_weight_example_artists(["Solo"]) == "z. B. Solo"
 
 
 class TestBuildCommunityBroadCategoryIndex:

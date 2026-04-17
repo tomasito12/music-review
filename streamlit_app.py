@@ -16,8 +16,10 @@ from pages.page_helpers import (
 )
 
 from music_review.config import resolve_data_path
-from music_review.dashboard.streamlit_background import (
-    inject_streamlit_app_background_image,
+from music_review.dashboard.streamlit_branding import (
+    ensure_plattenradar_dashboard_chrome,
+    read_processed_dashboard_logo_bytes,
+    welcome_start_title_inner_html,
 )
 from music_review.io.reviews_jsonl import max_review_id_in_jsonl
 
@@ -71,20 +73,44 @@ def _welcome_css() -> None:
             margin-bottom: 1.15rem;
             overflow: visible;
         }
+        /* Do not use ``.welcome-hero p`` alone: it beats ``.welcome-subtitle`` and
+           zeros out the subtitle's top margin. Only reset logo / title paragraphs. */
+        .welcome-hero p.welcome-logo,
+        .welcome-hero p.welcome-title {
+            margin-block: 0 !important;
+        }
+        .welcome-logo {
+            margin: 0 !important;
+            padding: 0 !important;
+            line-height: 0;
+        }
+        .welcome-title-img {
+            display: block;
+            margin: 0 auto;
+            max-width: min(100%, 22rem);
+            max-height: 8.75rem;
+            width: auto;
+            height: auto;
+            object-fit: contain;
+            vertical-align: bottom;
+            image-rendering: auto;
+        }
         .welcome-title {
             font-size: 2.4rem;
             font-weight: 700;
             letter-spacing: -0.03em;
             line-height: 1.15;
-            margin: 0 0 0.55rem 0;
+            margin: 0 !important;
             padding-top: 0.08em;
             color: #111827;
             overflow: visible;
         }
-        .welcome-subtitle {
+        .welcome-hero p.welcome-subtitle {
             font-size: 1.05rem;
             color: #6b7280;
-            margin: 0;
+            margin: 2.25rem 0 0 0 !important;
+            padding-top: 0 !important;
+            line-height: 1.35;
         }
         .welcome-body {
             max-width: 38rem;
@@ -110,11 +136,13 @@ def _welcome_css() -> None:
 
 def render_start_page() -> None:
     """Landing copy and context-sensitive next steps (returning vs new)."""
+    ensure_plattenradar_dashboard_chrome()
     _welcome_css()
 
+    title_inner = welcome_start_title_inner_html(read_processed_dashboard_logo_bytes())
     st.markdown(
         '<div class="welcome-hero">'
-        '<p class="welcome-title">Plattenradar</p>'
+        f"{title_inner}"
         '<p class="welcome-subtitle">'
         "Dein Empfehlungssystem für den plattentests.de-Kosmos"
         "</p>"
@@ -240,7 +268,7 @@ def _navigation_pages() -> list[Any]:
         st.Page("pages/0b_Einstieg.py", title="Einstieg"),
         st.Page("pages/1_Community_Auswahl.py", title="Genre / Stil"),
         st.Page("pages/5_Filter_Flow.py", title="Filter"),
-        # Reachable after Schritt 3 (page_link); shows a guard until setup is complete.
+        # Hub after the three setup steps; shows a guard until setup is complete.
         st.Page("pages/2_Entdecken.py", title="Entdecken"),
         # OAuth return can open a fresh session without taste setup; page must exist.
         _spotify_nav_page(),
@@ -278,8 +306,6 @@ def main() -> None:
         page_icon=None,
         layout="centered",
     )
-
-    inject_streamlit_app_background_image()
 
     configure_spotify_playlist_logging_from_env()
     bootstrap_profile_session()

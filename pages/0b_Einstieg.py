@@ -68,7 +68,7 @@ def main() -> None:
 
     st.markdown(
         '<div class="einstieg-hero">'
-        '<p class="einstieg-eyebrow">Schritt 1 von 4</p>'
+        '<p class="einstieg-eyebrow">Schritt 1 von 3</p>'
         '<p class="einstieg-title">Welche Musikrichtungen gefallen Dir?</p>'
         "</div>",
         unsafe_allow_html=True,
@@ -112,9 +112,6 @@ def main() -> None:
                     selected.discard(cat)
 
             st.session_state["selected_broad_categories"] = selected
-
-            if selected:
-                st.caption("Ausgewählt: " + ", ".join(sorted(selected)))
 
     st.markdown('<div class="einstieg-cta">', unsafe_allow_html=True)
     if st.button(
