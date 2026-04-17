@@ -97,24 +97,22 @@ def main() -> None:
         _konto_logged_in_css()
         st.markdown(
             '<div class="anmelden-konto-hero">'
-            '<p class="anmelden-konto-title">Profil und Sitzung</p>'
+            '<p class="anmelden-konto-title">Dein Konto und deine Auswahl</p>'
             '<p class="anmelden-konto-subtitle">'
-            "Du hast dich angemeldet, während in dieser Sitzung bereits "
-            "Musikpräferenzen, Filter oder Gewichte eingestellt waren."
+            "Du hattest dich schon mit Musik-Stilen oder Filtern beschäftigt, "
+            "bevor du eingeloggt bist. Im Konto liegen andere gespeicherte "
+            "Einstellungen."
             "</p>"
             "</div>",
             unsafe_allow_html=True,
         )
         st.markdown(
-            "Wähle, ob dein **gespeichertes Nutzerprofil** mit der aktuellen Sitzung "
-            "abgeglichen werden soll, die Sitzung unverändert bleiben soll "
-            "(ohne Speichern auf dem Profil), oder ob die **gespeicherten** "
-            "Einstellungen geladen und die Sitzung damit ersetzt werden soll."
+            "Was soll gelten? Wähle eine der drei Optionen."
         )
         col_overwrite, col_keep_session, col_load_server = st.columns(3)
         with col_overwrite:
             if st.button(
-                "Profil mit aktueller Auswahl überschreiben",
+                "Aktuelle Auswahl ins Konto speichern",
                 type="primary",
                 width="stretch",
                 key="login_merge_overwrite",
@@ -126,7 +124,7 @@ def main() -> None:
                 st.rerun()
         with col_keep_session:
             if st.button(
-                "Profil nicht ändern, Sitzung behalten",
+                "Nur hier so lassen, Konto nicht ändern",
                 width="stretch",
                 key="login_merge_keep_session",
             ):
@@ -136,7 +134,7 @@ def main() -> None:
                 st.rerun()
         with col_load_server:
             if st.button(
-                "Gespeichertes Profil laden",
+                "Gespeicherte Konto-Einstellungen nutzen",
                 width="stretch",
                 key="login_merge_load_server",
             ):
