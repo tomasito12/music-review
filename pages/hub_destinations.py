@@ -43,7 +43,7 @@ HUB_DESTINATIONS: tuple[HubDestination, ...] = (
     HubDestination(
         title="Streaming-Dienste verbinden",
         description=(
-            "Spotify (und bald Deezer) mit deinem Konto verbinden, "
+            "Spotify und Deezer mit deinem Konto verbinden, "
             "um daraus Playlists anlegen zu können."
         ),
         page_path="pages/3_Streaming_Verbindungen.py",
@@ -52,9 +52,10 @@ HUB_DESTINATIONS: tuple[HubDestination, ...] = (
         title="Playlist erzeugen",
         description=(
             "Aus den neuesten Rezensionen oder dem gesamten Archiv eine "
-            "Playlist im verbundenen Streaming-Dienst anlegen."
+            "Playlist im verbundenen Streaming-Dienst (Spotify oder Deezer) "
+            "anlegen."
         ),
-        page_path="pages/9_Spotify_Playlists.py",
+        page_path="pages/9_Playlist_Erzeugen.py",
     ),
     HubDestination(
         title="Einstellungen speichern",

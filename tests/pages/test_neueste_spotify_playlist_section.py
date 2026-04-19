@@ -3,10 +3,14 @@ from __future__ import annotations
 import importlib
 import logging
 import re
-from datetime import UTC, datetime
+from datetime import UTC, datetime, timedelta
 from typing import Any
+from unittest.mock import MagicMock
 
 import pytest
+import requests
+
+from music_review.integrations.spotify_client import SpotifyToken
 
 
 def test_neueste_spotify_playlist_section_importable() -> None:
@@ -243,3 +247,150 @@ def test_render_neueste_spotify_playlist_section_uses_newest_key_prefix(
     resolver = captured["resolve_ranked_rows"]
     assert resolver("gar nicht") is None
     assert resolver("stark") is sentinel_rows
+
+
+def _expired_spotify_token() -> SpotifyToken:
+    """Return a token that ``is_expired()`` reports as expired with a refresh token."""
+    return SpotifyToken(
+        access_token="old-access",
+        token_type="Bearer",
+        expires_at=datetime.now(tz=UTC) - timedelta(minutes=1),
+        refresh_token="ref-1",
+    )
+
+
+def _fresh_spotify_token() -> SpotifyToken:
+    return SpotifyToken(
+        access_token="still-good",
+        token_type="Bearer",
+        expires_at=datetime.now(tz=UTC) + timedelta(hours=1),
+        refresh_token="ref-1",
+    )
+
+
+def test_ensure_valid_spotify_token_returns_token_when_not_expired() -> None:
+    module = importlib.import_module("pages.neueste_spotify_playlist_section")
+    client = MagicMock()
+    token = _fresh_spotify_token()
+
+    out = module._ensure_valid_spotify_token(client, token)
+
+    assert out is token
+    client.refresh_access_token.assert_not_called()
+
+
+def test_ensure_valid_spotify_token_raises_friendly_when_no_refresh_token() -> None:
+    """Expired session without refresh_token: must raise a German RuntimeError."""
+    module = importlib.import_module("pages.neueste_spotify_playlist_section")
+    client = MagicMock()
+    token = SpotifyToken(
+        access_token="x",
+        token_type="Bearer",
+        expires_at=datetime.now(tz=UTC) - timedelta(minutes=1),
+        refresh_token=None,
+    )
+
+    with pytest.raises(RuntimeError, match="Spotify-Sitzung ist abgelaufen"):
+        module._ensure_valid_spotify_token(client, token)
+
+
+def test_ensure_valid_spotify_token_translates_connection_error_to_runtime_error(
+    caplog: pytest.LogCaptureFixture,
+) -> None:
+    """DNS/network failures from refresh must surface as a friendly RuntimeError."""
+    module = importlib.import_module("pages.neueste_spotify_playlist_section")
+    client = MagicMock()
+    client.refresh_access_token.side_effect = requests.exceptions.ConnectionError(
+        "Failed to resolve 'accounts.spotify.com'",
+    )
+    token = _expired_spotify_token()
+
+    with (
+        caplog.at_level(logging.WARNING, logger=module.__name__),
+        pytest.raises(RuntimeError, match="Verbindung zu Spotify"),
+    ):
+        module._ensure_valid_spotify_token(client, token)
+
+    assert "token refresh failed due to network error" in caplog.text
+
+
+def test_ensure_valid_spotify_token_translates_timeout_to_runtime_error() -> None:
+    """A request timeout is also translated, not leaked as an unhandled exception."""
+    module = importlib.import_module("pages.neueste_spotify_playlist_section")
+    client = MagicMock()
+    client.refresh_access_token.side_effect = requests.exceptions.Timeout("slow")
+    token = _expired_spotify_token()
+
+    with pytest.raises(RuntimeError, match="Internetverbindung"):
+        module._ensure_valid_spotify_token(client, token)
+
+
+class _StreamlitErrorRecorder:
+    """Stand-in for ``st`` that records ``st.error`` calls and session state."""
+
+    def __init__(self) -> None:
+        self.errors: list[str] = []
+        self.session_state: dict[str, Any] = {}
+
+    def error(self, message: str) -> None:
+        self.errors.append(message)
+
+
+def test_start_spotify_generate_job_renders_error_and_returns_false_on_runtime_error(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """When the token refresh fails, the worker thread must NOT be started.
+
+    Otherwise the polling UI would spin forever waiting for a job result while
+    the user only ever sees a raw stack trace once Streamlit re-renders.
+    """
+    module = importlib.import_module("pages.neueste_spotify_playlist_section")
+
+    fake_st = _StreamlitErrorRecorder()
+    monkeypatch.setattr(module, "st", fake_st)
+
+    client = MagicMock()
+    client.refresh_access_token.side_effect = requests.exceptions.ConnectionError(
+        "no DNS",
+    )
+    token = _expired_spotify_token()
+
+    started_threads: list[Any] = []
+
+    class _ThreadSpy:
+        def __init__(self, *args: Any, **kwargs: Any) -> None:
+            started_threads.append(kwargs)
+
+        def start(self) -> None:
+            started_threads.append("started")
+
+    monkeypatch.setattr(module.threading, "Thread", _ThreadSpy)
+
+    from music_review.domain.models import Review
+
+    review = Review(
+        id=42,
+        url="https://example.com/42",
+        artist="A",
+        album="B",
+        text="t",
+    )
+
+    started = module._start_spotify_generate_job(
+        client=client,
+        token=token,
+        reviews=[review],
+        ranked_rows=None,
+        target_count=5,
+        taste_orientation="etwas",
+        playlist_name="X",
+        make_playlist_public=False,
+        log_label="newest spotify",
+        selection_strategy="stratified",
+    )
+
+    assert started is False
+    assert started_threads == []
+    assert module.NEWEST_SPOTIFY_GENERATE_JOB_KEY not in fake_st.session_state
+    assert len(fake_st.errors) == 1
+    assert "Verbindung zu Spotify" in fake_st.errors[0]

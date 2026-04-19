@@ -70,6 +70,8 @@ Spotify occasionally updates developer access rules (e.g. blog posts in **2025**
 ## Related project files
 
 - `src/music_review/integrations/spotify_client.py` — HTTP client and OAuth helpers
-- `pages/9_Spotify_Playlists.py` — connection UI and manual playlists
+- `pages/9_Spotify_Playlists.py` — slim OAuth callback page (redirects to the unified hub)
+- `pages/9_Playlist_Erzeugen.py` — unified Spotify/Deezer playlist hub
 - `pages/neueste_spotify_playlist_section.py` — “newest reviews” playlist builder
+- `docs/deezer-api.md` — Deezer counterpart of this document
 - `TODOs.md` — open improvements (caching, UI hints for rate limits)

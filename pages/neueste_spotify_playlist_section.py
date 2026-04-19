@@ -18,6 +18,7 @@ from datetime import UTC, date, datetime, timedelta
 from pathlib import Path
 from typing import Any
 
+import requests
 import streamlit as st
 import streamlit.components.v1 as components
 from pages.neueste_reviews_pool import (
@@ -25,7 +26,7 @@ from pages.neueste_reviews_pool import (
     preference_rank_rows_for_reviews,
 )
 from pages.recommendations_pool import archive_playlist_candidates
-from pages.spotify_oauth_kickoff import render_spotify_login_link_under_preview
+from pages.spotify_connection_ui import render_spotify_login_link_for_playlist_hub
 from pages.spotify_token_persist import (
     persist_spotify_token,
     read_spotify_token_from_session,
@@ -158,7 +159,13 @@ def _ensure_valid_spotify_token(
     client: SpotifyClient,
     token: SpotifyToken,
 ) -> SpotifyToken:
-    """Return a usable token and refresh it when required."""
+    """Return a usable token and refresh it when required.
+
+    Network-level failures (DNS, no internet, timeout) from the refresh call
+    are translated into a German-language :class:`RuntimeError` so callers can
+    surface a friendly message instead of leaking a raw stack trace into the
+    Streamlit renderer.
+    """
     if not token.is_expired():
         return token
     if not token.refresh_token:
@@ -166,7 +173,17 @@ def _ensure_valid_spotify_token(
             "Die Spotify-Sitzung ist abgelaufen. Bitte erneut "
             "„Verbindung mit Spotify herstellen“ wählen."
         )
-    refreshed = client.refresh_access_token(refresh_token=token.refresh_token)
+    try:
+        refreshed = client.refresh_access_token(refresh_token=token.refresh_token)
+    except requests.exceptions.RequestException as exc:
+        _LOGGER.warning(
+            "Spotify token refresh failed due to network error: %r",
+            exc,
+        )
+        raise RuntimeError(
+            "Verbindung zu Spotify konnte nicht hergestellt werden. "
+            "Bitte Internetverbindung prüfen und erneut versuchen."
+        ) from exc
     persist_spotify_token(refreshed)
     return refreshed
 
@@ -373,8 +390,14 @@ def _start_spotify_generate_job(
     make_playlist_public: bool,
     log_label: str,
     selection_strategy: SelectionStrategy,
-) -> None:
-    """Compute weights, kick off the background publish thread, and store handles."""
+) -> bool:
+    """Compute weights and kick off the background publish thread.
+
+    Returns ``True`` when the worker thread was started, ``False`` when the
+    refresh of the Spotify access token failed (e.g. expired session, no
+    network). On ``False`` a German-language ``st.error`` has already been
+    rendered, so the caller should not start polling for a job result.
+    """
     chosen_reviews, weights, raw_scores = build_album_weights(reviews, ranked_rows)
     taste_exponent = _SPOTIFY_TASTE_ORIENTATION_EXPONENT[taste_orientation]
     _LOGGER.info(
@@ -391,7 +414,16 @@ def _start_spotify_generate_job(
     _log_weight_summary(weights, review_ids=[int(r.id) for r in chosen_reviews])
     rng = random.Random(secrets.randbits(64))
     alloc_weights = amplify_preference_weights(weights, exponent=taste_exponent)
-    token_for_publish = _ensure_valid_spotify_token(client, token)
+    try:
+        token_for_publish = _ensure_valid_spotify_token(client, token)
+    except RuntimeError as exc:
+        _LOGGER.warning(
+            "%s publish: token refresh failed before starting worker: %s",
+            log_label,
+            exc,
+        )
+        st.error(str(exc))
+        return False
     resolved_name = playlist_name.strip() or _default_newest_spotify_playlist_name()
     holder: dict[str, Any] = {
         "done": False,
@@ -426,6 +458,7 @@ def _start_spotify_generate_job(
         len(chosen_reviews),
         target_count,
     )
+    return True
 
 
 def _render_playlist_controls_and_generate(
@@ -516,7 +549,7 @@ def _render_playlist_controls_and_generate(
         unsafe_allow_html=True,
     )
     if token is None:
-        render_spotify_login_link_under_preview(client)
+        render_spotify_login_link_for_playlist_hub(client)
         generate_clicked = False
     else:
         generate_clicked = st.button(

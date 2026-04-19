@@ -250,6 +250,22 @@ SPOTIFY_OAUTH_RETURN_PAGE_COOKIE_NAME = "mr_spotify_oauth_return_page"
 
 # Allowed values for the OAuth-return cookie (anything else is treated as "stay").
 SPOTIFY_OAUTH_RETURN_PAGE_STREAMING_CONNECTIONS = "streaming_verbindungen"
+# Return target for Spotify OAuth flows kicked off from the unified hub page.
+SPOTIFY_OAUTH_RETURN_PAGE_PLAYLIST_HUB = "playlist_erzeugen"
+
+# Deezer OAuth CSRF state (browser cookie; survives URL navigation / new session).
+DEEZER_OAUTH_STATE_COOKIE_NAME = "mr_deezer_oauth_state"
+# Filter/taste session snapshot before Deezer redirect (survives profile re-hydrate).
+DEEZER_SESSION_SNAPSHOT_COOKIE_NAME = "mr_deezer_session_snapshot"
+# Where to send the user after a successful Deezer OAuth callback (page identifier).
+DEEZER_OAUTH_RETURN_PAGE_COOKIE_NAME = "mr_deezer_oauth_return_page"
+
+# Allowed values for the Deezer OAuth-return cookie (anything else stays).
+DEEZER_OAUTH_RETURN_PAGE_STREAMING_CONNECTIONS = (
+    SPOTIFY_OAUTH_RETURN_PAGE_STREAMING_CONNECTIONS
+)
+# Return target for OAuth flows kicked off from the unified Playlist-Erzeugen page.
+DEEZER_OAUTH_RETURN_PAGE_PLAYLIST_HUB = "playlist_erzeugen"
 
 # Streamlit widget session keys for Schritt 3 sliders (cleared on taste reset).
 FILTER_FLOW_WIDGET_KEY_YEAR_RANGE = "filter_flow_year_range"
@@ -1752,6 +1768,14 @@ def apply_spotify_oauth_session_snapshot(
     saved profile from disk and wipe unsaved tweaks; the snapshot restores the
     in-tab state the user had when starting OAuth.
     """
+    _apply_streaming_oauth_session_snapshot(session, data)
+
+
+def _apply_streaming_oauth_session_snapshot(
+    session: MutableMapping[str, Any],
+    data: Mapping[str, Any],
+) -> None:
+    """Provider-agnostic snapshot restore (used by both Spotify and Deezer)."""
     if data.get("snapshot_version") != 1:
         return
     fs = data.get("filter_settings")
@@ -1787,6 +1811,147 @@ def apply_spotify_oauth_session_snapshot(
         clear_taste_wizard_reset_pending(session)
     else:
         mark_taste_wizard_reset_pending(session)
+
+
+# ---- Deezer cookie helpers (mirror the Spotify ones) ----------------------
+
+
+def persist_deezer_oauth_state_cookie(state: str) -> None:
+    """Store Deezer OAuth ``state`` for callback validation after a full page load."""
+    if not isinstance(state, str) or not state.strip():
+        return
+    cm = profile_cookie_manager()
+    cm.set(
+        DEEZER_OAUTH_STATE_COOKIE_NAME,
+        state,
+        key="mr_cookie_deezer_oauth_set",
+        max_age=600.0,
+        same_site="lax",
+    )
+
+
+def peek_deezer_oauth_state_cookie() -> str | None:
+    """Return the Deezer OAuth ``state`` from the browser cookie if present."""
+    cm = profile_cookie_manager()
+    raw = cm.get(DEEZER_OAUTH_STATE_COOKIE_NAME)
+    return raw.strip() if isinstance(raw, str) and raw.strip() else None
+
+
+def peek_deezer_oauth_state_from_context_cookies() -> str | None:
+    """Return Deezer OAuth CSRF state from ``st.context.cookies`` (HTTP request)."""
+    try:
+        raw = st.context.cookies.to_dict().get(DEEZER_OAUTH_STATE_COOKIE_NAME)
+    except Exception:
+        return None
+    return raw.strip() if isinstance(raw, str) and raw.strip() else None
+
+
+def clear_deezer_oauth_state_cookie() -> None:
+    """Remove the Deezer OAuth state cookie after success or disconnect."""
+    cm = profile_cookie_manager()
+    _safe_cookie_manager_delete(
+        cm,
+        DEEZER_OAUTH_STATE_COOKIE_NAME,
+        key="mr_cookie_deezer_oauth_del",
+    )
+
+
+def persist_deezer_session_snapshot_cookie(payload_json: str) -> None:
+    """Store taste/filter session fields for restore after Deezer OAuth."""
+    if not isinstance(payload_json, str) or not payload_json.strip():
+        return
+    cm = profile_cookie_manager()
+    cm.set(
+        DEEZER_SESSION_SNAPSHOT_COOKIE_NAME,
+        payload_json,
+        key="mr_cookie_deezer_snapshot_set",
+        max_age=600.0,
+        same_site="lax",
+    )
+
+
+def peek_deezer_session_snapshot_from_context_cookies() -> str | None:
+    """Return Deezer snapshot JSON from HTTP cookies when CookieManager lags."""
+    try:
+        raw = st.context.cookies.to_dict().get(DEEZER_SESSION_SNAPSHOT_COOKIE_NAME)
+    except Exception:
+        return None
+    return raw.strip() if isinstance(raw, str) and raw.strip() else None
+
+
+def peek_deezer_session_snapshot_cookie() -> str | None:
+    """Return Deezer session snapshot JSON from browser cookie if present."""
+    raw_ctx = peek_deezer_session_snapshot_from_context_cookies()
+    if raw_ctx:
+        return raw_ctx
+    cm = profile_cookie_manager()
+    raw = cm.get(DEEZER_SESSION_SNAPSHOT_COOKIE_NAME)
+    return raw.strip() if isinstance(raw, str) and raw.strip() else None
+
+
+def clear_deezer_session_snapshot_cookie() -> None:
+    """Remove the Deezer session snapshot cookie after token exchange or abandon."""
+    cm = profile_cookie_manager()
+    _safe_cookie_manager_delete(
+        cm,
+        DEEZER_SESSION_SNAPSHOT_COOKIE_NAME,
+        key="mr_cookie_deezer_snapshot_del",
+    )
+
+
+def persist_deezer_oauth_return_page_cookie(value: str) -> None:
+    """Remember which page started the Deezer OAuth flow (short-lived cookie)."""
+    if not isinstance(value, str) or not value.strip():
+        return
+    cm = profile_cookie_manager()
+    cm.set(
+        DEEZER_OAUTH_RETURN_PAGE_COOKIE_NAME,
+        value.strip(),
+        key="mr_cookie_deezer_return_set",
+        max_age=600.0,
+        same_site="lax",
+    )
+
+
+def peek_deezer_oauth_return_page_from_context_cookies() -> str | None:
+    """Return Deezer OAuth-return-page hint from HTTP cookies."""
+    try:
+        raw = st.context.cookies.to_dict().get(DEEZER_OAUTH_RETURN_PAGE_COOKIE_NAME)
+    except Exception:
+        return None
+    return raw.strip() if isinstance(raw, str) and raw.strip() else None
+
+
+def peek_deezer_oauth_return_page_cookie() -> str | None:
+    """Return the Deezer OAuth-return-page hint set before redirect, or None."""
+    raw_ctx = peek_deezer_oauth_return_page_from_context_cookies()
+    if raw_ctx:
+        return raw_ctx
+    cm = profile_cookie_manager()
+    raw = cm.get(DEEZER_OAUTH_RETURN_PAGE_COOKIE_NAME)
+    return raw.strip() if isinstance(raw, str) and raw.strip() else None
+
+
+def clear_deezer_oauth_return_page_cookie() -> None:
+    """Remove the Deezer OAuth-return-page cookie after honor/discard."""
+    cm = profile_cookie_manager()
+    _safe_cookie_manager_delete(
+        cm,
+        DEEZER_OAUTH_RETURN_PAGE_COOKIE_NAME,
+        key="mr_cookie_deezer_return_del",
+    )
+
+
+def apply_deezer_oauth_session_snapshot(
+    session: MutableMapping[str, Any],
+    data: Mapping[str, Any],
+) -> None:
+    """Merge Deezer OAuth snapshot dict into session (filters, communities, widgets).
+
+    See :func:`apply_spotify_oauth_session_snapshot` for the rationale; the
+    payload shape and field names are identical.
+    """
+    _apply_streaming_oauth_session_snapshot(session, data)
 
 
 def peek_active_profile_slug_from_context_cookies() -> str | None:

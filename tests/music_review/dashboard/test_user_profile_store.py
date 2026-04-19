@@ -14,20 +14,28 @@ from music_review.dashboard.user_profile_store import (
     LOGIN_GUEST_SESSION_PINNED_KEY,
     LOGIN_PROFILE_MERGE_PENDING_KEY,
     SCHEMA_VERSION,
+    STREAMING_PROVIDER_DEEZER,
+    STREAMING_PROVIDER_SPOTIFY,
     ProfileHydrationResult,
     apply_profile_to_session,
     build_profile_payload,
+    deezer_preview_cooldown_seconds_remaining,
     ensure_active_profile_hydrated,
+    get_deezer_preview_last_generated_at,
     get_spotify_preview_last_generated_at,
+    get_streaming_preview_last_generated_at,
     load_profile,
     normalize_profile_slug,
     parse_iso_datetime_utc,
     post_login_maybe_defer_profile_apply,
     profile_document_implies_taste_complete,
     profile_taste_from_account_applied_to_session,
+    record_deezer_preview_generated,
     record_spotify_preview_generated,
+    record_streaming_preview_generated,
     save_profile,
     spotify_preview_cooldown_seconds_remaining,
+    streaming_preview_cooldown_seconds_remaining,
 )
 
 
@@ -500,4 +508,129 @@ def test_record_and_get_spotify_preview_with_db_user(_use_test_db) -> None:
             cooldown_seconds=600,
         )
         == 600
+    )
+
+
+def test_streaming_preview_cooldown_rejects_unknown_provider() -> None:
+    """Unknown providers raise a clear ``ValueError``."""
+    now = datetime(2024, 6, 1, 12, 0, 0, tzinfo=UTC)
+    with pytest.raises(ValueError, match="Unknown streaming provider"):
+        streaming_preview_cooldown_seconds_remaining(
+            provider="apple_music",
+            now_utc=now,
+            last_generated_at_utc=None,
+        )
+
+
+def test_deezer_preview_cooldown_zero_when_never_generated() -> None:
+    """Deezer cooldown is zero (i.e. allowed) when no last-generated time exists."""
+    now = datetime(2024, 6, 1, 12, 0, 0, tzinfo=UTC)
+    assert (
+        deezer_preview_cooldown_seconds_remaining(
+            now_utc=now,
+            last_generated_at_utc=None,
+        )
+        == 0
+    )
+
+
+def test_deezer_preview_cooldown_full_window_right_after_generation() -> None:
+    """Right after a Deezer publish the full cooldown window remains."""
+    now = datetime(2024, 6, 1, 12, 0, 0, tzinfo=UTC)
+    last = datetime(2024, 6, 1, 12, 0, 0, tzinfo=UTC)
+    assert (
+        deezer_preview_cooldown_seconds_remaining(
+            now_utc=now,
+            last_generated_at_utc=last,
+            cooldown_seconds=600,
+        )
+        == 600
+    )
+
+
+def test_record_deezer_preview_guest_writes_session_only(_use_test_db) -> None:
+    """Without an active profile the Deezer timestamp lives in session only."""
+    session: dict[str, object] = {}
+    when = datetime(2024, 3, 1, 10, 30, 0, tzinfo=UTC)
+    record_deezer_preview_generated(
+        session=session,
+        profiles_dir=Path("/unused"),
+        when_utc=when,
+    )
+    assert isinstance(session.get("deezer_last_preview_generated_at"), str)
+
+
+def test_record_and_get_deezer_preview_with_db_user(_use_test_db) -> None:
+    """For a logged-in user, the Deezer timestamp persists in the user DB."""
+    conn = _use_test_db
+    _register(conn, "u1")
+    payload = build_profile_payload(
+        profile_slug="u1",
+        flow_mode="combined",
+        selected_communities={"1"},
+        filter_settings={},
+        community_weights_raw={},
+    )
+    save_profile(None, "u1", payload)
+    session: dict[str, object] = {ACTIVE_PROFILE_SESSION_KEY: "u1"}
+    when = datetime(2024, 5, 1, 8, 0, 0, tzinfo=UTC)
+    record_deezer_preview_generated(
+        session=session,
+        profiles_dir=Path("/unused"),
+        when_utc=when,
+    )
+    got = get_deezer_preview_last_generated_at(
+        session=session,
+        profiles_dir=Path("/unused"),
+    )
+    assert got is not None
+    assert (
+        deezer_preview_cooldown_seconds_remaining(
+            now_utc=when,
+            last_generated_at_utc=got,
+            cooldown_seconds=600,
+        )
+        == 600
+    )
+
+
+def test_provider_aware_helpers_keep_spotify_and_deezer_isolated(
+    _use_test_db,
+) -> None:
+    """A Spotify publish does not bump the Deezer cooldown and vice versa."""
+    conn = _use_test_db
+    _register(conn, "u1")
+    save_profile(
+        None,
+        "u1",
+        build_profile_payload(
+            profile_slug="u1",
+            flow_mode="combined",
+            selected_communities={"1"},
+            filter_settings={},
+            community_weights_raw={},
+        ),
+    )
+    session: dict[str, object] = {ACTIVE_PROFILE_SESSION_KEY: "u1"}
+    record_streaming_preview_generated(
+        provider=STREAMING_PROVIDER_SPOTIFY,
+        session=session,
+        profiles_dir=Path("/unused"),
+        when_utc=datetime(2024, 5, 1, 8, 0, 0, tzinfo=UTC),
+    )
+    assert (
+        get_streaming_preview_last_generated_at(
+            provider=STREAMING_PROVIDER_DEEZER,
+            session=session,
+            profiles_dir=Path("/unused"),
+        )
+        is None
+    )
+    assert (
+        get_streaming_preview_last_generated_at(
+            provider=STREAMING_PROVIDER_SPOTIFY,
+            session=session,
+            profiles_dir=Path("/unused"),
+        )
+        is not None
     )

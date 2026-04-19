@@ -19,15 +19,20 @@ from pathlib import Path
 from typing import Final
 
 from music_review.config import get_project_root
+from music_review.dashboard.newest_deezer_playlist import (
+    resolve_track_uri_strict as deezer_resolve_track_uri_strict,
+)
 from music_review.dashboard.newest_spotify_playlist import (
     catalog_lookup_key,
     resolve_track_uri_strict,
 )
+from music_review.integrations.deezer_client import DeezerClient, DeezerToken
 from music_review.integrations.spotify_client import SpotifyClient, SpotifyToken
 
 LOGGER = logging.getLogger(__name__)
 
 PROVIDER_SPOTIFY: Final[str] = "spotify"
+PROVIDER_DEEZER: Final[str] = "deezer"
 
 _ENV_DISABLE_FLAG: Final[str] = "STREAMING_CATALOG_CACHE"
 _ENV_PATH_OVERRIDE: Final[str] = "MUSIC_REVIEW_STREAMING_CACHE_PATH"
@@ -202,4 +207,38 @@ def spotify_resolve_with_streaming_catalog_cache(
     )
     if uri and cache.enabled:
         cache.put(PROVIDER_SPOTIFY, key, uri)
+    return uri
+
+
+def deezer_resolve_with_streaming_catalog_cache(
+    cache: StreamingCatalogCache,
+    client: DeezerClient,
+    token: DeezerToken,
+    *,
+    artist: str,
+    track_title: str,
+) -> str | None:
+    """Resolve a Deezer URI via strict search, using the catalog cache.
+
+    Deezer URIs are stored as ``deezer:track:{numeric_id}`` so they never
+    collide with Spotify URIs in the shared per-(provider, key) cache.
+    """
+    key = catalog_lookup_key(artist, track_title)
+    if cache.enabled:
+        hit = cache.get(PROVIDER_DEEZER, key)
+        if hit is not None:
+            LOGGER.debug(
+                "streaming catalog cache hit provider=%s key_prefix=%s",
+                PROVIDER_DEEZER,
+                key[:120],
+            )
+            return hit
+    uri = deezer_resolve_track_uri_strict(
+        client,
+        token,
+        artist=artist,
+        track_title=track_title,
+    )
+    if uri and cache.enabled:
+        cache.put(PROVIDER_DEEZER, key, uri)
     return uri

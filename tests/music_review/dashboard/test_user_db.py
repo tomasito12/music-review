@@ -11,6 +11,8 @@ from music_review.dashboard.spotify_oauth_token_json import spotify_token_to_jso
 from music_review.dashboard.user_db import (
     authenticate_user,
     change_password,
+    clear_deezer_credentials,
+    clear_deezer_oauth_token,
     clear_spotify_credentials,
     clear_spotify_oauth_token,
     create_session_token,
@@ -19,11 +21,17 @@ from music_review.dashboard.user_db import (
     delete_session_token,
     get_connection,
     list_user_slugs,
+    load_deezer_credentials,
+    load_deezer_last_preview_at,
+    load_deezer_oauth_token_json,
     load_spotify_credentials,
     load_spotify_last_preview_at,
     load_spotify_oauth_token_json,
     load_user_profile,
     purge_expired_sessions,
+    save_deezer_credentials,
+    save_deezer_last_preview_at,
+    save_deezer_oauth_token,
     save_spotify_credentials,
     save_spotify_last_preview_at,
     save_spotify_oauth_token,
@@ -215,6 +223,104 @@ class TestSpotifyOauthTokenJson:
         create_user(db, "alice", "pw")
         cols = {row[1] for row in db.execute("PRAGMA table_info(users)").fetchall()}
         assert "spotify_oauth_token_json" in cols
+
+
+class TestDeezerPreview:
+    def test_save_and_load_preview_timestamp(self, db):
+        create_user(db, "alice", "pw")
+        save_deezer_last_preview_at(db, "alice", "2024-06-01T12:00:00Z")
+        assert load_deezer_last_preview_at(db, "alice") == "2024-06-01T12:00:00Z"
+
+    def test_load_preview_nonexistent_user(self, db):
+        assert load_deezer_last_preview_at(db, "ghost") is None
+
+    def test_load_preview_no_value_yet(self, db):
+        create_user(db, "alice", "pw")
+        assert load_deezer_last_preview_at(db, "alice") is None
+
+
+class TestDeezerCredentials:
+    def test_save_and_load_roundtrip(self, db):
+        create_user(db, "alice", "pw")
+        save_deezer_credentials(db, "alice", "my-app-id", "my-app-secret")
+        result = load_deezer_credentials(db, "alice")
+        assert result == ("my-app-id", "my-app-secret")
+
+    def test_load_returns_none_when_not_set(self, db):
+        create_user(db, "alice", "pw")
+        assert load_deezer_credentials(db, "alice") is None
+
+    def test_load_returns_none_for_nonexistent_user(self, db):
+        assert load_deezer_credentials(db, "ghost") is None
+
+    def test_clear_removes_credentials(self, db):
+        create_user(db, "alice", "pw")
+        save_deezer_credentials(db, "alice", "aid", "asec")
+        clear_deezer_credentials(db, "alice")
+        assert load_deezer_credentials(db, "alice") is None
+
+    def test_save_trims_whitespace(self, db):
+        create_user(db, "alice", "pw")
+        save_deezer_credentials(db, "alice", "  aid  ", "  asec  ")
+        result = load_deezer_credentials(db, "alice")
+        assert result == ("aid", "asec")
+
+    def test_overwrite_existing_credentials(self, db):
+        create_user(db, "alice", "pw")
+        save_deezer_credentials(db, "alice", "old-id", "old-secret")
+        save_deezer_credentials(db, "alice", "new-id", "new-secret")
+        result = load_deezer_credentials(db, "alice")
+        assert result == ("new-id", "new-secret")
+
+    def test_load_returns_none_when_only_app_id_set(self, db):
+        create_user(db, "alice", "pw")
+        db.execute(
+            "UPDATE users SET deezer_app_id = ? WHERE slug = ?",
+            ("aid", "alice"),
+        )
+        db.commit()
+        assert load_deezer_credentials(db, "alice") is None
+
+    def test_save_credentials_clears_stored_oauth_token_json(self, db):
+        create_user(db, "alice", "pw")
+        save_deezer_oauth_token(db, "alice", '{"access_token":"x","expires_in":0}')
+        assert load_deezer_oauth_token_json(db, "alice") is not None
+        save_deezer_credentials(db, "alice", "aid", "asec")
+        assert load_deezer_oauth_token_json(db, "alice") is None
+
+    def test_clear_credentials_clears_oauth_token_json(self, db):
+        create_user(db, "alice", "pw")
+        save_deezer_credentials(db, "alice", "aid", "asec")
+        save_deezer_oauth_token(db, "alice", '{"access_token":"y","expires_in":0}')
+        clear_deezer_credentials(db, "alice")
+        assert load_deezer_oauth_token_json(db, "alice") is None
+        assert load_deezer_credentials(db, "alice") is None
+
+
+class TestDeezerOauthTokenJson:
+    def test_save_load_roundtrip(self, db):
+        create_user(db, "alice", "pw")
+        blob = '{"access_token":"acc","expires_in":0}'
+        save_deezer_oauth_token(db, "alice", blob)
+        loaded = load_deezer_oauth_token_json(db, "alice")
+        assert loaded == blob
+
+    def test_clear_oauth_token(self, db):
+        create_user(db, "alice", "pw")
+        save_deezer_oauth_token(db, "alice", '{"access_token":"x","expires_in":3600}')
+        clear_deezer_oauth_token(db, "alice")
+        assert load_deezer_oauth_token_json(db, "alice") is None
+
+    def test_users_table_has_deezer_columns_after_migration(self, db):
+        create_user(db, "alice", "pw")
+        cols = {row[1] for row in db.execute("PRAGMA table_info(users)").fetchall()}
+        for expected in (
+            "deezer_app_id",
+            "deezer_app_secret",
+            "deezer_oauth_token_json",
+            "deezer_last_preview_at",
+        ):
+            assert expected in cols
 
 
 class TestSessionTokens:

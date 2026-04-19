@@ -6,17 +6,8 @@ import json
 from typing import Any
 
 import streamlit as st
-from pages.neueste_reviews_pool import (
-    RECENT_DEFAULT,
-    configure_spotify_playlist_logging_from_env,
-    ensure_neueste_session_defaults,
-    load_newest_reviews_slice,
-)
-from pages.neueste_spotify_playlist_section import (
-    render_archive_spotify_playlist_section,
-    render_neueste_spotify_playlist_section,
-)
 from pages.page_helpers import (
+    SPOTIFY_OAUTH_RETURN_PAGE_PLAYLIST_HUB,
     SPOTIFY_OAUTH_RETURN_PAGE_STREAMING_CONNECTIONS,
     apply_spotify_oauth_session_snapshot,
     clear_spotify_oauth_return_page_cookie,
@@ -33,9 +24,6 @@ from pages.page_helpers import (
 )
 from pages.spotify_connection_ui import (
     try_load_user_spotify_config as _try_load_user_spotify_config,
-)
-from pages.spotify_connection_ui import (
-    user_has_spotify_credentials as _user_has_spotify_credentials,
 )
 from pages.spotify_oauth_kickoff import (
     SPOTIFY_AUTH_STATE_KEY,
@@ -71,6 +59,8 @@ from music_review.integrations.spotify_client import (
 
 # Path of the Streaming-Verbindungen page used for CTA links and OAuth-return.
 _STREAMING_CONNECTIONS_PAGE_PATH = "pages/3_Streaming_Verbindungen.py"
+# Unified playlist-creation hub (Spotify + Deezer); default OAuth-return target.
+_PLAYLIST_HUB_PAGE_PATH = "pages/9_Playlist_Erzeugen.py"
 
 # SHA256 prefix of authorization ``code`` already exchanged or dead (invalid_grant).
 SPOTIFY_OAUTH_SPENT_CODE_DIGESTS_KEY = "spotify_oauth_spent_code_digests"
@@ -120,13 +110,6 @@ def _spotify_page_shell_css() -> None:
 def _section_divider() -> None:
     st.markdown(
         '<div class="rec-results-divider" aria-hidden="true"></div>',
-        unsafe_allow_html=True,
-    )
-
-
-def _section_label(text: str) -> None:
-    st.markdown(
-        f'<p class="rec-sort-section-label">{html.escape(text)}</p>',
         unsafe_allow_html=True,
     )
 
@@ -304,11 +287,21 @@ def _restore_profile_from_oauth_callback_slug(slug: str) -> None:
 
 
 def _maybe_redirect_after_successful_oauth() -> None:
-    """Honor the return-page cookie and ``switch_page`` if the user came elsewhere."""
+    """Honor the return-page cookie and ``switch_page`` to the originating page.
+
+    When no cookie is set or the value is unrecognized, fall back to the unified
+    playlist hub so the user always lands on a useful page after OAuth instead
+    of staying on the slim callback page.
+    """
     target = peek_spotify_oauth_return_page_cookie()
     clear_spotify_oauth_return_page_cookie()
     if target == SPOTIFY_OAUTH_RETURN_PAGE_STREAMING_CONNECTIONS:
         st.switch_page(_STREAMING_CONNECTIONS_PAGE_PATH)
+        return
+    if target == SPOTIFY_OAUTH_RETURN_PAGE_PLAYLIST_HUB:
+        st.switch_page(_PLAYLIST_HUB_PAGE_PATH)
+        return
+    st.switch_page(_PLAYLIST_HUB_PAGE_PATH)
 
 
 def _handle_oauth_callback(client: SpotifyClient) -> None:
@@ -421,39 +414,6 @@ def _handle_oauth_callback(client: SpotifyClient) -> None:
     _maybe_redirect_after_successful_oauth()
 
 
-def _should_show_missing_connection_callout(
-    *,
-    client: SpotifyClient | None,
-    has_user_creds: bool,
-    oauth_callback_pending: bool,
-) -> bool:
-    """True when the page must redirect to the Streaming-Verbindungen page.
-
-    OAuth callbacks must be processed here even when a client failed to load,
-    so we never gate on missing creds while ``?code=`` is present in the URL.
-    """
-    if oauth_callback_pending:
-        return False
-    return client is None or not has_user_creds
-
-
-def _render_missing_connection_callout() -> None:
-    """Show a CTA pointing the user to the Streaming-Verbindungen page."""
-    st.markdown(
-        '<div class="rec-callout rec-callout-info">'
-        "Für diese Seite musst du zuerst eine Spotify-Verbindung einrichten."
-        "</div>",
-        unsafe_allow_html=True,
-    )
-    if st.button(
-        "Zur Verbindungs-Einrichtung",
-        type="primary",
-        width="stretch",
-        key="spotify_playlists_to_connections",
-    ):
-        st.switch_page(_STREAMING_CONNECTIONS_PAGE_PATH)
-
-
 def _render_connection_redirect_hint(redirect_hint: str | None) -> None:
     """Display the optional redirect URI mismatch hint when a token is missing."""
     if not redirect_hint:
@@ -465,33 +425,22 @@ def _render_connection_redirect_hint(redirect_hint: str | None) -> None:
 
 
 def main() -> None:
-    configure_spotify_playlist_logging_from_env()
+    """Handle the Spotify OAuth callback and redirect to the playlist hub.
+
+    This page is intentionally minimal: it exists to serve as the stable
+    Spotify ``redirect_uri`` (configured in `.env` and registered in the
+    Spotify app dashboard). All actual playlist-building UI now lives in
+    :mod:`pages.9_Playlist_Erzeugen`. When the user lands here without an
+    OAuth callback in the URL, we just forward to the hub.
+    """
     _spotify_page_shell_css()
     render_toolbar("spotify_playlists")
 
-    st.markdown(
-        '<div class="rec-hero">'
-        '<p class="rec-page-title">Spotify-Playlists</p>'
-        '<div id="rec-page-desc-wrap">'
-        '<p class="rec-page-desc">Generiere eine Spotify-Playlist - aus den '
-        "neuesten Rezensionen oder dem gesamten Archiv, <br/>passend zu Deinem "
-        "Musikgeschmack.</p>"
-        "</div></div>",
-        unsafe_allow_html=True,
-    )
-
-    oauth_pending = _spotify_oauth_callback_query_present()
-    has_user_creds = _user_has_spotify_credentials()
-    client, redirect_hint = _load_client_and_redirect_hint()
-
-    if _should_show_missing_connection_callout(
-        client=client,
-        has_user_creds=has_user_creds,
-        oauth_callback_pending=oauth_pending,
-    ):
-        _render_missing_connection_callout()
+    if not _spotify_oauth_callback_query_present():
+        st.switch_page(_PLAYLIST_HUB_PAGE_PATH)
         return
 
+    client, redirect_hint = _load_client_and_redirect_hint()
     _maybe_restore_spotify_oauth_session_snapshot()
     hydrate_spotify_token_from_db_for_active_user()
     if client is not None:
@@ -499,31 +448,7 @@ def main() -> None:
     if _get_stored_token() is None:
         _render_connection_redirect_hint(redirect_hint)
     _section_divider()
-
-    ensure_neueste_session_defaults()
-    tab_newest, tab_archive = st.tabs(["Neueste Rezensionen", "Gesamtes Archiv"])
-    with tab_newest:
-        n_pool = st.slider(
-            "Wie viele der letzten Rezensionen sollen bei der Erstellung deiner "
-            "Playlist berücksichtigt werden?",
-            min_value=5,
-            max_value=50,
-            value=RECENT_DEFAULT,
-            step=1,
-            key="spotify-page-pool-count",
-        )
-        reviews = load_newest_reviews_slice(n_pool)
-        if not reviews:
-            st.markdown(
-                '<div class="rec-callout rec-callout-warn">'
-                "Keine Reviews gefunden. Pfad prüfen: <code>data/reviews.jsonl</code> "
-                "(ggf. Scraping ausführen).</div>",
-                unsafe_allow_html=True,
-            )
-        else:
-            render_neueste_spotify_playlist_section(reviews=reviews)
-    with tab_archive:
-        render_archive_spotify_playlist_section()
+    st.switch_page(_PLAYLIST_HUB_PAGE_PATH)
 
 
 if __name__ == "__main__":

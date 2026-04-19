@@ -13,6 +13,7 @@ from os import getenv
 
 import streamlit as st
 from pages.page_helpers import (
+    SPOTIFY_OAUTH_RETURN_PAGE_PLAYLIST_HUB,
     SPOTIFY_OAUTH_RETURN_PAGE_STREAMING_CONNECTIONS,
     persist_spotify_oauth_return_page_cookie,
 )
@@ -231,5 +232,21 @@ def render_spotify_login_link_for_streaming_connections(
     """
     persist_spotify_oauth_return_page_cookie(
         SPOTIFY_OAUTH_RETURN_PAGE_STREAMING_CONNECTIONS,
+    )
+    render_spotify_login_link_under_preview(client, link_label=link_label)
+
+
+def render_spotify_login_link_for_playlist_hub(
+    client: SpotifyClient,
+    *,
+    link_label: str = "Verbindung mit Spotify herstellen",
+) -> None:
+    """Render the Spotify authorize link from the unified playlist hub.
+
+    Sets the OAuth-return cookie so the callback page redirects back to the
+    Playlist-Erzeugen hub once the token has been exchanged and stored.
+    """
+    persist_spotify_oauth_return_page_cookie(
+        SPOTIFY_OAUTH_RETURN_PAGE_PLAYLIST_HUB,
     )
     render_spotify_login_link_under_preview(client, link_label=link_label)

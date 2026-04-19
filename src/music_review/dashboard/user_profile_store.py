@@ -27,8 +27,10 @@ from music_review.dashboard.taste_setup import (
 )
 from music_review.dashboard.user_db import (
     get_connection,
+    load_deezer_last_preview_at,
     load_spotify_last_preview_at,
     load_user_profile,
+    save_deezer_last_preview_at,
     save_spotify_last_preview_at,
     save_user_profile,
     user_exists,
@@ -45,6 +47,45 @@ _SLUG_PATTERN = re.compile(r"^[a-z0-9][a-z0-9_-]*$")
 SPOTIFY_PREVIEW_COOLDOWN_SECONDS = 600
 PROFILE_SPOTIFY_LAST_PREVIEW_AT_KEY = "spotify_last_preview_generated_at"
 SESSION_SPOTIFY_LAST_PREVIEW_AT_KEY = "spotify_last_preview_generated_at"
+
+DEEZER_PREVIEW_COOLDOWN_SECONDS = 600
+SESSION_DEEZER_LAST_PREVIEW_AT_KEY = "deezer_last_preview_generated_at"
+
+STREAMING_PROVIDER_SPOTIFY = "spotify"
+STREAMING_PROVIDER_DEEZER = "deezer"
+
+_PROVIDER_SESSION_KEY: dict[str, str] = {
+    STREAMING_PROVIDER_SPOTIFY: SESSION_SPOTIFY_LAST_PREVIEW_AT_KEY,
+    STREAMING_PROVIDER_DEEZER: SESSION_DEEZER_LAST_PREVIEW_AT_KEY,
+}
+_PROVIDER_DEFAULT_COOLDOWN: dict[str, int] = {
+    STREAMING_PROVIDER_SPOTIFY: SPOTIFY_PREVIEW_COOLDOWN_SECONDS,
+    STREAMING_PROVIDER_DEEZER: DEEZER_PREVIEW_COOLDOWN_SECONDS,
+}
+
+
+def _provider_load_last_preview_at_db(
+    provider: str, conn: sqlite3.Connection, slug: str
+) -> str | None:
+    """Read the provider-specific ISO timestamp string from the user DB."""
+    if provider == STREAMING_PROVIDER_SPOTIFY:
+        return load_spotify_last_preview_at(conn, slug)
+    if provider == STREAMING_PROVIDER_DEEZER:
+        return load_deezer_last_preview_at(conn, slug)
+    raise ValueError(f"Unknown streaming provider: {provider!r}")
+
+
+def _provider_save_last_preview_at_db(
+    provider: str, conn: sqlite3.Connection, slug: str, iso: str
+) -> None:
+    """Write the provider-specific ISO timestamp string to the user DB."""
+    if provider == STREAMING_PROVIDER_SPOTIFY:
+        save_spotify_last_preview_at(conn, slug, iso)
+        return
+    if provider == STREAMING_PROVIDER_DEEZER:
+        save_deezer_last_preview_at(conn, slug, iso)
+        return
+    raise ValueError(f"Unknown streaming provider: {provider!r}")
 
 
 class ProfileHydrationResult(Enum):
@@ -164,27 +205,107 @@ def parse_iso_datetime_utc(raw: Any) -> datetime | None:
     return dt.astimezone(UTC)
 
 
-def spotify_preview_cooldown_seconds_remaining(
+def streaming_preview_cooldown_seconds_remaining(
     *,
+    provider: str,
     now_utc: datetime,
     last_generated_at_utc: datetime | None,
-    cooldown_seconds: int = SPOTIFY_PREVIEW_COOLDOWN_SECONDS,
+    cooldown_seconds: int | None = None,
 ) -> int:
-    """Seconds until another Spotify playlist generation; ``0`` means allowed.
+    """Seconds until another playlist generation for ``provider``; ``0`` if allowed.
 
-    Despite the ``preview`` name, ``last_generated_at_utc`` is the timestamp of the
-    last successful **playlist publish** (same DB column ``spotify_last_preview_at``).
+    ``last_generated_at_utc`` is the timestamp of the last successful playlist
+    publish for that provider. ``cooldown_seconds`` overrides the per-provider
+    default (10 minutes) when given.
     """
+    if provider not in _PROVIDER_DEFAULT_COOLDOWN:
+        raise ValueError(f"Unknown streaming provider: {provider!r}")
     if last_generated_at_utc is None:
         return 0
+    cd = (
+        cooldown_seconds
+        if cooldown_seconds is not None
+        else _PROVIDER_DEFAULT_COOLDOWN[provider]
+    )
     now = now_utc if now_utc.tzinfo else now_utc.replace(tzinfo=UTC)
     last = (
         last_generated_at_utc
         if last_generated_at_utc.tzinfo
         else last_generated_at_utc.replace(tzinfo=UTC)
     )
-    deadline = last + timedelta(seconds=cooldown_seconds)
+    deadline = last + timedelta(seconds=cd)
     return max(0, math.ceil((deadline - now).total_seconds()))
+
+
+def get_streaming_preview_last_generated_at(
+    *,
+    provider: str,
+    session: MutableMapping[str, Any],
+    profiles_dir: Path,
+) -> datetime | None:
+    """Last preview time for ``provider``: from DB if signed in, else session."""
+    if provider not in _PROVIDER_SESSION_KEY:
+        raise ValueError(f"Unknown streaming provider: {provider!r}")
+    session_key = _PROVIDER_SESSION_KEY[provider]
+    raw_slug = session.get(ACTIVE_PROFILE_SESSION_KEY)
+    if isinstance(raw_slug, str) and raw_slug.strip():
+        try:
+            slug = normalize_profile_slug(raw_slug.strip())
+        except ValueError:
+            return parse_iso_datetime_utc(session.get(session_key))
+        conn = _db_conn()
+        iso = _provider_load_last_preview_at_db(provider, conn, slug)
+        return parse_iso_datetime_utc(iso)
+    return parse_iso_datetime_utc(session.get(session_key))
+
+
+def record_streaming_preview_generated(
+    *,
+    provider: str,
+    session: MutableMapping[str, Any],
+    profiles_dir: Path,
+    when_utc: datetime,
+) -> None:
+    """Persist last playlist-generation timestamp for ``provider``.
+
+    Stores in the user DB when a profile is active, otherwise in the
+    Streamlit session (guest mode).
+    """
+    if provider not in _PROVIDER_SESSION_KEY:
+        raise ValueError(f"Unknown streaming provider: {provider!r}")
+    session_key = _PROVIDER_SESSION_KEY[provider]
+    when = when_utc if when_utc.tzinfo else when_utc.replace(tzinfo=UTC)
+    iso = when.replace(microsecond=0).isoformat().replace("+00:00", "Z")
+    raw_slug = session.get(ACTIVE_PROFILE_SESSION_KEY)
+    if isinstance(raw_slug, str) and raw_slug.strip():
+        try:
+            slug = normalize_profile_slug(raw_slug.strip())
+        except ValueError:
+            session[session_key] = iso
+            return
+        conn = _db_conn()
+        if not user_exists(conn, slug):
+            session[session_key] = iso
+            return
+        _provider_save_last_preview_at_db(provider, conn, slug, iso)
+        session.pop(session_key, None)
+        return
+    session[session_key] = iso
+
+
+def spotify_preview_cooldown_seconds_remaining(
+    *,
+    now_utc: datetime,
+    last_generated_at_utc: datetime | None,
+    cooldown_seconds: int = SPOTIFY_PREVIEW_COOLDOWN_SECONDS,
+) -> int:
+    """Spotify wrapper around :func:`streaming_preview_cooldown_seconds_remaining`."""
+    return streaming_preview_cooldown_seconds_remaining(
+        provider=STREAMING_PROVIDER_SPOTIFY,
+        now_utc=now_utc,
+        last_generated_at_utc=last_generated_at_utc,
+        cooldown_seconds=cooldown_seconds,
+    )
 
 
 def read_last_spotify_preview_at_from_profile(
@@ -201,19 +322,12 @@ def get_spotify_preview_last_generated_at(
     session: MutableMapping[str, Any],
     profiles_dir: Path,
 ) -> datetime | None:
-    """Last preview time: from DB if signed in, else session only."""
-    raw_slug = session.get(ACTIVE_PROFILE_SESSION_KEY)
-    if isinstance(raw_slug, str) and raw_slug.strip():
-        try:
-            slug = normalize_profile_slug(raw_slug.strip())
-        except ValueError:
-            return parse_iso_datetime_utc(
-                session.get(SESSION_SPOTIFY_LAST_PREVIEW_AT_KEY),
-            )
-        conn = _db_conn()
-        iso = load_spotify_last_preview_at(conn, slug)
-        return parse_iso_datetime_utc(iso)
-    return parse_iso_datetime_utc(session.get(SESSION_SPOTIFY_LAST_PREVIEW_AT_KEY))
+    """Spotify wrapper around :func:`get_streaming_preview_last_generated_at`."""
+    return get_streaming_preview_last_generated_at(
+        provider=STREAMING_PROVIDER_SPOTIFY,
+        session=session,
+        profiles_dir=profiles_dir,
+    )
 
 
 def record_spotify_preview_generated(
@@ -222,24 +336,56 @@ def record_spotify_preview_generated(
     profiles_dir: Path,
     when_utc: datetime,
 ) -> None:
-    """Persist last playlist-generation timestamp to DB or guest session_state."""
-    when = when_utc if when_utc.tzinfo else when_utc.replace(tzinfo=UTC)
-    iso = when.replace(microsecond=0).isoformat().replace("+00:00", "Z")
-    raw_slug = session.get(ACTIVE_PROFILE_SESSION_KEY)
-    if isinstance(raw_slug, str) and raw_slug.strip():
-        try:
-            slug = normalize_profile_slug(raw_slug.strip())
-        except ValueError:
-            session[SESSION_SPOTIFY_LAST_PREVIEW_AT_KEY] = iso
-            return
-        conn = _db_conn()
-        if not user_exists(conn, slug):
-            session[SESSION_SPOTIFY_LAST_PREVIEW_AT_KEY] = iso
-            return
-        save_spotify_last_preview_at(conn, slug, iso)
-        session.pop(SESSION_SPOTIFY_LAST_PREVIEW_AT_KEY, None)
-        return
-    session[SESSION_SPOTIFY_LAST_PREVIEW_AT_KEY] = iso
+    """Spotify wrapper around :func:`record_streaming_preview_generated`."""
+    record_streaming_preview_generated(
+        provider=STREAMING_PROVIDER_SPOTIFY,
+        session=session,
+        profiles_dir=profiles_dir,
+        when_utc=when_utc,
+    )
+
+
+def deezer_preview_cooldown_seconds_remaining(
+    *,
+    now_utc: datetime,
+    last_generated_at_utc: datetime | None,
+    cooldown_seconds: int = DEEZER_PREVIEW_COOLDOWN_SECONDS,
+) -> int:
+    """Deezer wrapper around :func:`streaming_preview_cooldown_seconds_remaining`."""
+    return streaming_preview_cooldown_seconds_remaining(
+        provider=STREAMING_PROVIDER_DEEZER,
+        now_utc=now_utc,
+        last_generated_at_utc=last_generated_at_utc,
+        cooldown_seconds=cooldown_seconds,
+    )
+
+
+def get_deezer_preview_last_generated_at(
+    *,
+    session: MutableMapping[str, Any],
+    profiles_dir: Path,
+) -> datetime | None:
+    """Deezer wrapper around :func:`get_streaming_preview_last_generated_at`."""
+    return get_streaming_preview_last_generated_at(
+        provider=STREAMING_PROVIDER_DEEZER,
+        session=session,
+        profiles_dir=profiles_dir,
+    )
+
+
+def record_deezer_preview_generated(
+    *,
+    session: MutableMapping[str, Any],
+    profiles_dir: Path,
+    when_utc: datetime,
+) -> None:
+    """Deezer wrapper around :func:`record_streaming_preview_generated`."""
+    record_streaming_preview_generated(
+        provider=STREAMING_PROVIDER_DEEZER,
+        session=session,
+        profiles_dir=profiles_dir,
+        when_utc=when_utc,
+    )
 
 
 # ---- Profile payload construction ------------------------------------------

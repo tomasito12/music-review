@@ -137,14 +137,14 @@ def test_render_spotify_section_shows_error_when_creds_invalid(
 def test_main_shows_login_required_for_guest(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    """Guests must be told to sign in before configuring Spotify."""
+    """Guests must be told to sign in before configuring Spotify or Deezer."""
     module = _streaming_verbindungen_module()
     monkeypatch.setattr(module, "active_user_slug", lambda: None)
     monkeypatch.setattr(module, "inject_recommendation_flow_shell_css", lambda: None)
     monkeypatch.setattr(module, "render_toolbar", lambda key: None)
     monkeypatch.setattr(module, "_render_hero", lambda: None)
     monkeypatch.setattr(module, "_render_spotify_subheader", lambda: None)
-    monkeypatch.setattr(module, "_render_deezer_section", lambda: None)
+    monkeypatch.setattr(module, "_render_deezer_subheader", lambda: None)
     monkeypatch.setattr(module, "_section_divider", lambda: None)
     called: list[str] = []
     monkeypatch.setattr(
@@ -157,22 +157,28 @@ def test_main_shows_login_required_for_guest(
         "_render_spotify_section_for_logged_in_user",
         lambda: called.append("spotify_section"),
     )
+    monkeypatch.setattr(
+        module,
+        "_render_deezer_section_for_logged_in_user",
+        lambda: called.append("deezer_section"),
+    )
 
     module.main()
-    assert called == ["login_required"]
+    # Login-required callout appears once per provider section.
+    assert called == ["login_required", "login_required"]
 
 
-def test_main_renders_spotify_section_when_logged_in(
+def test_main_renders_spotify_and_deezer_sections_when_logged_in(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    """A logged-in user goes straight to the Spotify configuration section."""
+    """A logged-in user sees both provider sections rendered."""
     module = _streaming_verbindungen_module()
     monkeypatch.setattr(module, "active_user_slug", lambda: "alice")
     monkeypatch.setattr(module, "inject_recommendation_flow_shell_css", lambda: None)
     monkeypatch.setattr(module, "render_toolbar", lambda key: None)
     monkeypatch.setattr(module, "_render_hero", lambda: None)
     monkeypatch.setattr(module, "_render_spotify_subheader", lambda: None)
-    monkeypatch.setattr(module, "_render_deezer_section", lambda: None)
+    monkeypatch.setattr(module, "_render_deezer_subheader", lambda: None)
     monkeypatch.setattr(module, "_section_divider", lambda: None)
     called: list[str] = []
     monkeypatch.setattr(
@@ -185,9 +191,14 @@ def test_main_renders_spotify_section_when_logged_in(
         "_render_spotify_section_for_logged_in_user",
         lambda: called.append("spotify_section"),
     )
+    monkeypatch.setattr(
+        module,
+        "_render_deezer_section_for_logged_in_user",
+        lambda: called.append("deezer_section"),
+    )
 
     module.main()
-    assert called == ["spotify_section"]
+    assert called == ["spotify_section", "deezer_section"]
 
 
 def test_streaming_verbindungen_uses_shared_connection_helpers() -> None:
@@ -196,3 +207,103 @@ def test_streaming_verbindungen_uses_shared_connection_helpers() -> None:
     assert module.active_user_slug is ui_module.active_user_slug
     assert module.user_has_spotify_credentials is ui_module.user_has_spotify_credentials
     assert module.render_spotify_setup_guide is ui_module.render_spotify_setup_guide
+
+
+def test_render_deezer_section_shows_status_when_token_present(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """With a stored Deezer token the page shows the connected status."""
+    module = _streaming_verbindungen_module()
+    called: list[str] = []
+    monkeypatch.setattr(
+        module,
+        "hydrate_deezer_token_from_db_for_active_user",
+        lambda: True,
+    )
+    monkeypatch.setattr(module, "read_deezer_token_from_session", lambda: object())
+    monkeypatch.setattr(
+        module,
+        "render_deezer_connected_status_and_disconnect",
+        lambda: called.append("status"),
+    )
+    monkeypatch.setattr(
+        module,
+        "render_deezer_credentials_management",
+        lambda: called.append("manage"),
+    )
+    monkeypatch.setattr(
+        module,
+        "render_deezer_setup_guide",
+        lambda: called.append("guide"),
+    )
+
+    module._render_deezer_section_for_logged_in_user()
+    assert called == ["status", "manage", "guide"]
+
+
+def test_render_deezer_section_shows_login_link_when_no_token(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Without a stored Deezer token the page renders the OAuth login link."""
+    module = _streaming_verbindungen_module()
+    called: list[str] = []
+    monkeypatch.setattr(
+        module,
+        "hydrate_deezer_token_from_db_for_active_user",
+        lambda: False,
+    )
+    monkeypatch.setattr(module, "read_deezer_token_from_session", lambda: None)
+    monkeypatch.setattr(
+        module,
+        "render_deezer_shared_app_callout",
+        lambda: called.append("shared_callout"),
+    )
+    monkeypatch.setattr(
+        module,
+        "_build_deezer_client_for_active_user",
+        lambda: object(),
+    )
+    monkeypatch.setattr(
+        module,
+        "render_deezer_login_link_for_streaming_connections",
+        lambda client: called.append("login_link"),
+    )
+    monkeypatch.setattr(
+        module,
+        "render_deezer_credentials_management",
+        lambda: called.append("manage"),
+    )
+    monkeypatch.setattr(
+        module,
+        "render_deezer_setup_guide",
+        lambda: called.append("guide"),
+    )
+
+    module._render_deezer_section_for_logged_in_user()
+    assert called == ["shared_callout", "login_link", "manage", "guide"]
+
+
+def test_render_deezer_section_shows_error_when_no_config(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Without a usable Deezer config the page surfaces an actionable error."""
+    module = _streaming_verbindungen_module()
+    monkeypatch.setattr(
+        module,
+        "hydrate_deezer_token_from_db_for_active_user",
+        lambda: False,
+    )
+    monkeypatch.setattr(module, "read_deezer_token_from_session", lambda: None)
+    monkeypatch.setattr(module, "render_deezer_shared_app_callout", lambda: None)
+    monkeypatch.setattr(module, "_build_deezer_client_for_active_user", lambda: None)
+    error_messages: list[str] = []
+    monkeypatch.setattr(
+        module.st,
+        "error",
+        lambda msg: error_messages.append(msg),
+    )
+    monkeypatch.setattr(module, "render_deezer_credentials_management", lambda: None)
+    monkeypatch.setattr(module, "render_deezer_setup_guide", lambda: None)
+
+    module._render_deezer_section_for_logged_in_user()
+    assert any("nicht konfiguriert" in m for m in error_messages)

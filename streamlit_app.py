@@ -246,8 +246,26 @@ def _spotify_nav_page() -> Any:
     """Stable OAuth redirect path (must match ``SPOTIFY_REDIRECT_URI`` path segment)."""
     return st.Page(
         "pages/9_Spotify_Playlists.py",
-        title="Spotify",
+        title="Spotify-Verbindung",
         url_path="spotify_playlists",
+    )
+
+
+def _deezer_callback_nav_page() -> Any:
+    """Stable Deezer OAuth callback path (must match ``DEEZER_REDIRECT_URI``)."""
+    return st.Page(
+        "pages/10_Deezer_Callback.py",
+        title="Deezer-Verbindung",
+        url_path="deezer_callback",
+    )
+
+
+def _playlist_hub_nav_page() -> Any:
+    """Unified playlist-creation hub for both Spotify and Deezer."""
+    return st.Page(
+        "pages/9_Playlist_Erzeugen.py",
+        title="Playlist erzeugen",
+        url_path="playlist_erzeugen",
     )
 
 
@@ -270,8 +288,18 @@ def _navigation_pages() -> list[Any]:
         st.Page("pages/5_Filter_Flow.py", title="Filter"),
         # Hub after the three setup steps; shows a guard until setup is complete.
         st.Page("pages/2_Entdecken.py", title="Entdecken"),
-        # OAuth return can open a fresh session without taste setup; page must exist.
+        # OAuth return can open a fresh session without taste setup; both the
+        # Spotify callback page *and* the Streaming-Verbindungen page must be
+        # registered, otherwise the "missing connection" callout's
+        # ``st.switch_page`` call into Streaming-Verbindungen would crash with
+        # ``StreamlitAPIException: Could not find page``.
+        st.Page(
+            "pages/3_Streaming_Verbindungen.py",
+            title="Streaming-Verbindungen",
+        ),
+        _playlist_hub_nav_page(),
         _spotify_nav_page(),
+        _deezer_callback_nav_page(),
     ]
     full_app = [
         st.Page(render_start_page, title="Start", default=True),
@@ -297,7 +325,9 @@ def _navigation_pages() -> list[Any]:
             "pages/3_Streaming_Verbindungen.py",
             title="Streaming-Verbindungen",
         ),
+        _playlist_hub_nav_page(),
         _spotify_nav_page(),
+        _deezer_callback_nav_page(),
     ]
     if session_taste_setup_complete():
         return full_app

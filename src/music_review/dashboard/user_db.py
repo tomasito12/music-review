@@ -29,15 +29,20 @@ DEFAULT_SESSION_LIFETIME_DAYS = 30
 
 _SCHEMA_SQL = """\
 CREATE TABLE IF NOT EXISTS users (
-    id                     INTEGER PRIMARY KEY AUTOINCREMENT,
-    slug                   TEXT    UNIQUE NOT NULL,
-    password_hash          TEXT    NOT NULL,
-    profile_data           TEXT,
-    spotify_last_preview_at TEXT,
-    spotify_client_id      TEXT,
-    spotify_client_secret  TEXT,
-    created_at             TEXT    NOT NULL,
-    updated_at             TEXT    NOT NULL
+    id                       INTEGER PRIMARY KEY AUTOINCREMENT,
+    slug                     TEXT    UNIQUE NOT NULL,
+    password_hash            TEXT    NOT NULL,
+    profile_data             TEXT,
+    spotify_last_preview_at  TEXT,
+    spotify_client_id        TEXT,
+    spotify_client_secret    TEXT,
+    spotify_oauth_token_json TEXT,
+    deezer_last_preview_at   TEXT,
+    deezer_app_id            TEXT,
+    deezer_app_secret        TEXT,
+    deezer_oauth_token_json  TEXT,
+    created_at               TEXT    NOT NULL,
+    updated_at               TEXT    NOT NULL
 );
 
 CREATE TABLE IF NOT EXISTS sessions (
@@ -48,10 +53,14 @@ CREATE TABLE IF NOT EXISTS sessions (
 );
 """
 
-_MIGRATE_SPOTIFY_COLS_SQL = (
+_MIGRATE_STREAMING_COLS_SQL = (
     "ALTER TABLE users ADD COLUMN spotify_client_id TEXT",
     "ALTER TABLE users ADD COLUMN spotify_client_secret TEXT",
     "ALTER TABLE users ADD COLUMN spotify_oauth_token_json TEXT",
+    "ALTER TABLE users ADD COLUMN deezer_last_preview_at TEXT",
+    "ALTER TABLE users ADD COLUMN deezer_app_id TEXT",
+    "ALTER TABLE users ADD COLUMN deezer_app_secret TEXT",
+    "ALTER TABLE users ADD COLUMN deezer_oauth_token_json TEXT",
 )
 
 
@@ -82,9 +91,9 @@ def get_connection(db_path: Path | None = None) -> sqlite3.Connection:
 
 
 def _run_migrations(conn: sqlite3.Connection) -> None:
-    """Add columns that may be missing in databases created before Phase 2."""
+    """Add columns that may be missing in databases created before later phases."""
     existing = {row[1] for row in conn.execute("PRAGMA table_info(users)").fetchall()}
-    for stmt in _MIGRATE_SPOTIFY_COLS_SQL:
+    for stmt in _MIGRATE_STREAMING_COLS_SQL:
         col_name = stmt.rsplit(None, 2)[-2]
         if col_name not in existing:
             conn.execute(stmt)
@@ -330,6 +339,135 @@ def clear_spotify_oauth_token(conn: sqlite3.Connection, slug: str) -> None:
     now = _utc_now_iso()
     conn.execute(
         "UPDATE users SET spotify_oauth_token_json = NULL, updated_at = ? "
+        "WHERE slug = ?",
+        (now, slug),
+    )
+    conn.commit()
+
+
+# ---- Deezer preview rate-limit (per user) -----------------------------------
+
+
+def load_deezer_last_preview_at(
+    conn: sqlite3.Connection,
+    slug: str,
+) -> str | None:
+    """Return the ISO timestamp of the last Deezer playlist generation, or None."""
+    row = conn.execute(
+        "SELECT deezer_last_preview_at FROM users WHERE slug = ?",
+        (slug,),
+    ).fetchone()
+    if row is None:
+        return None
+    val: str | None = row["deezer_last_preview_at"]
+    return val
+
+
+def save_deezer_last_preview_at(
+    conn: sqlite3.Connection,
+    slug: str,
+    iso_ts: str,
+) -> None:
+    """Persist the Deezer playlist-generation timestamp for cooldown."""
+    now = _utc_now_iso()
+    conn.execute(
+        "UPDATE users SET deezer_last_preview_at = ?, updated_at = ? WHERE slug = ?",
+        (iso_ts, now, slug),
+    )
+    conn.commit()
+
+
+# ---- Per-user Deezer credentials --------------------------------------------
+
+
+def save_deezer_credentials(
+    conn: sqlite3.Connection,
+    slug: str,
+    app_id: str,
+    app_secret: str,
+) -> None:
+    """Store the user's own Deezer Developer App credentials.
+
+    Clears any stored OAuth token JSON because a new app id/secret invalidates
+    prior tokens issued for the old app.
+    """
+    now = _utc_now_iso()
+    conn.execute(
+        "UPDATE users SET deezer_app_id = ?, deezer_app_secret = ?, "
+        "deezer_oauth_token_json = NULL, updated_at = ? WHERE slug = ?",
+        (app_id.strip(), app_secret.strip(), now, slug),
+    )
+    conn.commit()
+
+
+def load_deezer_credentials(
+    conn: sqlite3.Connection,
+    slug: str,
+) -> tuple[str, str] | None:
+    """Return ``(app_id, app_secret)`` or None if the user has not configured them."""
+    row = conn.execute(
+        "SELECT deezer_app_id, deezer_app_secret FROM users WHERE slug = ?",
+        (slug,),
+    ).fetchone()
+    if row is None:
+        return None
+    aid: str | None = row["deezer_app_id"]
+    asec: str | None = row["deezer_app_secret"]
+    if not aid or not asec:
+        return None
+    return (aid.strip(), asec.strip())
+
+
+def clear_deezer_credentials(
+    conn: sqlite3.Connection,
+    slug: str,
+) -> None:
+    """Remove stored Deezer credentials and OAuth token JSON for a user."""
+    now = _utc_now_iso()
+    conn.execute(
+        "UPDATE users SET deezer_app_id = NULL, deezer_app_secret = NULL, "
+        "deezer_oauth_token_json = NULL, updated_at = ? WHERE slug = ?",
+        (now, slug),
+    )
+    conn.commit()
+
+
+def save_deezer_oauth_token(
+    conn: sqlite3.Connection,
+    slug: str,
+    oauth_token_json: str,
+) -> None:
+    """Persist serialized Deezer OAuth token (access + expiry) for the user."""
+    now = _utc_now_iso()
+    conn.execute(
+        "UPDATE users SET deezer_oauth_token_json = ?, updated_at = ? WHERE slug = ?",
+        (oauth_token_json, now, slug),
+    )
+    conn.commit()
+
+
+def load_deezer_oauth_token_json(
+    conn: sqlite3.Connection,
+    slug: str,
+) -> str | None:
+    """Return the raw JSON blob from ``deezer_oauth_token_json``, or None."""
+    row = conn.execute(
+        "SELECT deezer_oauth_token_json FROM users WHERE slug = ?",
+        (slug,),
+    ).fetchone()
+    if row is None:
+        return None
+    val: str | None = row["deezer_oauth_token_json"]
+    if not val or not str(val).strip():
+        return None
+    return str(val).strip()
+
+
+def clear_deezer_oauth_token(conn: sqlite3.Connection, slug: str) -> None:
+    """Remove stored Deezer OAuth token JSON for the user."""
+    now = _utc_now_iso()
+    conn.execute(
+        "UPDATE users SET deezer_oauth_token_json = NULL, updated_at = ? "
         "WHERE slug = ?",
         (now, slug),
     )

@@ -9,8 +9,10 @@ import pytest
 
 from music_review.integrations import streaming_catalog_cache as scc_mod
 from music_review.integrations.streaming_catalog_cache import (
+    PROVIDER_DEEZER,
     PROVIDER_SPOTIFY,
     StreamingCatalogCache,
+    deezer_resolve_with_streaming_catalog_cache,
     default_streaming_catalog_cache_path,
     load_streaming_catalog_cache_from_env,
     resolve_streaming_catalog_cache_path,
@@ -225,3 +227,120 @@ def test_load_streaming_catalog_cache_from_env_respects_disable(
     monkeypatch.setenv("STREAMING_CATALOG_CACHE", "off")
     cache = load_streaming_catalog_cache_from_env()
     assert cache.enabled is False
+
+
+def test_deezer_resolve_with_cache_calls_strict_only_once(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Second resolve for the same artist/title reads SQLite, not strict resolver."""
+    calls = {"n": 0}
+
+    def fake_strict(
+        _client: object,
+        _token: object,
+        *,
+        artist: str,
+        track_title: str,
+    ) -> str:
+        calls["n"] += 1
+        assert artist == "The Band"
+        assert track_title == "The Weight"
+        return "deezer:track:42"
+
+    monkeypatch.setattr(scc_mod, "deezer_resolve_track_uri_strict", fake_strict)
+    cache = StreamingCatalogCache(tmp_path / "c.sqlite", enabled=True)
+    client = MagicMock()
+    token = MagicMock()
+    uri1 = deezer_resolve_with_streaming_catalog_cache(
+        cache,
+        client,
+        token,
+        artist="The Band",
+        track_title="The Weight",
+    )
+    uri2 = deezer_resolve_with_streaming_catalog_cache(
+        cache,
+        client,
+        token,
+        artist="The Band",
+        track_title="The Weight",
+    )
+    assert uri1 == "deezer:track:42"
+    assert uri2 == "deezer:track:42"
+    assert calls["n"] == 1
+
+
+def test_deezer_resolve_with_cache_does_not_store_misses(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Unresolved Deezer tracks are not cached."""
+    calls = {"n": 0}
+
+    def fake_strict(
+        _client: object,
+        _token: object,
+        *,
+        artist: str,
+        track_title: str,
+    ) -> str | None:
+        calls["n"] += 1
+        return None
+
+    monkeypatch.setattr(scc_mod, "deezer_resolve_track_uri_strict", fake_strict)
+    cache = StreamingCatalogCache(tmp_path / "c.sqlite", enabled=True)
+    client = MagicMock()
+    token = MagicMock()
+    assert (
+        deezer_resolve_with_streaming_catalog_cache(
+            cache, client, token, artist="X", track_title="Y"
+        )
+        is None
+    )
+    assert (
+        deezer_resolve_with_streaming_catalog_cache(
+            cache, client, token, artist="X", track_title="Y"
+        )
+        is None
+    )
+    assert calls["n"] == 2
+
+
+def test_deezer_resolve_with_cache_disabled_calls_strict_each_time(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """When cache is disabled, every Deezer resolve hits the strict resolver."""
+    calls = {"n": 0}
+
+    def fake_strict(
+        _client: object,
+        _token: object,
+        *,
+        artist: str,
+        track_title: str,
+    ) -> str:
+        calls["n"] += 1
+        return "deezer:track:1"
+
+    monkeypatch.setattr(scc_mod, "deezer_resolve_track_uri_strict", fake_strict)
+    cache = StreamingCatalogCache(tmp_path / "c.sqlite", enabled=False)
+    client = MagicMock()
+    token = MagicMock()
+    deezer_resolve_with_streaming_catalog_cache(
+        cache, client, token, artist="A", track_title="B"
+    )
+    deezer_resolve_with_streaming_catalog_cache(
+        cache, client, token, artist="A", track_title="B"
+    )
+    assert calls["n"] == 2
+
+
+def test_deezer_and_spotify_uris_coexist_in_cache(tmp_path: Path) -> None:
+    """The cache cleanly separates Deezer and Spotify URIs for the same key."""
+    cache = StreamingCatalogCache(tmp_path / "c.sqlite", enabled=True)
+    cache.put(PROVIDER_SPOTIFY, "k", "spotify:track:111")
+    cache.put(PROVIDER_DEEZER, "k", "deezer:track:222")
+    assert cache.get(PROVIDER_SPOTIFY, "k") == "spotify:track:111"
+    assert cache.get(PROVIDER_DEEZER, "k") == "deezer:track:222"
