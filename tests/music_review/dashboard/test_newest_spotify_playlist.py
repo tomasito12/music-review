@@ -3,6 +3,7 @@ from __future__ import annotations
 import logging
 import random
 from collections import Counter
+from collections.abc import Callable, Iterator
 from datetime import UTC, datetime, timedelta
 from unittest.mock import MagicMock
 
@@ -24,6 +25,7 @@ from music_review.dashboard.newest_spotify_playlist import (
     resolve_track_uri_strict,
     review_has_unused_track_candidate,
     spotify_resolve_query_variants,
+    weighted_sample_album_indices_without_replacement,
 )
 from music_review.domain.models import Review, Track
 from music_review.integrations.spotify_client import SpotifyToken, SpotifyTrack
@@ -661,3 +663,184 @@ def test_build_playlist_candidates_stops_when_attempt_limit_is_reached() -> None
     )
 
     assert items == []
+
+
+def test_weighted_sample_returns_empty_for_zero_target_count() -> None:
+    rng = random.Random(0)
+    assert weighted_sample_album_indices_without_replacement([0.5, 0.5], 0, rng) == []
+
+
+def test_weighted_sample_returns_empty_for_empty_weights() -> None:
+    rng = random.Random(0)
+    assert weighted_sample_album_indices_without_replacement([], 5, rng) == []
+
+
+def test_weighted_sample_picks_distinct_indices_when_target_le_n() -> None:
+    """Without replacement: every picked index must be unique and a real index."""
+    weights = [0.4, 0.3, 0.2, 0.1]
+    rng = random.Random(123)
+
+    picked = weighted_sample_album_indices_without_replacement(weights, 3, rng)
+
+    assert len(picked) == 3
+    assert len(set(picked)) == 3
+    assert all(0 <= i < len(weights) for i in picked)
+
+
+def test_weighted_sample_only_picks_positive_weight_indices() -> None:
+    """Indices with weight 0 must be excluded from the no-replacement phase."""
+    weights = [0.0, 1.0, 0.0, 2.0, 0.0]
+    rng = random.Random(7)
+
+    picked = weighted_sample_album_indices_without_replacement(weights, 2, rng)
+
+    assert sorted(picked) == [1, 3]
+
+
+def test_weighted_sample_target_exceeds_positive_weights_uses_replacement() -> None:
+    """When target > #positive-weight albums, fall back to with-replacement extras
+    so the playlist still reaches ``target_count`` slots; only positive-weight
+    albums are eligible for the extras.
+    """
+    weights = [0.0, 1.0, 0.0, 2.0]
+    rng = random.Random(11)
+    target_count = 6
+
+    picked = weighted_sample_album_indices_without_replacement(
+        weights,
+        target_count,
+        rng,
+    )
+
+    assert len(picked) == target_count
+    counts = Counter(picked)
+    assert counts[1] >= 1
+    assert counts[3] >= 1
+    assert counts[0] == 0
+    assert counts[2] == 0
+
+
+def test_weighted_sample_all_zero_weights_falls_back_to_uniform() -> None:
+    """All weights zero: uniform sample without replacement, then with replacement."""
+    weights = [0.0, 0.0, 0.0]
+    rng = random.Random(2_024)
+
+    picked = weighted_sample_album_indices_without_replacement(weights, 5, rng)
+
+    assert len(picked) == 5
+    assert all(0 <= i < len(weights) for i in picked)
+    assert set(picked[:3]) == {0, 1, 2}
+
+
+def test_weighted_sample_high_weight_dominates_in_expectation() -> None:
+    """A 9:1 weight ratio should pick the dominant index >>50% of the time."""
+    weights = [9.0, 1.0]
+    rng = random.Random(2_026)
+    n_trials = 2_000
+
+    counts = Counter(
+        weighted_sample_album_indices_without_replacement(weights, 1, rng)[0]
+        for _ in range(n_trials)
+    )
+
+    assert counts[0] / n_trials > 0.7
+
+
+def test_weighted_sample_every_positive_album_has_a_chance_in_large_pool() -> None:
+    """The motivating bug: with 1000 albums and target 30, *every* album must be
+    pickable across enough trials -- not just the top 30 (the deterministic
+    largest-remainder failure mode).
+    """
+    n = 1_000
+    weights = [(i + 1) / n for i in range(n)]
+    rng = random.Random(5_000)
+    bottom_quartile = set(range(n // 4))
+    appeared: set[int] = set()
+
+    for _ in range(200):
+        picks = weighted_sample_album_indices_without_replacement(weights, 30, rng)
+        appeared.update(picks)
+
+    assert appeared & bottom_quartile, (
+        "Bottom-quartile albums never appeared across 200 draws; the sampler "
+        "is acting like a deterministic top-N selector."
+    )
+
+
+def test_build_playlist_candidates_weighted_sample_picks_distinct_albums() -> None:
+    """In archive mode (target <= n) every chosen album must appear at most once."""
+    n_albums = 8
+    reviews_pool = [
+        _review(
+            i + 1,
+            tracks=[Track(1, f"T{i}_{j}", is_highlight=True) for j in range(3)],
+        )
+        for i in range(n_albums)
+    ]
+    weights = [1.0 / n_albums] * n_albums
+    raw_scores = [1.0] * n_albums
+    target = 5
+    seq = iter(range(10_000))
+
+    items = build_playlist_candidates(
+        reviews=reviews_pool,
+        weights=weights,
+        raw_scores=raw_scores,
+        target_count=target,
+        rng=random.Random(99),
+        resolve_fn=lambda **_: f"spotify:track:{next(seq):05d}",
+        selection_strategy="weighted_sample",
+    )
+
+    assert len(items) == target
+    counts = Counter(c.review_id for c in items)
+    assert all(v == 1 for v in counts.values())
+
+
+def test_build_playlist_candidates_weighted_sample_lets_low_score_album_appear() -> (
+    None
+):
+    """Even with a 30:1 weight ratio, the low-weight album must reach the
+    playlist eventually; the deterministic largest-remainder allocator would
+    drop it entirely when target is small.
+    """
+    high = _review(
+        1,
+        tracks=[Track(1, f"H{i}", is_highlight=True) for i in range(20)],
+    )
+    low = _review(
+        2,
+        tracks=[Track(1, f"L{i}", is_highlight=True) for i in range(20)],
+    )
+    weights = [30 / 31, 1 / 31]
+    raw_scores = [3.0, 0.1]
+    target = 2
+    n_trials = 60
+    saw_low = False
+
+    def _make_resolver(seq: Iterator[int]) -> Callable[..., str]:
+        def _resolve(**_: object) -> str:
+            return f"spotify:track:{next(seq):05d}"
+
+        return _resolve
+
+    for trial in range(n_trials):
+        items = build_playlist_candidates(
+            reviews=[high, low],
+            weights=weights,
+            raw_scores=raw_scores,
+            target_count=target,
+            rng=random.Random(7_000 + trial),
+            resolve_fn=_make_resolver(iter(range(10_000))),
+            selection_strategy="weighted_sample",
+        )
+        ids = {c.review_id for c in items}
+        assert ids <= {1, 2}
+        if 2 in ids:
+            saw_low = True
+            break
+
+    assert saw_low, (
+        "Low-weight album never appeared across the trial budget; weighted "
+        "sampling is collapsing into a deterministic top-N selection."
+    )

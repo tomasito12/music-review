@@ -181,6 +181,9 @@ def test_render_archive_spotify_playlist_section_uses_archive_key_prefix(
     assert captured["log_label"] == "archive spotify"
     assert captured["pool_size_for_log"] == 1
     assert captured["reviews"] == [review]
+    # Archive mode must use weighted sampling so every qualifying album has a
+    # real, score-weighted chance even when the pool dwarfs ``target_count``.
+    assert captured["selection_strategy"] == "weighted_sample"
     # In archive mode every taste-orientation choice must keep ranked_rows non-None
     # so the score-weighted sampling path is used.
     resolver = captured["resolve_ranked_rows"]
@@ -233,6 +236,9 @@ def test_render_neueste_spotify_playlist_section_uses_newest_key_prefix(
 
     assert captured["key_prefix"] == "newest"
     assert captured["log_label"] == "newest spotify"
+    # Newest mode keeps the historical, predictable largest-remainder allocator
+    # because ``target_count`` and the pool size are typically close.
+    assert captured["selection_strategy"] == "stratified"
     # In newest mode the "gar nicht" choice forces the uniform fallback (None).
     resolver = captured["resolve_ranked_rows"]
     assert resolver("gar nicht") is None

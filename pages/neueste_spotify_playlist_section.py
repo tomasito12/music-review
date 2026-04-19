@@ -36,6 +36,7 @@ from music_review.dashboard.neueste_spotify_generate_job import (
     run_neueste_spotify_publish_pipeline,
 )
 from music_review.dashboard.newest_spotify_playlist import (
+    SelectionStrategy,
     amplify_preference_weights,
     build_album_weights,
 )
@@ -213,6 +214,7 @@ def _run_neueste_spotify_job_worker(
     rng: random.Random,
     resolved_playlist_name: str,
     public: bool,
+    selection_strategy: SelectionStrategy,
 ) -> None:
     """Run Spotify API work off the main Streamlit script thread."""
     try:
@@ -226,6 +228,7 @@ def _run_neueste_spotify_job_worker(
             rng=rng,
             resolved_playlist_name=resolved_playlist_name,
             public=public,
+            selection_strategy=selection_strategy,
         )
         holder["outcome"] = outcome
     except Exception as exc:
@@ -369,19 +372,21 @@ def _start_spotify_generate_job(
     playlist_name: str,
     make_playlist_public: bool,
     log_label: str,
+    selection_strategy: SelectionStrategy,
 ) -> None:
     """Compute weights, kick off the background publish thread, and store handles."""
     chosen_reviews, weights, raw_scores = build_album_weights(reviews, ranked_rows)
     taste_exponent = _SPOTIFY_TASTE_ORIENTATION_EXPONENT[taste_orientation]
     _LOGGER.info(
         "%s playlist section: n_chosen_albums=%s ranked_rows_available=%s "
-        "target_songs=%s taste_orientation=%s taste_exponent=%s",
+        "target_songs=%s taste_orientation=%s taste_exponent=%s strategy=%s",
         log_label,
         len(chosen_reviews),
         ranked_rows is not None,
         target_count,
         taste_orientation,
         taste_exponent,
+        selection_strategy,
     )
     _log_weight_summary(weights, review_ids=[int(r.id) for r in chosen_reviews])
     rng = random.Random(secrets.randbits(64))
@@ -406,6 +411,7 @@ def _start_spotify_generate_job(
             "rng": rng,
             "resolved_playlist_name": resolved_name,
             "public": make_playlist_public,
+            "selection_strategy": selection_strategy,
         },
         daemon=True,
     )
@@ -430,13 +436,17 @@ def _render_playlist_controls_and_generate(
     default_song_count: int,
     pool_size_for_log: int,
     log_label: str,
+    selection_strategy: SelectionStrategy,
 ) -> None:
     """Render the shared playlist UI (sliders, name, generate) for one mode.
 
     All Streamlit widget keys are namespaced via ``key_prefix`` so different tabs
     keep independent state. ``resolve_ranked_rows`` is called with the chosen
     taste orientation to decide whether to use scored sampling or the uniform
-    fallback.
+    fallback. ``selection_strategy`` controls how album slots are allocated:
+    ``"stratified"`` (largest-remainder quotas, predictable for small pools) or
+    ``"weighted_sample"`` (Efraimidis-Spirakis, every positive-weight album has a
+    real chance even when the pool is much larger than ``target_count``).
     """
     name_key = f"{key_prefix}-spotify-playlist-name"
     target_count_key = f"{key_prefix}-spotify-song-count"
@@ -550,6 +560,7 @@ def _render_playlist_controls_and_generate(
                 playlist_name=playlist_name,
                 make_playlist_public=make_playlist_public,
                 log_label=log_label,
+                selection_strategy=selection_strategy,
             )
 
     _render_last_spotify_publish_if_any()
@@ -595,6 +606,7 @@ def render_neueste_spotify_playlist_section(
         default_song_count=min(30, max(5, len(reviews))),
         pool_size_for_log=len(reviews),
         log_label="newest spotify",
+        selection_strategy="stratified",
     )
 
 
@@ -628,4 +640,5 @@ def render_archive_spotify_playlist_section() -> None:
         default_song_count=min(30, max(5, len(reviews))),
         pool_size_for_log=len(reviews),
         log_label="archive spotify",
+        selection_strategy="weighted_sample",
     )

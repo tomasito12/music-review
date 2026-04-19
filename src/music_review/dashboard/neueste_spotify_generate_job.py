@@ -13,7 +13,10 @@ from dataclasses import dataclass
 from music_review.dashboard.neueste_spotify_publish import (
     publish_playlist_for_candidates,
 )
-from music_review.dashboard.newest_spotify_playlist import build_playlist_candidates
+from music_review.dashboard.newest_spotify_playlist import (
+    SelectionStrategy,
+    build_playlist_candidates,
+)
 from music_review.domain.models import Review
 from music_review.integrations.spotify_client import SpotifyClient, SpotifyToken
 from music_review.integrations.streaming_catalog_cache import (
@@ -67,8 +70,13 @@ def run_neueste_spotify_publish_pipeline(
     rng: random.Random,
     resolved_playlist_name: str,
     public: bool,
+    selection_strategy: SelectionStrategy = "stratified",
 ) -> NeuesteSpotifyGenerateOutcome:
     """Resolve tracks, build candidates, and publish to Spotify.
+
+    ``selection_strategy`` is forwarded to :func:`build_playlist_candidates`.
+    Use ``"weighted_sample"`` for archive-style playlists where every
+    qualifying album should have a real, score-weighted chance.
 
     Intended to run in a worker thread; do not call Streamlit APIs here.
     """
@@ -76,9 +84,10 @@ def run_neueste_spotify_publish_pipeline(
     try:
         LOGGER.info(
             "neueste spotify job: start build_playlist_candidates "
-            "n_albums=%s target_count=%s",
+            "n_albums=%s target_count=%s strategy=%s",
             len(chosen_reviews),
             target_count,
+            selection_strategy,
         )
         catalog_cache = load_streaming_catalog_cache_from_env()
 
@@ -98,6 +107,7 @@ def run_neueste_spotify_publish_pipeline(
             target_count=target_count,
             rng=rng,
             resolve_fn=_resolve_tracks,
+            selection_strategy=selection_strategy,
         )
         LOGGER.info(
             "neueste spotify job: finished n_candidates=%s (target was %s)",

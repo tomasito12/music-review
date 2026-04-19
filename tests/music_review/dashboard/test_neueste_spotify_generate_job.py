@@ -60,6 +60,69 @@ def test_pipeline_returns_no_candidates_when_build_returns_empty(
     client.create_playlist.assert_not_called()
 
 
+def test_pipeline_forwards_selection_strategy_to_build_playlist_candidates(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Archive mode must propagate ``selection_strategy='weighted_sample'`` to
+    :func:`build_playlist_candidates`; otherwise the new sampling does nothing.
+    """
+    captured: dict[str, object] = {}
+
+    def _spy(**kwargs: object) -> list[object]:
+        captured.update(kwargs)
+        return []
+
+    monkeypatch.setattr(
+        "music_review.dashboard.neueste_spotify_generate_job.build_playlist_candidates",
+        _spy,
+    )
+    client = MagicMock()
+    token = MagicMock(spec=SpotifyToken)
+    run_neueste_spotify_publish_pipeline(
+        client=client,
+        token=token,
+        chosen_reviews=[_review_with_tracks()],
+        alloc_weights=[1.0],
+        raw_scores=[1.0],
+        target_count=5,
+        rng=random.Random(0),
+        resolved_playlist_name="Archiv",
+        public=False,
+        selection_strategy="weighted_sample",
+    )
+    assert captured.get("selection_strategy") == "weighted_sample"
+
+
+def test_pipeline_defaults_selection_strategy_to_stratified(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Existing callers without the new argument must keep the legacy behaviour."""
+    captured: dict[str, object] = {}
+
+    def _spy(**kwargs: object) -> list[object]:
+        captured.update(kwargs)
+        return []
+
+    monkeypatch.setattr(
+        "music_review.dashboard.neueste_spotify_generate_job.build_playlist_candidates",
+        _spy,
+    )
+    client = MagicMock()
+    token = MagicMock(spec=SpotifyToken)
+    run_neueste_spotify_publish_pipeline(
+        client=client,
+        token=token,
+        chosen_reviews=[_review_with_tracks()],
+        alloc_weights=[1.0],
+        raw_scores=[1.0],
+        target_count=5,
+        rng=random.Random(0),
+        resolved_playlist_name="Neueste",
+        public=False,
+    )
+    assert captured.get("selection_strategy") == "stratified"
+
+
 def test_pipeline_value_error_from_publish(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:

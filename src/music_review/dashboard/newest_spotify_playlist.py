@@ -15,9 +15,10 @@ import logging
 import math
 import random
 import re
+import sys
 from collections import deque
 from dataclasses import dataclass
-from typing import Any, Protocol
+from typing import Any, Literal, Protocol
 
 from music_review.domain.models import Review, Track
 from music_review.integrations.spotify_client import (
@@ -25,6 +26,9 @@ from music_review.integrations.spotify_client import (
     SpotifyToken,
     SpotifyTrack,
 )
+
+# Slot-allocation strategies recognised by :func:`build_playlist_candidates`.
+SelectionStrategy = Literal["stratified", "weighted_sample"]
 
 LOGGER = logging.getLogger(__name__)
 
@@ -526,6 +530,69 @@ def allocate_stratified_slot_counts(
     return [p.quota for p in build_stratified_slot_plans(weights, target_count)]
 
 
+def weighted_sample_album_indices_without_replacement(
+    weights: list[float],
+    target_count: int,
+    rng: random.Random,
+) -> list[int]:
+    """Pick ``target_count`` album indices via Efraimidis-Spirakis weighted sampling.
+
+    Each album with a positive weight has a strictly positive chance of being
+    picked, scaling with the weight. Indices are returned without duplicates as
+    long as ``target_count`` does not exceed the number of positive-weight
+    albums; if it does, the extra slots are filled with weighted sampling
+    *with* replacement so the playlist still reaches ``target_count`` slots.
+    Indices with weight ``<= 0`` are excluded from the no-replacement phase but
+    used as a uniform fallback when *no* album has a positive weight.
+
+    Returns a list of length ``min(target_count, len(weights))`` when at least
+    one weight is positive (or ``target_count`` if ``target_count > n`` and the
+    extra slots fall back to with-replacement sampling). Returns ``[]`` when
+    ``target_count <= 0`` or ``weights`` is empty.
+    """
+    if target_count <= 0 or not weights:
+        return []
+
+    positive_indices = [i for i, w in enumerate(weights) if float(w) > 0.0]
+
+    if not positive_indices:
+        # No score signal: uniform sample without replacement, then with replacement.
+        all_indices = list(range(len(weights)))
+        rng.shuffle(all_indices)
+        without = all_indices[:target_count]
+        if len(without) >= target_count:
+            return without
+        extras = [
+            rng.choice(range(len(weights))) for _ in range(target_count - len(without))
+        ]
+        return without + extras
+
+    # Efraimidis-Spirakis weighted reservoir sampling: ``key_i = u_i ** (1/w_i)``.
+    # Use the log form ``log(u_i) / w_i`` so very small ``u_i`` or large ``1/w_i``
+    # do not underflow; ``log(u_i)`` is negative, ``w_i`` is positive, so larger
+    # (closer to zero) keys win.
+    keyed: list[tuple[float, int]] = []
+    for idx in positive_indices:
+        u = rng.random()
+        if u <= 0.0:
+            u = sys.float_info.min
+        keyed.append((math.log(u) / float(weights[idx]), idx))
+    keyed.sort(reverse=True)
+    distinct_picks = [i for _, i in keyed[: min(target_count, len(positive_indices))]]
+
+    if len(distinct_picks) >= target_count:
+        return distinct_picks
+
+    # Fill the remaining slots with weighted sampling *with* replacement so the
+    # playlist still reaches ``target_count``. Only positive-weight albums are
+    # eligible; this matches the no-replacement phase and avoids zero-weight bias.
+    extras_pool = positive_indices
+    extras_weights = [float(weights[i]) for i in extras_pool]
+    extras_needed = target_count - len(distinct_picks)
+    extras = rng.choices(extras_pool, weights=extras_weights, k=extras_needed)
+    return distinct_picks + extras
+
+
 def review_has_unused_track_candidate(
     review: Review,
     already_picked_keys: set[str],
@@ -650,6 +717,56 @@ def resolve_track_uri_strict(
     return None
 
 
+def _build_slot_album_indices_and_plans(
+    *,
+    weights: list[float],
+    target_count: int,
+    rng: random.Random,
+    selection_strategy: SelectionStrategy,
+) -> tuple[list[int], list[StratifiedSlotPlan]]:
+    """Plan one album index per slot plus a per-album :class:`StratifiedSlotPlan`.
+
+    Stratified mode keeps the largest-remainder quota allocation. Weighted-sample
+    mode picks distinct albums via Efraimidis-Spirakis (with-replacement extras
+    only when ``target_count`` exceeds the number of positive-weight albums).
+    """
+    n = len(weights)
+    if selection_strategy == "stratified":
+        plans = build_stratified_slot_plans(weights, target_count)
+        slots: list[int] = []
+        for album_idx, plan in enumerate(plans):
+            slots.extend([album_idx] * plan.quota)
+        rng.shuffle(slots)
+        return slots, plans
+
+    sampled_slots = weighted_sample_album_indices_without_replacement(
+        weights,
+        target_count,
+        rng,
+    )
+    rng.shuffle(sampled_slots)
+    total_w = float(sum(max(0.0, float(w)) for w in weights))
+    quotas_by_album: dict[int, int] = {}
+    for idx in sampled_slots:
+        quotas_by_album[idx] = quotas_by_album.get(idx, 0) + 1
+    plans_out: list[StratifiedSlotPlan] = []
+    for i in range(n):
+        quota = quotas_by_album.get(i, 0)
+        if total_w > 0.0:
+            ideal = float(target_count) * float(weights[i]) / total_w
+        else:
+            ideal = float(target_count) / float(n) if n else 0.0
+        plans_out.append(
+            StratifiedSlotPlan(
+                ideal_slots=ideal,
+                floor_slots=quota,
+                remainder_extra_slots=0,
+                quota=quota,
+            ),
+        )
+    return sampled_slots, plans_out
+
+
 def build_playlist_candidates(
     *,
     reviews: list[Review],
@@ -660,21 +777,32 @@ def build_playlist_candidates(
     resolve_fn: ResolveTrackUriFn,
     resolve_retries_per_album: int = 2,
     max_attempt_factor: int = 20,
+    selection_strategy: SelectionStrategy = "stratified",
 ) -> list[PlaylistCandidate]:
-    """Generate playlist candidates with stratified album quotas.
+    """Generate playlist candidates with the requested album-selection strategy.
 
     Normalized ``weights`` and parallel ``raw_scores`` (same length as ``reviews``)
-    define each album's **share** of ``target_count`` slots via
-    :func:`allocate_stratified_slot_counts`. ``raw_scores`` are stored on each
-    candidate for display (e.g. UI table); only ``weights`` affect allocation.
-    Slot order is shuffled so the final list is not grouped by album.
+    drive how each album earns slots in the playlist. ``raw_scores`` are stored
+    on each candidate for display (e.g. UI table); only ``weights`` affect the
+    selection. Slot order is shuffled so the final list is not grouped by album.
 
-    Slots are stored in a queue (shuffled album indices). For each slot, picks
-    are random among unused highlights, then non-highlights. After
-    ``resolve_retries_per_album`` failed Spotify resolutions (or duplicate URIs)
-    on the **same** album, the front slot is reassigned to the next pool album
-    (cyclic) that still has an unused track. If no album can fill the slot, it
-    is dropped. ``max_attempt_factor`` caps total loop iterations as
+    ``selection_strategy``:
+
+    - ``"stratified"`` (default): largest-remainder quotas via
+      :func:`allocate_stratified_slot_counts`. Best when ``target_count`` is
+      close to the pool size; deterministic and predictable.
+    - ``"weighted_sample"``: Efraimidis-Spirakis weighted sampling without
+      replacement (see
+      :func:`weighted_sample_album_indices_without_replacement`). Every
+      positive-weight album has a strictly positive chance of being picked; top
+      scorers are picked more often in expectation but never deterministically.
+
+    Slots are stored in a queue. For each slot, track picks are random among
+    unused highlights, then non-highlights. After ``resolve_retries_per_album``
+    failed Spotify resolutions (or duplicate URIs) on the **same** album, the
+    front slot is reassigned to the next pool album (cyclic) that still has an
+    unused track. If no album can fill the slot, it is dropped.
+    ``max_attempt_factor`` caps total loop iterations as
     ``target_count * max_attempt_factor`` as a safety net.
     """
     if not reviews or not weights or not raw_scores or target_count <= 0:
@@ -711,13 +839,12 @@ def build_playlist_candidates(
     skip_abandoned_slots = 0
     slot_album_fallbacks = 0
 
-    strat_plans = build_stratified_slot_plans(weights, target_count)
-    quotas = [p.quota for p in strat_plans]
-    slot_album_indices: list[int] = []
-    for album_idx, q in enumerate(quotas):
-        slot_album_indices.extend([album_idx] * q)
-    assert len(slot_album_indices) == target_count
-    rng.shuffle(slot_album_indices)
+    slot_album_indices, strat_plans = _build_slot_album_indices_and_plans(
+        weights=weights,
+        target_count=target_count,
+        rng=rng,
+        selection_strategy=selection_strategy,
+    )
 
     pending_slots: deque[int] = deque(slot_album_indices)
     slot_resolve_failures = 0
@@ -727,11 +854,12 @@ def build_playlist_candidates(
     max_attempts = max(target_count * max_attempt_factor, target_count)
     attempts = 0
     LOGGER.info(
-        "Playlist candidate build start target_count=%s pool_albums=%s "
-        "stratified_quotas=%s max_attempts=%s resolve_retries_per_album=%s",
+        "Playlist candidate build start strategy=%s target_count=%s pool_albums=%s "
+        "n_slots=%s max_attempts=%s resolve_retries_per_album=%s",
+        selection_strategy,
         target_count,
         len(reviews),
-        quotas,
+        len(slot_album_indices),
         max_attempts,
         per_album_resolve_cap,
     )
