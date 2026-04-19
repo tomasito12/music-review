@@ -1,0 +1,11 @@
+---
+description: Avoid emojis and decorative icons unless explicitly requested
+alwaysApply: true
+---
+
+# No Emojis Or Decorative Icons By Default
+
+- Do not add emojis or decorative icon glyphs in UI text, labels, titles, logs, comments, docs, or commit/PR text.
+- Keep text-only wording by default.
+- Only use emojis or decorative icons when the user explicitly asks for them in the current request.
+- If uncertain whether an icon is desired, prefer no icon.
