@@ -13,27 +13,34 @@ from pages.neueste_reviews_pool import (
     load_newest_reviews_slice,
 )
 from pages.neueste_spotify_playlist_section import (
+    render_archive_spotify_playlist_section,
     render_neueste_spotify_playlist_section,
 )
 from pages.page_helpers import (
+    SPOTIFY_OAUTH_RETURN_PAGE_STREAMING_CONNECTIONS,
     apply_spotify_oauth_session_snapshot,
+    clear_spotify_oauth_return_page_cookie,
     clear_spotify_oauth_state_cookie,
     clear_spotify_pkce_verifier_cookie,
     clear_spotify_session_snapshot_cookie,
     inject_recommendation_flow_shell_css,
+    peek_spotify_oauth_return_page_cookie,
     peek_spotify_oauth_state_cookie,
     peek_spotify_oauth_state_from_context_cookies,
     peek_spotify_session_snapshot_cookie,
     persist_active_profile_slug_cookie,
     render_toolbar,
 )
+from pages.spotify_connection_ui import (
+    try_load_user_spotify_config as _try_load_user_spotify_config,
+)
+from pages.spotify_connection_ui import (
+    user_has_spotify_credentials as _user_has_spotify_credentials,
+)
 from pages.spotify_oauth_kickoff import (
     SPOTIFY_AUTH_STATE_KEY,
     SPOTIFY_PKCE_VERIFIER_KEY,
     spotify_pkce_verifier_raw,
-)
-from pages.spotify_token_persist import (
-    SPOTIFY_TOKEN_SESSION_KEY as SPOTIFY_TOKEN_KEY,
 )
 from pages.spotify_token_persist import (
     hydrate_spotify_token_from_db_for_active_user,
@@ -42,12 +49,10 @@ from pages.spotify_token_persist import (
 )
 
 from music_review.dashboard.user_db import (
-    clear_spotify_credentials,
-    load_spotify_credentials,
-    save_spotify_credentials,
+    get_connection as get_db_connection,
 )
 from music_review.dashboard.user_db import (
-    get_connection as get_db_connection,
+    load_spotify_credentials,
 )
 from music_review.dashboard.user_profile_store import (
     ACTIVE_PROFILE_SESSION_KEY,
@@ -63,6 +68,9 @@ from music_review.integrations.spotify_client import (
     SpotifyToken,
     resolve_spotify_redirect_uri,
 )
+
+# Path of the Streaming-Verbindungen page used for CTA links and OAuth-return.
+_STREAMING_CONNECTIONS_PAGE_PATH = "pages/3_Streaming_Verbindungen.py"
 
 # SHA256 prefix of authorization ``code`` already exchanged or dead (invalid_grant).
 SPOTIFY_OAUTH_SPENT_CODE_DIGESTS_KEY = "spotify_oauth_spent_code_digests"
@@ -155,41 +163,6 @@ def _redirect_uri_mismatch_hint_html(*, effective: str, browser: str) -> str:
     )
 
 
-def _active_user_slug() -> str | None:
-    """Return the logged-in profile slug, or None for guests."""
-    raw = st.session_state.get(ACTIVE_PROFILE_SESSION_KEY)
-    if not isinstance(raw, str) or not raw.strip():
-        return None
-    try:
-        return normalize_profile_slug(raw)
-    except ValueError:
-        return None
-
-
-def _try_load_user_spotify_config() -> SpotifyAuthConfig | None:
-    """Load Spotify config from the logged-in user's DB credentials."""
-    slug = _active_user_slug()
-    if slug is None:
-        return None
-    conn = get_db_connection()
-    creds = load_spotify_credentials(conn, slug)
-    if creds is None:
-        return None
-    client_id, client_secret = creds
-    try:
-        return SpotifyAuthConfig.from_user_credentials(
-            client_id=client_id,
-            client_secret=client_secret,
-        )
-    except SpotifyConfigError:
-        return None
-
-
-def _user_has_spotify_credentials() -> bool:
-    """True when the logged-in user has stored Spotify credentials."""
-    return _try_load_user_spotify_config() is not None
-
-
 def _try_spotify_auth_config_for_slug(slug: str) -> SpotifyAuthConfig | None:
     """Load Spotify OAuth config from DB credentials for a profile slug."""
     try:
@@ -221,16 +194,6 @@ def _spotify_oauth_callback_query_present() -> bool:
     code = _query_param_single(st.query_params.get("code"))
     state = _query_param_single(st.query_params.get("state"))
     return bool(code and state)
-
-
-def _should_show_spotify_setup_guide_only(
-    *,
-    client: SpotifyClient | None,
-    has_user_creds: bool,
-    oauth_callback_pending: bool,
-) -> bool:
-    """True when the standalone credential setup page should be shown."""
-    return client is None and not has_user_creds and not oauth_callback_pending
 
 
 def _load_client_and_redirect_hint() -> tuple[SpotifyClient | None, str | None]:
@@ -340,6 +303,14 @@ def _restore_profile_from_oauth_callback_slug(slug: str) -> None:
     persist_active_profile_slug_cookie(safe)
 
 
+def _maybe_redirect_after_successful_oauth() -> None:
+    """Honor the return-page cookie and ``switch_page`` if the user came elsewhere."""
+    target = peek_spotify_oauth_return_page_cookie()
+    clear_spotify_oauth_return_page_cookie()
+    if target == SPOTIFY_OAUTH_RETURN_PAGE_STREAMING_CONNECTIONS:
+        st.switch_page(_STREAMING_CONNECTIONS_PAGE_PATH)
+
+
 def _handle_oauth_callback(client: SpotifyClient) -> None:
     """Handle OAuth callback parameters present in the page URL."""
     params = st.query_params
@@ -360,6 +331,7 @@ def _handle_oauth_callback(client: SpotifyClient) -> None:
         _cleanup_url_and_oauth_cookies()
         st.session_state.pop(SPOTIFY_AUTH_STATE_KEY, None)
         if _get_stored_token() is not None:
+            _maybe_redirect_after_successful_oauth()
             return
         st.info(
             "Dieser Spotify-Anmeldeschritt wurde schon verarbeitet (oder der Code "
@@ -374,6 +346,7 @@ def _handle_oauth_callback(client: SpotifyClient) -> None:
         _spotify_oauth_mark_code_digest_spent(code_digest)
         _cleanup_url_and_oauth_cookies()
         st.session_state.pop(SPOTIFY_AUTH_STATE_KEY, None)
+        _maybe_redirect_after_successful_oauth()
         return
     sess_expected = st.session_state.get(SPOTIFY_AUTH_STATE_KEY)
     cookie_from_cm = peek_spotify_oauth_state_cookie()
@@ -445,140 +418,50 @@ def _handle_oauth_callback(client: SpotifyClient) -> None:
     _clear_spotify_oauth_browser_cookies()
     clear_spotify_session_snapshot_cookie()
     st.success("Du bist jetzt mit Spotify verbunden.")
+    _maybe_redirect_after_successful_oauth()
 
 
-def _render_connection_section(
+def _should_show_missing_connection_callout(
+    *,
     client: SpotifyClient | None,
-    redirect_hint: str | None,
-) -> SpotifyToken | None:
-    """Show connection status when logged in; optional redirect URI hint otherwise."""
-    if client is None:
-        st.markdown(
-            '<div class="rec-callout rec-callout-info">'
-            "Diese Seite benötigt eine gültige Spotify-Konfiguration, um "
-            "Playlists zu erstellen.</div>",
-            unsafe_allow_html=True,
-        )
-        return None
+    has_user_creds: bool,
+    oauth_callback_pending: bool,
+) -> bool:
+    """True when the page must redirect to the Streaming-Verbindungen page.
 
-    token = _get_stored_token()
-    if token is not None:
-        return token
-
-    if redirect_hint:
-        st.markdown(
-            f'<div class="rec-callout rec-callout-info">{redirect_hint}</div>',
-            unsafe_allow_html=True,
-        )
-    return None
+    OAuth callbacks must be processed here even when a client failed to load,
+    so we never gate on missing creds while ``?code=`` is present in the URL.
+    """
+    if oauth_callback_pending:
+        return False
+    return client is None or not has_user_creds
 
 
-def _render_spotify_setup_guide() -> None:
-    """In-app guide explaining why and how to set up a Spotify Developer App."""
-    from os import getenv
-
-    redirect_uri = (getenv("SPOTIFY_REDIRECT_URI") or "").strip()
-    if not redirect_uri:
-        redirect_uri = "http://127.0.0.1:8501/spotify_playlists"
-
+def _render_missing_connection_callout() -> None:
+    """Show a CTA pointing the user to the Streaming-Verbindungen page."""
     st.markdown(
         '<div class="rec-callout rec-callout-info">'
-        "Spotify beschränkt den Zugriff auf seine API stark: "
-        "Nur Premium-Nutzer können sie verwenden, und jede App im "
-        "Development-Modus ist auf wenige Nutzer begrenzt. "
-        "Damit hier jeder seine eigenen Playlists erstellen kann, "
-        "brauchst du eine eigene kleine Spotify-App. "
-        "Das dauert nur wenige Minuten und ist kostenlos."
+        "Für diese Seite musst du zuerst eine Spotify-Verbindung einrichten."
         "</div>",
         unsafe_allow_html=True,
     )
+    if st.button(
+        "Zur Verbindungs-Einrichtung",
+        type="primary",
+        width="stretch",
+        key="spotify_playlists_to_connections",
+    ):
+        st.switch_page(_STREAMING_CONNECTIONS_PAGE_PATH)
+
+
+def _render_connection_redirect_hint(redirect_hint: str | None) -> None:
+    """Display the optional redirect URI mismatch hint when a token is missing."""
+    if not redirect_hint:
+        return
     st.markdown(
-        '<div class="rec-callout rec-callout-info">'
-        "Profil-Anmeldung und Spotify-Redirect: Bitte dieselbe Host-Form nutzen "
-        "(z. B. durchgehend <code>127.0.0.1</code> statt <code>localhost</code>), "
-        "sonst erkennt der Browser nach dem Spotify-Login die Sitzung nicht."
-        "</div>",
+        f'<div class="rec-callout rec-callout-info">{redirect_hint}</div>',
         unsafe_allow_html=True,
     )
-
-    with st.expander("Anleitung: Spotify-App einrichten", expanded=True):
-        st.markdown(
-            "1. Öffne das "
-            "[Spotify Developer Dashboard]"
-            "(https://developer.spotify.com/dashboard) "
-            "und melde dich mit deinem Spotify-Konto an.\n"
-            '2. Klicke auf **"Create App"**.\n'
-            "3. Vergib einen beliebigen Namen "
-            '(z. B. "Plattenradar") und eine kurze Beschreibung.\n'
-            f"4. Trage als **Redirect URI** exakt ein: "
-            f"`{redirect_uri}`\n"
-            '5. Wähle **"Web API"** als API aus.\n'
-            '6. Bestätige mit **"Save"**.\n'
-            "7. Auf der App-Seite findest du unter **Settings** "
-            "die **Client ID** und das **Client Secret** "
-            "(bei Secret auf *View client secret* klicken). "
-            "Kopiere beide Werte und trage sie unten ein."
-        )
-
-    _section_label("Spotify-Zugangsdaten hinterlegen")
-    col_id, col_secret = st.columns(2)
-    with col_id:
-        new_client_id = st.text_input(
-            "Client ID",
-            key="spotify_setup_client_id",
-            placeholder="32-stellige ID",
-        )
-    with col_secret:
-        new_client_secret = st.text_input(
-            "Client Secret",
-            type="password",
-            key="spotify_setup_client_secret",
-        )
-    if st.button("Zugangsdaten speichern", key="spotify_setup_save"):
-        slug = _active_user_slug()
-        if slug is None:
-            st.error(
-                "Bitte zuerst ein Profil anlegen und anmelden, "
-                "um Spotify-Zugangsdaten zu speichern."
-            )
-        elif not new_client_id or not new_client_id.strip():
-            st.error("Client ID darf nicht leer sein.")
-        elif not new_client_secret or not new_client_secret.strip():
-            st.error("Client Secret darf nicht leer sein.")
-        else:
-            conn = get_db_connection()
-            save_spotify_credentials(
-                conn,
-                slug,
-                new_client_id.strip(),
-                new_client_secret.strip(),
-            )
-            st.success("Zugangsdaten gespeichert.")
-            st.rerun()
-
-
-def _render_spotify_credentials_management() -> None:
-    """Show current credential status and allow removal."""
-    slug = _active_user_slug()
-    if slug is None:
-        return
-    conn = get_db_connection()
-    creds = load_spotify_credentials(conn, slug)
-    if creds is None:
-        return
-    client_id, _ = creds
-    masked_id = (
-        client_id[:6] + "..." + client_id[-4:] if len(client_id) > 10 else client_id
-    )
-    with st.expander("Spotify-App verwalten"):
-        st.caption(f"Aktuelle Client ID: `{masked_id}`")
-        if st.button(
-            "Zugangsdaten entfernen",
-            key="spotify_creds_remove",
-        ):
-            clear_spotify_credentials(conn, slug)
-            st.session_state.pop(SPOTIFY_TOKEN_KEY, None)
-            st.rerun()
 
 
 def main() -> None:
@@ -590,8 +473,9 @@ def main() -> None:
         '<div class="rec-hero">'
         '<p class="rec-page-title">Spotify-Playlists</p>'
         '<div id="rec-page-desc-wrap">'
-        '<p class="rec-page-desc">Generiere eine Spotify-Playlist aus den neuesten '
-        "Rezensionen - <br/>passend zu Deinem Musikgeschmack.</p>"
+        '<p class="rec-page-desc">Generiere eine Spotify-Playlist - aus den '
+        "neuesten Rezensionen oder dem gesamten Archiv, <br/>passend zu Deinem "
+        "Musikgeschmack.</p>"
         "</div></div>",
         unsafe_allow_html=True,
     )
@@ -600,44 +484,46 @@ def main() -> None:
     has_user_creds = _user_has_spotify_credentials()
     client, redirect_hint = _load_client_and_redirect_hint()
 
-    if _should_show_spotify_setup_guide_only(
+    if _should_show_missing_connection_callout(
         client=client,
         has_user_creds=has_user_creds,
         oauth_callback_pending=oauth_pending,
     ):
-        _render_spotify_setup_guide()
+        _render_missing_connection_callout()
         return
-
-    if has_user_creds:
-        _render_spotify_credentials_management()
 
     _maybe_restore_spotify_oauth_session_snapshot()
     hydrate_spotify_token_from_db_for_active_user()
     if client is not None:
         _handle_oauth_callback(client)
-    _render_connection_section(client, redirect_hint)
+    if _get_stored_token() is None:
+        _render_connection_redirect_hint(redirect_hint)
     _section_divider()
 
     ensure_neueste_session_defaults()
-    n_pool = st.slider(
-        "Wie viele der letzten Rezensionen sollen bei der Erstellung deiner "
-        "Playlist berücksichtigt werden?",
-        min_value=5,
-        max_value=50,
-        value=RECENT_DEFAULT,
-        step=1,
-        key="spotify-page-pool-count",
-    )
-    reviews = load_newest_reviews_slice(n_pool)
-    if not reviews:
-        st.markdown(
-            '<div class="rec-callout rec-callout-warn">'
-            "Keine Reviews gefunden. Pfad prüfen: <code>data/reviews.jsonl</code> "
-            "(ggf. Scraping ausführen).</div>",
-            unsafe_allow_html=True,
+    tab_newest, tab_archive = st.tabs(["Neueste Rezensionen", "Gesamtes Archiv"])
+    with tab_newest:
+        n_pool = st.slider(
+            "Wie viele der letzten Rezensionen sollen bei der Erstellung deiner "
+            "Playlist berücksichtigt werden?",
+            min_value=5,
+            max_value=50,
+            value=RECENT_DEFAULT,
+            step=1,
+            key="spotify-page-pool-count",
         )
-    else:
-        render_neueste_spotify_playlist_section(reviews=reviews)
+        reviews = load_newest_reviews_slice(n_pool)
+        if not reviews:
+            st.markdown(
+                '<div class="rec-callout rec-callout-warn">'
+                "Keine Reviews gefunden. Pfad prüfen: <code>data/reviews.jsonl</code> "
+                "(ggf. Scraping ausführen).</div>",
+                unsafe_allow_html=True,
+            )
+        else:
+            render_neueste_spotify_playlist_section(reviews=reviews)
+    with tab_archive:
+        render_archive_spotify_playlist_section()
 
 
 if __name__ == "__main__":

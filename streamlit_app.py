@@ -293,6 +293,10 @@ def _navigation_pages() -> list[Any]:
         st.Page("pages/6_Recommendations_Flow.py", title="Empfehlungen"),
         st.Page("pages/8_Neueste_Rezensionen.py", title="Neueste Rezensionen"),
         st.Page("pages/7_Freitext_Qualitaet.py", title="Freitext-Qualität"),
+        st.Page(
+            "pages/3_Streaming_Verbindungen.py",
+            title="Streaming-Verbindungen",
+        ),
         _spotify_nav_page(),
     ]
     if session_taste_setup_complete():

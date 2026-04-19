@@ -1,4 +1,10 @@
-"""Spotify playlist builder UI for newest reviews (Streamlit; German user strings)."""
+"""Spotify playlist builder UI for newest reviews and the album archive.
+
+Both modes share the same UI controls (song count, taste orientation, playlist
+name, public toggle) and the same generator pipeline. The differences are the
+candidate pool (newest reviews vs. recommendations) and the per-mode widget
+keys, which are isolated via a ``key_prefix`` so Streamlit keeps state per tab.
+"""
 
 from __future__ import annotations
 
@@ -7,6 +13,7 @@ import random
 import secrets
 import threading
 import time
+from collections.abc import Callable
 from datetime import UTC, date, datetime, timedelta
 from pathlib import Path
 from typing import Any
@@ -17,6 +24,7 @@ from pages.neueste_reviews_pool import (
     configure_spotify_playlist_logging_from_env,
     preference_rank_rows_for_reviews,
 )
+from pages.recommendations_pool import archive_playlist_candidates
 from pages.spotify_oauth_kickoff import render_spotify_login_link_under_preview
 from pages.spotify_token_persist import (
     persist_spotify_token,
@@ -309,45 +317,157 @@ def _apply_spotify_generate_job_holder(
             )
 
 
-def render_neueste_spotify_playlist_section(
+def _render_spotify_scope_warnings(
+    token: SpotifyToken | None,
+    *,
+    make_playlist_public: bool,
+) -> None:
+    """Show warnings when the granted scopes do not match the chosen visibility."""
+    if token is None:
+        return
+    if not make_playlist_public and not _token_declares_spotify_scope(
+        token,
+        "playlist-modify-private",
+    ):
+        st.warning(
+            "Für eine private Playlist braucht Spotify das OAuth-Scope "
+            "„playlist-modify-private“. Ohne dieses Recht antwortet die API "
+            "oft mit 403 Forbidden. Bitte unter „Spotify-App verwalten“ die "
+            "Zugangsdaten entfernen und erneut „Verbindung mit Spotify "
+            "herstellen“, und in der `.env` sicherstellen, dass "
+            "`SPOTIFY_SCOPES` dieses Scope enthält."
+        )
+    if make_playlist_public and not _token_declares_spotify_scope(
+        token,
+        "playlist-modify-public",
+    ):
+        st.warning(
+            "Für eine öffentliche Playlist braucht Spotify das Scope "
+            "„playlist-modify-public“. Bitte unter „Spotify-App verwalten“ die "
+            "Zugangsdaten entfernen und erneut verbinden, oder `SPOTIFY_SCOPES` "
+            "in der `.env` prüfen."
+        )
+    if not _token_declares_spotify_scope(token, "playlist-read-private"):
+        st.warning(
+            "Zum Prüfen bestehender Playlists gleichen Namens braucht Spotify das "
+            "Scope „playlist-read-private“. Ohne dieses Recht schlägt die API bei "
+            "„Spotify-Playlist erzeugen“ oft mit 403 (Insufficient client scope) "
+            "fehl. Bitte unter „Spotify-App verwalten“ die Zugangsdaten entfernen "
+            "und erneut verbinden, und in der `.env` sicherstellen, dass "
+            "`SPOTIFY_SCOPES` dieses Scope enthält."
+        )
+
+
+def _start_spotify_generate_job(
+    *,
+    client: SpotifyClient,
+    token: SpotifyToken,
+    reviews: list[Review],
+    ranked_rows: list[dict[str, Any]] | None,
+    target_count: int,
+    taste_orientation: str,
+    playlist_name: str,
+    make_playlist_public: bool,
+    log_label: str,
+) -> None:
+    """Compute weights, kick off the background publish thread, and store handles."""
+    chosen_reviews, weights, raw_scores = build_album_weights(reviews, ranked_rows)
+    taste_exponent = _SPOTIFY_TASTE_ORIENTATION_EXPONENT[taste_orientation]
+    _LOGGER.info(
+        "%s playlist section: n_chosen_albums=%s ranked_rows_available=%s "
+        "target_songs=%s taste_orientation=%s taste_exponent=%s",
+        log_label,
+        len(chosen_reviews),
+        ranked_rows is not None,
+        target_count,
+        taste_orientation,
+        taste_exponent,
+    )
+    _log_weight_summary(weights, review_ids=[int(r.id) for r in chosen_reviews])
+    rng = random.Random(secrets.randbits(64))
+    alloc_weights = amplify_preference_weights(weights, exponent=taste_exponent)
+    token_for_publish = _ensure_valid_spotify_token(client, token)
+    resolved_name = playlist_name.strip() or _default_newest_spotify_playlist_name()
+    holder: dict[str, Any] = {
+        "done": False,
+        "outcome": None,
+        "worker_error": None,
+    }
+    thread = threading.Thread(
+        target=_run_neueste_spotify_job_worker,
+        kwargs={
+            "holder": holder,
+            "client": client,
+            "token": token_for_publish,
+            "chosen_reviews": chosen_reviews,
+            "alloc_weights": alloc_weights,
+            "raw_scores": raw_scores,
+            "target_count": target_count,
+            "rng": rng,
+            "resolved_playlist_name": resolved_name,
+            "public": make_playlist_public,
+        },
+        daemon=True,
+    )
+    st.session_state[NEWEST_SPOTIFY_GENERATE_JOB_KEY] = {
+        "holder": holder,
+        "thread": thread,
+    }
+    thread.start()
+    _LOGGER.info(
+        "%s publish: background job started n_albums=%s target_count=%s",
+        log_label,
+        len(chosen_reviews),
+        target_count,
+    )
+
+
+def _render_playlist_controls_and_generate(
     *,
     reviews: list[Review],
+    resolve_ranked_rows: Callable[[str], list[dict[str, Any]] | None],
+    key_prefix: str,
+    default_song_count: int,
+    pool_size_for_log: int,
+    log_label: str,
 ) -> None:
-    """Build a random playlist from the same pool as Neueste Rezensionen."""
-    configure_spotify_playlist_logging_from_env()
-    st.session_state.pop("newest_spotify_preview", None)
-    if not reviews:
-        st.info("Keine Rezensionen verfügbar.")
-        return
+    """Render the shared playlist UI (sliders, name, generate) for one mode.
 
-    max_pool = len(reviews)
+    All Streamlit widget keys are namespaced via ``key_prefix`` so different tabs
+    keep independent state. ``resolve_ranked_rows`` is called with the chosen
+    taste orientation to decide whether to use scored sampling or the uniform
+    fallback.
+    """
+    name_key = f"{key_prefix}-spotify-playlist-name"
+    target_count_key = f"{key_prefix}-spotify-song-count"
+    taste_key = f"{key_prefix}-spotify-taste-orientation"
+    public_key = f"{key_prefix}-spotify-playlist-public"
+    generate_key = f"{key_prefix}-spotify-generate"
+
     target_count = st.slider(
         "Wie viele Songs sollen auf der Playlist stehen?",
         min_value=5,
         max_value=50,
-        value=min(30, max(5, max_pool)),
+        value=default_song_count,
         step=1,
-        key="newest-spotify-song-count",
+        key=target_count_key,
     )
     taste_orientation = st.select_slider(
         "Wie stark soll sich die Playlist an deinem persönlichen Geschmack "
         "orientieren?",
         options=list(_SPOTIFY_TASTE_ORIENTATION_OPTIONS),
         value="etwas",
-        key="newest-spotify-taste-orientation",
+        key=taste_key,
     )
-    if NEWEST_SPOTIFY_PLAYLIST_NAME_KEY not in st.session_state:
-        st.session_state[NEWEST_SPOTIFY_PLAYLIST_NAME_KEY] = (
-            _default_newest_spotify_playlist_name()
-        )
+    if name_key not in st.session_state:
+        st.session_state[name_key] = _default_newest_spotify_playlist_name()
     col_playlist_name, col_playlist_public = st.columns([2, 1], gap="medium")
     with col_playlist_name:
         playlist_name = st.text_input(
             "Name der Spotify-Playlist",
-            key=NEWEST_SPOTIFY_PLAYLIST_NAME_KEY,
+            key=name_key,
         )
     with col_playlist_public:
-        # Offset so the checkbox aligns with the text field (label sits above input).
         st.markdown(
             '<div style="min-height: 2.5rem;" aria-hidden="true"></div>',
             unsafe_allow_html=True,
@@ -355,7 +475,7 @@ def render_neueste_spotify_playlist_section(
         make_playlist_public = st.checkbox(
             "Playlist öffentlich machen",
             value=False,
-            key="newest-spotify-playlist-public",
+            key=public_key,
         )
 
     cfg = _try_load_user_spotify_config()
@@ -396,56 +516,17 @@ def render_neueste_spotify_playlist_section(
                 now_utc=now_utc,
             ),
             type="primary",
-            key="newest-spotify-generate",
+            key=generate_key,
             width="stretch",
             disabled=not can_publish_playlist,
         )
 
-    scope_check_token = _stored_spotify_token()
-    if (
-        scope_check_token is not None
-        and not make_playlist_public
-        and not _token_declares_spotify_scope(
-            scope_check_token,
-            "playlist-modify-private",
-        )
-    ):
-        st.warning(
-            "Für eine private Playlist braucht Spotify das OAuth-Scope "
-            "„playlist-modify-private“. Ohne dieses Recht antwortet die API "
-            "oft mit 403 Forbidden. Bitte unter „Spotify-App verwalten“ die "
-            "Zugangsdaten entfernen und erneut „Verbindung mit Spotify "
-            "herstellen“, und in der `.env` sicherstellen, dass "
-            "`SPOTIFY_SCOPES` dieses Scope enthält."
-        )
-    if (
-        scope_check_token is not None
-        and make_playlist_public
-        and not _token_declares_spotify_scope(
-            scope_check_token,
-            "playlist-modify-public",
-        )
-    ):
-        st.warning(
-            "Für eine öffentliche Playlist braucht Spotify das Scope "
-            "„playlist-modify-public“. Bitte unter „Spotify-App verwalten“ die "
-            "Zugangsdaten entfernen und erneut verbinden, oder `SPOTIFY_SCOPES` "
-            "in der `.env` prüfen."
-        )
-    if scope_check_token is not None and not _token_declares_spotify_scope(
-        scope_check_token,
-        "playlist-read-private",
-    ):
-        st.warning(
-            "Zum Prüfen bestehender Playlists gleichen Namens braucht Spotify das "
-            "Scope „playlist-read-private“. Ohne dieses Recht schlägt die API bei "
-            "„Spotify-Playlist erzeugen“ oft mit 403 (Insufficient client scope) "
-            "fehl. Bitte unter „Spotify-App verwalten“ die Zugangsdaten entfernen "
-            "und erneut verbinden, und in der `.env` sicherstellen, dass "
-            "`SPOTIFY_SCOPES` dieses Scope enthält."
-        )
+    _render_spotify_scope_warnings(
+        _stored_spotify_token(),
+        make_playlist_public=make_playlist_public,
+    )
 
-    if generate_clicked and can_publish_playlist:
+    if generate_clicked and can_publish_playlist and token is not None:
         existing_job = st.session_state.get(NEWEST_SPOTIFY_GENERATE_JOB_KEY)
         prev_holder = (
             existing_job.get("holder") if isinstance(existing_job, dict) else None
@@ -453,70 +534,22 @@ def render_neueste_spotify_playlist_section(
         if isinstance(prev_holder, dict) and not prev_holder.get("done"):
             st.warning("Eine Playlist-Erstellung läuft bereits. Bitte kurz warten.")
         else:
-            ranked_rows = (
-                None
-                if taste_orientation == "gar nicht"
-                else preference_rank_rows_for_reviews(reviews)
+            ranked_rows = resolve_ranked_rows(taste_orientation)
+            _LOGGER.debug(
+                "%s playlist section: pool_size=%s",
+                log_label,
+                pool_size_for_log,
             )
-            chosen_reviews, weights, raw_scores = build_album_weights(
-                reviews,
-                ranked_rows,
-            )
-            taste_exponent = _SPOTIFY_TASTE_ORIENTATION_EXPONENT[taste_orientation]
-            _LOGGER.info(
-                "newest spotify playlist section: n_chosen_albums=%s "
-                "ranked_rows_available=%s target_songs=%s taste_orientation=%s "
-                "taste_exponent=%s",
-                len(chosen_reviews),
-                ranked_rows is not None,
-                target_count,
-                taste_orientation,
-                taste_exponent,
-            )
-            _log_weight_summary(
-                weights,
-                review_ids=[int(r.id) for r in chosen_reviews],
-            )
-            rng = random.Random(secrets.randbits(64))
-            alloc_weights = amplify_preference_weights(
-                weights,
-                exponent=taste_exponent,
-            )
-            token_for_publish = _ensure_valid_spotify_token(client, token)
-            resolved_name = (
-                playlist_name.strip() or _default_newest_spotify_playlist_name()
-            )
-            holder: dict[str, Any] = {
-                "done": False,
-                "outcome": None,
-                "worker_error": None,
-            }
-            thread = threading.Thread(
-                target=_run_neueste_spotify_job_worker,
-                kwargs={
-                    "holder": holder,
-                    "client": client,
-                    "token": token_for_publish,
-                    "chosen_reviews": chosen_reviews,
-                    "alloc_weights": alloc_weights,
-                    "raw_scores": raw_scores,
-                    "target_count": target_count,
-                    "rng": rng,
-                    "resolved_playlist_name": resolved_name,
-                    "public": make_playlist_public,
-                },
-                daemon=True,
-            )
-            st.session_state[NEWEST_SPOTIFY_GENERATE_JOB_KEY] = {
-                "holder": holder,
-                "thread": thread,
-            }
-            thread.start()
-            _LOGGER.info(
-                "newest spotify publish: background job started "
-                "n_albums=%s target_count=%s",
-                len(chosen_reviews),
-                target_count,
+            _start_spotify_generate_job(
+                client=client,
+                token=token,
+                reviews=reviews,
+                ranked_rows=ranked_rows,
+                target_count=target_count,
+                taste_orientation=taste_orientation,
+                playlist_name=playlist_name,
+                make_playlist_public=make_playlist_public,
+                log_label=log_label,
             )
 
     _render_last_spotify_publish_if_any()
@@ -537,3 +570,62 @@ def render_neueste_spotify_playlist_section(
             st.info("Die Playlist wird erzeugt - das kann einige Sekunden dauern.")
             time.sleep(_SPOTIFY_JOB_POLL_INTERVAL_SECONDS)
             st.rerun()
+
+
+def render_neueste_spotify_playlist_section(
+    *,
+    reviews: list[Review],
+) -> None:
+    """Build a random playlist from the same pool as Neueste Rezensionen."""
+    configure_spotify_playlist_logging_from_env()
+    st.session_state.pop("newest_spotify_preview", None)
+    if not reviews:
+        st.info("Keine Rezensionen verfügbar.")
+        return
+
+    def _resolve_ranked_rows(taste_orientation: str) -> list[dict[str, Any]] | None:
+        if taste_orientation == "gar nicht":
+            return None
+        return preference_rank_rows_for_reviews(reviews)
+
+    _render_playlist_controls_and_generate(
+        reviews=reviews,
+        resolve_ranked_rows=_resolve_ranked_rows,
+        key_prefix="newest",
+        default_song_count=min(30, max(5, len(reviews))),
+        pool_size_for_log=len(reviews),
+        log_label="newest spotify",
+    )
+
+
+def render_archive_spotify_playlist_section() -> None:
+    """Build a random playlist from the entire scored album archive.
+
+    Candidates and per-album scores come from the same scoring used on the
+    Empfehlungen page (style filters, year/rating/score filters, etc.). When the
+    user has not set any styles yet, an inline callout explains the next step.
+    """
+    configure_spotify_playlist_logging_from_env()
+    st.session_state.pop("newest_spotify_preview", None)
+    reviews, ranked_rows = archive_playlist_candidates()
+    if not reviews or ranked_rows is None:
+        st.info(
+            "Keine passenden Alben gefunden. Bitte zuerst auf "
+            "„Musikpräferenzen ändern“ Stilrichtungen wählen oder Filter "
+            "im Filter-Schritt anpassen."
+        )
+        return
+
+    def _resolve_ranked_rows(_taste_orientation: str) -> list[dict[str, Any]] | None:
+        # Mode B always uses scored sampling: candidates already passed the same
+        # filters as Empfehlungen, so a uniform fallback would discard the score.
+        return ranked_rows
+
+    _render_playlist_controls_and_generate(
+        reviews=reviews,
+        resolve_ranked_rows=_resolve_ranked_rows,
+        key_prefix="archive",
+        default_song_count=min(30, max(5, len(reviews))),
+        pool_size_for_log=len(reviews),
+        log_label="archive spotify",
+    )

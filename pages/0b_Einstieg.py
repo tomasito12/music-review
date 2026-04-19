@@ -3,7 +3,12 @@
 from __future__ import annotations
 
 import streamlit as st
-from pages.page_helpers import load_broad_categories_res_10, render_toolbar
+from pages.page_helpers import (
+    has_step1_state,
+    load_broad_categories_res_10,
+    render_toolbar,
+    reset_step1_cascade,
+)
 
 
 def _einstieg_css() -> None:
@@ -49,6 +54,23 @@ def _einstieg_css() -> None:
         .einstieg-cta {
             max-width: 34rem;
             margin: 1.5rem auto 1.5rem auto;
+        }
+        /* Schritt 1: Checkbox-Block schmaler und in der Mitte der Seite */
+        section[data-testid="stMain"]:has(.einstieg-hero)
+            [data-testid="stHorizontalBlock"]:has([data-testid="stCheckbox"]) {
+            justify-content: center;
+        }
+        section[data-testid="stMain"]:has(.einstieg-hero)
+            [data-testid="stHorizontalBlock"]:has([data-testid="stCheckbox"])
+            [data-testid="element-container"] {
+            display: flex;
+            justify-content: center;
+        }
+        section[data-testid="stMain"]:has(.einstieg-hero)
+            [data-testid="stHorizontalBlock"]:has([data-testid="stCheckbox"])
+            [data-testid="stCheckbox"] label {
+            margin-left: auto;
+            margin-right: auto;
         }
         </style>
         """,
@@ -97,7 +119,8 @@ def main() -> None:
             st.session_state["selected_broad_categories"],
         )
 
-        _sp_left, sp_mid, _sp_right = st.columns([1, 4, 1])
+        # Symmetric layout; middle column wide enough for long category labels
+        _pad_l, sp_mid, _pad_r = st.columns([1, 2, 1])
         with sp_mid:
             for cat in broad_categories:
                 key = f"broad_cat_{cat}"
@@ -114,6 +137,14 @@ def main() -> None:
             st.session_state["selected_broad_categories"] = selected
 
     st.markdown('<div class="einstieg-cta">', unsafe_allow_html=True)
+    if has_step1_state():
+        st.button(
+            "Auswahl zurücksetzen",
+            type="secondary",
+            width="stretch",
+            key="einstieg_reset_cascade",
+            on_click=reset_step1_cascade,
+        )
     if st.button(
         "Weiter zu Schritt 2",
         type="primary",

@@ -123,41 +123,10 @@ def test_spotify_oauth_session_snapshot_dict_builds_expected(
     assert d["widgets"]["newest-spotify-taste-orientation"] == "stark"
 
 
-def test_active_user_slug_returns_slug_from_session(
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
-    module = _spotify_playlists_module()
-    monkeypatch.setattr(
-        module.st,
-        "session_state",
-        {"active_profile_slug": "demo-user"},
-    )
-    assert module._active_user_slug() == "demo-user"
-
-
-def test_active_user_slug_returns_none_without_profile(
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
-    module = _spotify_playlists_module()
-    monkeypatch.setattr(module.st, "session_state", {})
-    assert module._active_user_slug() is None
-
-
-def test_active_user_slug_returns_none_for_empty_string(
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
-    module = _spotify_playlists_module()
-    monkeypatch.setattr(
-        module.st,
-        "session_state",
-        {"active_profile_slug": "  "},
-    )
-    assert module._active_user_slug() is None
-
-
 def test_user_has_spotify_credentials_false_without_login(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
+    """The Spotify-Playlists page must treat guests as having no stored creds."""
     module = _spotify_playlists_module()
     monkeypatch.setattr(module.st, "session_state", {})
     assert module._user_has_spotify_credentials() is False
@@ -213,10 +182,11 @@ def test_spotify_oauth_callback_query_present_false_without_code(
     assert module._spotify_oauth_callback_query_present() is False
 
 
-def test_should_show_spotify_setup_guide_only_false_when_oauth_pending() -> None:
+def test_should_show_missing_connection_callout_false_when_oauth_pending() -> None:
+    """An OAuth callback must always be processed, even without stored creds."""
     module = _spotify_playlists_module()
     assert (
-        module._should_show_spotify_setup_guide_only(
+        module._should_show_missing_connection_callout(
             client=None,
             has_user_creds=False,
             oauth_callback_pending=True,
@@ -225,16 +195,95 @@ def test_should_show_spotify_setup_guide_only_false_when_oauth_pending() -> None
     )
 
 
-def test_should_show_spotify_setup_guide_only_true_when_no_oauth_no_client() -> None:
+def test_should_show_missing_connection_callout_true_when_no_client() -> None:
+    """Without a Spotify client the page cannot do anything useful."""
     module = _spotify_playlists_module()
     assert (
-        module._should_show_spotify_setup_guide_only(
+        module._should_show_missing_connection_callout(
             client=None,
             has_user_creds=False,
             oauth_callback_pending=False,
         )
         is True
     )
+
+
+def test_should_show_missing_connection_callout_true_when_no_user_creds() -> None:
+    """A client built from .env alone is not enough; per-user creds must be stored."""
+    module = _spotify_playlists_module()
+    sentinel_client = object()
+    assert (
+        module._should_show_missing_connection_callout(
+            client=sentinel_client,  # type: ignore[arg-type]
+            has_user_creds=False,
+            oauth_callback_pending=False,
+        )
+        is True
+    )
+
+
+def test_should_show_missing_connection_callout_false_when_client_and_creds() -> None:
+    """With both client and stored creds the playlist UI is allowed to render."""
+    module = _spotify_playlists_module()
+    sentinel_client = object()
+    assert (
+        module._should_show_missing_connection_callout(
+            client=sentinel_client,  # type: ignore[arg-type]
+            has_user_creds=True,
+            oauth_callback_pending=False,
+        )
+        is False
+    )
+
+
+def test_maybe_redirect_after_oauth_switches_when_cookie_targets_streaming(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """A login started on the Streaming-Verbindungen page must return there."""
+    module = _spotify_playlists_module()
+    cleared: list[bool] = []
+    switched: list[str] = []
+    monkeypatch.setattr(
+        module,
+        "peek_spotify_oauth_return_page_cookie",
+        lambda: module.SPOTIFY_OAUTH_RETURN_PAGE_STREAMING_CONNECTIONS,
+    )
+    monkeypatch.setattr(
+        module,
+        "clear_spotify_oauth_return_page_cookie",
+        lambda: cleared.append(True),
+    )
+    monkeypatch.setattr(module.st, "switch_page", lambda path: switched.append(path))
+
+    module._maybe_redirect_after_successful_oauth()
+
+    assert cleared == [True]
+    assert switched == ["pages/3_Streaming_Verbindungen.py"]
+
+
+def test_maybe_redirect_after_oauth_stays_when_cookie_missing(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """A login started on the Playlist page itself must stay on that page."""
+    module = _spotify_playlists_module()
+    cleared: list[bool] = []
+    switched: list[str] = []
+    monkeypatch.setattr(
+        module,
+        "peek_spotify_oauth_return_page_cookie",
+        lambda: None,
+    )
+    monkeypatch.setattr(
+        module,
+        "clear_spotify_oauth_return_page_cookie",
+        lambda: cleared.append(True),
+    )
+    monkeypatch.setattr(module.st, "switch_page", lambda path: switched.append(path))
+
+    module._maybe_redirect_after_successful_oauth()
+
+    assert cleared == [True]
+    assert switched == []
 
 
 def test_load_client_uses_db_credentials_for_slug_in_oauth_state(

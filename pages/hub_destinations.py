@@ -41,9 +41,18 @@ HUB_DESTINATIONS: tuple[HubDestination, ...] = (
         page_path="pages/6_Recommendations_Flow.py",
     ),
     HubDestination(
-        title="Spotify-Playlist",
+        title="Streaming-Dienste verbinden",
         description=(
-            "Neue Musik, die zu dir passt, in eine eigene Playlist übernehmen."
+            "Spotify (und bald Deezer) mit deinem Konto verbinden, "
+            "um daraus Playlists anlegen zu können."
+        ),
+        page_path="pages/3_Streaming_Verbindungen.py",
+    ),
+    HubDestination(
+        title="Playlist erzeugen",
+        description=(
+            "Aus den neuesten Rezensionen oder dem gesamten Archiv eine "
+            "Playlist im verbundenen Streaming-Dienst anlegen."
         ),
         page_path="pages/9_Spotify_Playlists.py",
     ),

@@ -34,14 +34,17 @@ from pages.page_helpers import (
     expand_plattenlabel_ui_selection,
     format_style_weight_example_artists,
     get_selected_communities,
+    has_step3_state,
     load_communities_res_10,
     load_genre_labels_res_10,
     load_plattenlabel_filter_buckets,
     max_release_year_from_corpus,
     min_release_year_from_corpus,
     normalize_filter_expander_vspace_gap,
+    prune_weights_to_selected_communities,
     refresh_taste_wizard_after_filter_save,
     render_toolbar,
+    reset_step3,
     snap_spectrum_crossover,
     spectrum_crossover_option_label,
     style_match_percent_tuple_for_slider,
@@ -473,6 +476,7 @@ def _render_filter_account_save_prompt() -> bool:
 
 def main() -> None:
     _ensure_session_state()
+    prune_weights_to_selected_communities()
     # Styles vor dem oberen Trennstrich: Hero direkt unter --- wie auf Schritt 1/2.
     _filter_css()
     render_toolbar("filter_flow")
@@ -975,6 +979,14 @@ def main() -> None:
 
     # ── CTA ──────────────────────────────────────────────────────
     st.markdown('<div class="filter-cta">', unsafe_allow_html=True)
+    if has_step3_state():
+        st.button(
+            "Filter und Gewichte zurücksetzen",
+            type="secondary",
+            width="stretch",
+            key="filter_flow_reset",
+            on_click=reset_step3,
+        )
     col_back, col_next = st.columns(2)
     with col_back:
         if st.button(

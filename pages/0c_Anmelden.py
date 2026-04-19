@@ -106,9 +106,7 @@ def main() -> None:
             "</div>",
             unsafe_allow_html=True,
         )
-        st.markdown(
-            "Was soll gelten? Wähle eine der drei Optionen."
-        )
+        st.markdown("Was soll gelten? Wähle eine der drei Optionen.")
         col_overwrite, col_keep_session, col_load_server = st.columns(3)
         with col_overwrite:
             if st.button(

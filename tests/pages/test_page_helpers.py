@@ -17,6 +17,7 @@ from pages.page_helpers import (
     OVERALL_WEIGHT_TRADEOFF_RED_MID,
     PLATTENLABEL_SONSTIGE_UI,
     SEMANTIC_CHAT_INPUT_KEY,
+    SEMANTIC_RAG_MAX_DISTANCE_KEY,
     SPECTRUM_CROSSOVER_STOPS,
     STYLE_MATCH_FILTER_PERCENT_STEP,
     build_community_broad_category_index,
@@ -30,6 +31,9 @@ from pages.page_helpers import (
     format_release_date,
     format_style_match_range_display,
     format_style_weight_example_artists,
+    has_step1_state,
+    has_step2_state,
+    has_step3_state,
     logout_active_profile,
     max_release_year_in_jsonl,
     min_release_year_in_jsonl,
@@ -39,11 +43,16 @@ from pages.page_helpers import (
     persist_active_profile_from_session,
     plattenlabel_album_count_buckets_from_reviews_jsonl,
     plattenlabel_filter_passes,
+    prune_communities_to_selected_broad_categories,
+    prune_weights_to_selected_communities,
     recommendation_card_community_tags_html,
     recommendation_card_meta_parts,
     recommendation_flow_shell_css_rules,
     refresh_taste_wizard_after_filter_save,
     release_year_for_card_meta,
+    reset_step1_cascade,
+    reset_step2_cascade,
+    reset_step3,
     reset_taste_preferences,
     review_raw_release_year,
     search_rag_hits_for_dashboard,
@@ -56,6 +65,16 @@ from pages.page_helpers import (
     unique_plattenlabels_from_reviews_jsonl,
 )
 
+from music_review.config import (
+    RECOMMENDATION_DEFAULT_COMMUNITY_CROSSOVER,
+    RECOMMENDATION_DEFAULT_COMMUNITY_WEIGHT_RAW,
+    RECOMMENDATION_OVERALL_ALPHA,
+    RECOMMENDATION_OVERALL_BETA,
+    RECOMMENDATION_OVERALL_GAMMA,
+)
+from music_review.dashboard.community_weight_mapping import (
+    community_weight_bias_from_stored,
+)
 from music_review.dashboard.taste_setup import TASTE_WIZARD_RESET_PENDING_KEY
 
 
@@ -796,6 +815,110 @@ class TestSpotifyOauthCookieHelpers:
         page_helpers_module.clear_spotify_oauth_state_cookie()
 
 
+class TestSpotifyOauthReturnPageCookie:
+    """Cookie-backed hint that tells the OAuth callback where to send the user back."""
+
+    def _fake_cookie_manager(self, storage: dict[str, str]) -> object:
+        class FakeCM:
+            def set(
+                self,
+                name: str,
+                val: str,
+                *,
+                key: str,
+                max_age: float,
+                same_site: str,
+            ) -> None:
+                storage[name] = val
+
+            def get(self, name: str) -> str | None:
+                return storage.get(name)
+
+            def delete(self, name: str, *, key: str) -> None:
+                storage.pop(name, None)
+
+        return FakeCM()
+
+    def test_persist_peek_clear_roundtrip(
+        self,
+        monkeypatch: pytest.MonkeyPatch,
+    ) -> None:
+        """The cookie set before redirect must be readable on OAuth return."""
+        storage: dict[str, str] = {}
+        monkeypatch.setattr(
+            page_helpers_module,
+            "profile_cookie_manager",
+            lambda: self._fake_cookie_manager(storage),
+        )
+        monkeypatch.setattr(
+            page_helpers_module.st,
+            "context",
+            SimpleNamespace(cookies=SimpleNamespace(to_dict=lambda: {})),
+        )
+
+        page_helpers_module.persist_spotify_oauth_return_page_cookie(
+            page_helpers_module.SPOTIFY_OAUTH_RETURN_PAGE_STREAMING_CONNECTIONS,
+        )
+        name = page_helpers_module.SPOTIFY_OAUTH_RETURN_PAGE_COOKIE_NAME
+        assert storage[name] == (
+            page_helpers_module.SPOTIFY_OAUTH_RETURN_PAGE_STREAMING_CONNECTIONS
+        )
+        assert page_helpers_module.peek_spotify_oauth_return_page_cookie() == (
+            page_helpers_module.SPOTIFY_OAUTH_RETURN_PAGE_STREAMING_CONNECTIONS
+        )
+
+        page_helpers_module.clear_spotify_oauth_return_page_cookie()
+        assert page_helpers_module.peek_spotify_oauth_return_page_cookie() is None
+
+    def test_persist_skips_blank_value(
+        self,
+        monkeypatch: pytest.MonkeyPatch,
+    ) -> None:
+        """A blank or empty hint must never be written as a cookie value."""
+        storage: dict[str, str] = {}
+        monkeypatch.setattr(
+            page_helpers_module,
+            "profile_cookie_manager",
+            lambda: self._fake_cookie_manager(storage),
+        )
+
+        page_helpers_module.persist_spotify_oauth_return_page_cookie("   ")
+        page_helpers_module.persist_spotify_oauth_return_page_cookie("")
+
+        assert storage == {}
+
+    def test_peek_prefers_request_cookie_over_cookie_manager(
+        self,
+        monkeypatch: pytest.MonkeyPatch,
+    ) -> None:
+        """HTTP request cookies are authoritative when CookieManager has not synced."""
+        storage = {
+            page_helpers_module.SPOTIFY_OAUTH_RETURN_PAGE_COOKIE_NAME: "from-cm",
+        }
+        monkeypatch.setattr(
+            page_helpers_module,
+            "profile_cookie_manager",
+            lambda: self._fake_cookie_manager(storage),
+        )
+        monkeypatch.setattr(
+            page_helpers_module.st,
+            "context",
+            SimpleNamespace(
+                cookies=SimpleNamespace(
+                    to_dict=lambda: {
+                        page_helpers_module.SPOTIFY_OAUTH_RETURN_PAGE_COOKIE_NAME: (
+                            "from-request"
+                        )
+                    }
+                )
+            ),
+        )
+
+        assert page_helpers_module.peek_spotify_oauth_return_page_cookie() == (
+            "from-request"
+        )
+
+
 def test_apply_spotify_oauth_session_snapshot_restores_core_keys() -> None:
     """OAuth snapshot reapplies filter and widget state over a fresh session."""
     sess: dict[str, object] = {
@@ -981,18 +1104,50 @@ class TestTasteSetupSessionHelpers:
             FILTER_FLOW_WIDGET_KEY_YEAR_RANGE: (2000, 2010),
             SEMANTIC_CHAT_INPUT_KEY: "stale",
         }
+        monkeypatch.setattr(
+            page_helpers_module,
+            "min_release_year_from_corpus",
+            lambda: 2000,
+        )
+        monkeypatch.setattr(
+            page_helpers_module,
+            "max_release_year_from_corpus",
+            lambda: 2100,
+        )
         monkeypatch.setattr(page_helpers_module.st, "session_state", sess)
         reset_taste_preferences()
+        mod = page_helpers_module
         assert sess["selected_communities"] == set()
         assert sess["filter_settings"] == {}
         assert sess["community_weights_raw"] == {}
         assert sess["free_text_query"] == ""
         assert sess["flow_mode"] is None
         assert sess.get(TASTE_WIZARD_RESET_PENDING_KEY) is True
-        assert "comm_sel_C001" not in sess
-        assert "broad_cat_Rock" not in sess
+        assert sess.get("comm_sel_C001") is False
+        assert sess.get("broad_cat_Rock") is False
         assert "weight_comm_a" not in sess
-        assert FILTER_FLOW_WIDGET_KEY_YEAR_RANGE not in sess
+        assert sess[mod.FILTER_FLOW_WIDGET_KEY_YEAR_RANGE] == (2000, 2100)
+        assert sess[mod.FILTER_FLOW_WIDGET_KEY_RATING_RANGE] == (
+            mod.DEFAULT_PLATTENTESTS_RATING_FILTER_MIN,
+            mod.DEFAULT_PLATTENTESTS_RATING_FILTER_MAX,
+        )
+        pct_lo, pct_hi = mod.style_match_percent_tuple_for_slider(0.0, 1.0)
+        assert sess[mod.FILTER_FLOW_WIDGET_KEY_STYLE_MATCH_PCT] == (pct_lo, pct_hi)
+        expected_spectrum = mod.snap_spectrum_crossover(
+            RECOMMENDATION_DEFAULT_COMMUNITY_CROSSOVER,
+        )
+        assert sess[mod.FILTER_FLOW_WIDGET_KEY_SPECTRUM] == expected_spectrum
+        assert (
+            sess[mod.FILTER_FLOW_WIDGET_KEY_OVERALL_ALPHA]
+            == RECOMMENDATION_OVERALL_ALPHA
+        )
+        assert (
+            sess[mod.FILTER_FLOW_WIDGET_KEY_OVERALL_BETA] == RECOMMENDATION_OVERALL_BETA
+        )
+        assert (
+            sess[mod.FILTER_FLOW_WIDGET_KEY_OVERALL_GAMMA]
+            == RECOMMENDATION_OVERALL_GAMMA
+        )
         assert SEMANTIC_CHAT_INPUT_KEY not in sess
 
     def test_refresh_taste_wizard_after_filter_save_clears_pending(
@@ -1082,3 +1237,320 @@ class TestTasteSetupSessionHelpers:
         assert payload["filter_settings"]["year_min"] == 1990
         assert payload["community_weights_raw"]["10"] == 0.75
         assert payload["flow_mode"] == "combined"
+
+
+class TestWizardStatePredicates:
+    def test_has_step1_state_detects_broad_category_selection(
+        self,
+        monkeypatch: pytest.MonkeyPatch,
+    ) -> None:
+        monkeypatch.setattr(
+            page_helpers_module.st,
+            "session_state",
+            {"selected_broad_categories": {"Rock"}},
+        )
+        assert has_step1_state() is True
+
+    def test_has_step1_state_false_when_empty(
+        self,
+        monkeypatch: pytest.MonkeyPatch,
+    ) -> None:
+        monkeypatch.setattr(
+            page_helpers_module.st,
+            "session_state",
+            {"selected_broad_categories": set()},
+        )
+        assert has_step1_state() is False
+
+    def test_has_step2_state_true_for_canonical_communities(
+        self,
+        monkeypatch: pytest.MonkeyPatch,
+    ) -> None:
+        monkeypatch.setattr(
+            page_helpers_module.st,
+            "session_state",
+            {"selected_communities": {"C001"}},
+        )
+        assert has_step2_state() is True
+
+    def test_has_step2_state_true_for_legacy_flow_keys(
+        self,
+        monkeypatch: pytest.MonkeyPatch,
+    ) -> None:
+        monkeypatch.setattr(
+            page_helpers_module.st,
+            "session_state",
+            {
+                "selected_communities": set(),
+                "artist_flow_selected_communities": {"C001"},
+                "genre_flow_selected_communities": set(),
+            },
+        )
+        assert has_step2_state() is True
+
+    def test_has_step2_state_false_when_empty(
+        self,
+        monkeypatch: pytest.MonkeyPatch,
+    ) -> None:
+        monkeypatch.setattr(
+            page_helpers_module.st,
+            "session_state",
+            {"selected_communities": set()},
+        )
+        assert has_step2_state() is False
+
+    def test_has_step3_state_true_for_filter_settings(
+        self,
+        monkeypatch: pytest.MonkeyPatch,
+    ) -> None:
+        monkeypatch.setattr(
+            page_helpers_module.st,
+            "session_state",
+            {"filter_settings": {"year_min": 1990}},
+        )
+        assert has_step3_state() is True
+
+    def test_has_step3_state_true_for_weights(
+        self,
+        monkeypatch: pytest.MonkeyPatch,
+    ) -> None:
+        monkeypatch.setattr(
+            page_helpers_module.st,
+            "session_state",
+            {"community_weights_raw": {"C001": 0.5}},
+        )
+        assert has_step3_state() is True
+
+    def test_has_step3_state_true_for_free_text_query(
+        self,
+        monkeypatch: pytest.MonkeyPatch,
+    ) -> None:
+        monkeypatch.setattr(
+            page_helpers_module.st,
+            "session_state",
+            {"free_text_query": "dreamy"},
+        )
+        assert has_step3_state() is True
+
+    def test_has_step3_state_false_when_empty(
+        self,
+        monkeypatch: pytest.MonkeyPatch,
+    ) -> None:
+        monkeypatch.setattr(
+            page_helpers_module.st,
+            "session_state",
+            {
+                "filter_settings": {},
+                "community_weights_raw": {},
+                "free_text_query": "",
+            },
+        )
+        assert has_step3_state() is False
+
+
+class TestPruneCommunitiesToSelectedBroadCategories:
+    def test_no_op_when_broad_categories_empty(
+        self,
+        monkeypatch: pytest.MonkeyPatch,
+    ) -> None:
+        sess: dict[str, object] = {
+            "selected_broad_categories": set(),
+            "selected_communities": {"C001", "C002"},
+        }
+        monkeypatch.setattr(page_helpers_module.st, "session_state", sess)
+        removed = prune_communities_to_selected_broad_categories()
+        assert removed == 0
+        assert sess["selected_communities"] == {"C001", "C002"}
+
+    def test_removes_orphaned_communities_and_cascades_into_weights(
+        self,
+        monkeypatch: pytest.MonkeyPatch,
+    ) -> None:
+        sess: dict[str, object] = {
+            "selected_broad_categories": {"Rock"},
+            "selected_communities": {"C001", "C002", "C003"},
+            "community_weights_raw": {"C001": 0.5, "C002": 0.2, "C003": 0.1},
+            "comm_sel_C001": True,
+            "comm_sel_C002": True,
+            "comm_sel_C003": True,
+            "weight_comm_C001": 0.5,
+            "weight_comm_C002": 0.2,
+            "weight_comm_C003": 0.1,
+        }
+        monkeypatch.setattr(page_helpers_module.st, "session_state", sess)
+        monkeypatch.setattr(
+            page_helpers_module,
+            "load_broad_categories_res_10",
+            lambda: (
+                ["Rock", "Pop"],
+                {
+                    "C001": ["Rock"],
+                    "C002": ["Pop"],
+                    "C003": ["Rock", "Pop"],
+                },
+            ),
+        )
+        removed = prune_communities_to_selected_broad_categories()
+        assert removed == 1
+        assert sess["selected_communities"] == {"C001", "C003"}
+        assert sess["community_weights_raw"] == {"C001": 0.5, "C003": 0.1}
+        assert sess.get("comm_sel_C002") is False
+        assert "weight_comm_C002" not in sess
+
+
+class TestPruneWeightsToSelectedCommunities:
+    def test_removes_weights_for_deselected_communities(
+        self,
+        monkeypatch: pytest.MonkeyPatch,
+    ) -> None:
+        sess: dict[str, object] = {
+            "selected_communities": {"C001"},
+            "community_weights_raw": {"C001": 0.4, "C002": 0.9},
+            "weight_comm_C001": 0.4,
+            "weight_comm_C002": 0.9,
+        }
+        monkeypatch.setattr(page_helpers_module.st, "session_state", sess)
+        removed = prune_weights_to_selected_communities()
+        assert removed == 1
+        assert sess["community_weights_raw"] == {"C001": 0.4}
+        assert "weight_comm_C002" not in sess
+        assert sess["weight_comm_C001"] == 0.4
+
+    def test_no_op_when_weights_empty(
+        self,
+        monkeypatch: pytest.MonkeyPatch,
+    ) -> None:
+        sess: dict[str, object] = {
+            "selected_communities": {"C001"},
+            "community_weights_raw": {},
+        }
+        monkeypatch.setattr(page_helpers_module.st, "session_state", sess)
+        assert prune_weights_to_selected_communities() == 0
+
+
+class TestResetStepCascades:
+    def test_reset_step1_cascade_clears_all_three_steps(
+        self,
+        monkeypatch: pytest.MonkeyPatch,
+    ) -> None:
+        sess: dict[str, object] = {
+            "selected_broad_categories": {"Rock"},
+            "selected_communities": {"C001"},
+            "filter_settings": {"year_min": 1990},
+            "community_weights_raw": {"C001": 0.5},
+            "free_text_query": "dreamy",
+            "broad_cat_Rock": True,
+            "comm_sel_C001": True,
+            "weight_comm_C001": 0.5,
+            FILTER_FLOW_WIDGET_KEY_YEAR_RANGE: (1990, 2020),
+        }
+        monkeypatch.setattr(
+            page_helpers_module,
+            "min_release_year_from_corpus",
+            lambda: 2000,
+        )
+        monkeypatch.setattr(
+            page_helpers_module,
+            "max_release_year_from_corpus",
+            lambda: 2100,
+        )
+        monkeypatch.setattr(page_helpers_module.st, "session_state", sess)
+        reset_step1_cascade()
+        mod = page_helpers_module
+        assert sess["selected_broad_categories"] == set()
+        assert sess["selected_communities"] == set()
+        assert sess["filter_settings"] == {}
+        assert sess["community_weights_raw"] == {}
+        assert sess["free_text_query"] == ""
+        assert sess.get("broad_cat_Rock") is False
+        assert sess.get("comm_sel_C001") is False
+        assert "weight_comm_C001" not in sess
+        assert sess[mod.FILTER_FLOW_WIDGET_KEY_YEAR_RANGE] == (2000, 2100)
+        assert sess.get(TASTE_WIZARD_RESET_PENDING_KEY) is True
+
+    def test_reset_step2_cascade_keeps_broad_categories_and_filters(
+        self,
+        monkeypatch: pytest.MonkeyPatch,
+    ) -> None:
+        sess: dict[str, object] = {
+            "selected_broad_categories": {"Rock"},
+            "selected_communities": {"C001", "C002"},
+            "artist_flow_selected_communities": {"C001"},
+            "genre_flow_selected_communities": {"C002"},
+            "filter_settings": {"year_min": 1990},
+            "community_weights_raw": {"C001": 0.3, "C002": 0.8},
+            "comm_sel_C001": True,
+            "weight_comm_C002": 0.8,
+        }
+        monkeypatch.setattr(page_helpers_module.st, "session_state", sess)
+        reset_step2_cascade()
+        assert sess["selected_broad_categories"] == {"Rock"}
+        assert sess["selected_communities"] == set()
+        assert sess["artist_flow_selected_communities"] == set()
+        assert sess["genre_flow_selected_communities"] == set()
+        assert sess["community_weights_raw"] == {}
+        assert sess["filter_settings"] == {"year_min": 1990}
+        assert sess.get("comm_sel_C001") is False
+        assert "weight_comm_C002" not in sess
+        assert sess.get(TASTE_WIZARD_RESET_PENDING_KEY) is True
+
+    def test_reset_step3_keeps_steps_1_and_2(
+        self,
+        monkeypatch: pytest.MonkeyPatch,
+    ) -> None:
+        sess: dict[str, object] = {
+            "selected_broad_categories": {"Rock"},
+            "selected_communities": {"C001"},
+            "filter_settings": {"year_min": 1990, "rating_min": 7},
+            "community_weights_raw": {"C001": 0.4},
+            "free_text_query": "warm",
+            "weight_comm_C001": 0.4,
+            FILTER_FLOW_WIDGET_KEY_YEAR_RANGE: (1990, 2020),
+            SEMANTIC_CHAT_INPUT_KEY: "stale",
+        }
+        monkeypatch.setattr(
+            page_helpers_module,
+            "min_release_year_from_corpus",
+            lambda: 2000,
+        )
+        monkeypatch.setattr(
+            page_helpers_module,
+            "max_release_year_from_corpus",
+            lambda: 2100,
+        )
+        monkeypatch.setattr(page_helpers_module.st, "session_state", sess)
+        reset_step3()
+        assert sess["selected_broad_categories"] == {"Rock"}
+        assert sess["selected_communities"] == {"C001"}
+        assert sess["filter_settings"] == {}
+        assert sess["community_weights_raw"] == {}
+        assert sess["free_text_query"] == ""
+        assert SEMANTIC_CHAT_INPUT_KEY not in sess
+        expected_bias = community_weight_bias_from_stored(
+            float(RECOMMENDATION_DEFAULT_COMMUNITY_WEIGHT_RAW),
+        )
+        assert sess["weight_comm_C001"] == expected_bias
+        mod = page_helpers_module
+        assert sess[FILTER_FLOW_WIDGET_KEY_YEAR_RANGE] == (2000, 2100)
+        assert sess[mod.FILTER_FLOW_WIDGET_KEY_RATING_RANGE] == (
+            mod.DEFAULT_PLATTENTESTS_RATING_FILTER_MIN,
+            mod.DEFAULT_PLATTENTESTS_RATING_FILTER_MAX,
+        )
+        pct_lo, pct_hi = mod.style_match_percent_tuple_for_slider(0.0, 1.0)
+        assert sess[mod.FILTER_FLOW_WIDGET_KEY_STYLE_MATCH_PCT] == (pct_lo, pct_hi)
+        assert sess[mod.FILTER_FLOW_WIDGET_KEY_SPECTRUM] == mod.snap_spectrum_crossover(
+            RECOMMENDATION_DEFAULT_COMMUNITY_CROSSOVER,
+        )
+        assert (
+            sess[mod.FILTER_FLOW_WIDGET_KEY_OVERALL_ALPHA]
+            == RECOMMENDATION_OVERALL_ALPHA
+        )
+        assert (
+            sess[mod.FILTER_FLOW_WIDGET_KEY_OVERALL_BETA] == RECOMMENDATION_OVERALL_BETA
+        )
+        assert (
+            sess[mod.FILTER_FLOW_WIDGET_KEY_OVERALL_GAMMA]
+            == RECOMMENDATION_OVERALL_GAMMA
+        )
+        assert sess[SEMANTIC_RAG_MAX_DISTANCE_KEY] == 1.0
+        assert sess.get(TASTE_WIZARD_RESET_PENDING_KEY) is True

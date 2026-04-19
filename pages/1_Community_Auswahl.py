@@ -7,10 +7,13 @@ from typing import Any
 import streamlit as st
 from pages.page_helpers import (
     build_community_broad_category_index,
+    has_step2_state,
     load_broad_categories_res_10,
     load_communities_res_10,
     load_genre_labels_res_10,
+    prune_communities_to_selected_broad_categories,
     render_toolbar,
+    reset_step2_cascade,
 )
 
 
@@ -107,6 +110,7 @@ def _render_community_list(
 
 def main() -> None:
     _ensure_session_state()
+    prune_communities_to_selected_broad_categories()
     render_toolbar("community_auswahl")
     _feinwahl_css()
 
@@ -171,6 +175,14 @@ def main() -> None:
         st.session_state["selected_communities"] = selected
 
     st.markdown('<div class="feinwahl-cta">', unsafe_allow_html=True)
+    if has_step2_state():
+        st.button(
+            "Auswahl zurücksetzen",
+            type="secondary",
+            width="stretch",
+            key="feinwahl_reset_cascade",
+            on_click=reset_step2_cascade,
+        )
     col_back, col_next = st.columns(2)
     with col_back:
         if st.button(

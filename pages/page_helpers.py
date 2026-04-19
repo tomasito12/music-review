@@ -12,7 +12,17 @@ from typing import Any
 
 import streamlit as st
 
-from music_review.config import resolve_data_path
+from music_review.config import (
+    RECOMMENDATION_DEFAULT_COMMUNITY_CROSSOVER,
+    RECOMMENDATION_DEFAULT_COMMUNITY_WEIGHT_RAW,
+    RECOMMENDATION_OVERALL_ALPHA,
+    RECOMMENDATION_OVERALL_BETA,
+    RECOMMENDATION_OVERALL_GAMMA,
+    resolve_data_path,
+)
+from music_review.dashboard.community_weight_mapping import (
+    community_weight_bias_from_stored,
+)
 from music_review.dashboard.streamlit_branding import (
     ensure_plattenradar_dashboard_chrome,
 )
@@ -235,6 +245,11 @@ SPOTIFY_OAUTH_STATE_COOKIE_NAME = "mr_spotify_oauth_state"
 SPOTIFY_PKCE_VERIFIER_COOKIE_NAME = "mr_spotify_pkce_verifier"
 # Filter/taste session snapshot before Spotify redirect (survives profile re-hydrate).
 SPOTIFY_SESSION_SNAPSHOT_COOKIE_NAME = "mr_spotify_session_snapshot"
+# Where to send the user after a successful Spotify OAuth callback (page identifier).
+SPOTIFY_OAUTH_RETURN_PAGE_COOKIE_NAME = "mr_spotify_oauth_return_page"
+
+# Allowed values for the OAuth-return cookie (anything else is treated as "stay").
+SPOTIFY_OAUTH_RETURN_PAGE_STREAMING_CONNECTIONS = "streaming_verbindungen"
 
 # Streamlit widget session keys for Schritt 3 sliders (cleared on taste reset).
 FILTER_FLOW_WIDGET_KEY_YEAR_RANGE = "filter_flow_year_range"
@@ -1215,21 +1230,63 @@ def save_current_profile_to_disk() -> None:
     st.success(f"Profil '{slug}' gespeichert.")
 
 
-def _pop_taste_wizard_widget_session_keys(state: MutableMapping[str, Any]) -> None:
-    """Remove Streamlit widget keys so checkboxes/sliders re-sync to cleared data.
+def _seed_filter_flow_main_sliders(state: MutableMapping[str, Any]) -> None:
+    """Assign Schritt-3 main filter slider keys so Streamlit shows defaults.
 
-    Widgets with explicit ``key=`` keep their values in session state even when
-    canonical keys like ``selected_communities`` are cleared; unkeyed sliders
-    also retain internal state. Dropping these keys forces the next run to use
-    defaults derived from empty ``filter_settings`` / selection sets.
+    Popping these keys is not enough: Streamlit may restore the previous thumb
+    positions from its widget cache. Values match the defaults used when
+    ``filter_settings`` is empty (see ``pages/5_Filter_Flow.py``).
+    """
+    year_floor = min_release_year_from_corpus()
+    year_cap = max_release_year_from_corpus()
+    y_lo, y_hi = clamp_year_filter_bounds(
+        year_floor,
+        year_cap,
+        year_cap=year_cap,
+        year_floor=year_floor,
+    )
+    r_lo, r_hi = clamp_plattentests_rating_filter_range(
+        DEFAULT_PLATTENTESTS_RATING_FILTER_MIN,
+        DEFAULT_PLATTENTESTS_RATING_FILTER_MAX,
+    )
+    pct_lo, pct_hi = style_match_percent_tuple_for_slider(0.0, 1.0)
+    spectrum_val = snap_spectrum_crossover(RECOMMENDATION_DEFAULT_COMMUNITY_CROSSOVER)
+    state[FILTER_FLOW_WIDGET_KEY_YEAR_RANGE] = (y_lo, y_hi)
+    state[FILTER_FLOW_WIDGET_KEY_RATING_RANGE] = (r_lo, r_hi)
+    state[FILTER_FLOW_WIDGET_KEY_STYLE_MATCH_PCT] = (pct_lo, pct_hi)
+    state[FILTER_FLOW_WIDGET_KEY_SPECTRUM] = spectrum_val
+    state[FILTER_FLOW_WIDGET_KEY_OVERALL_ALPHA] = float(RECOMMENDATION_OVERALL_ALPHA)
+    state[FILTER_FLOW_WIDGET_KEY_OVERALL_BETA] = float(RECOMMENDATION_OVERALL_BETA)
+    state[FILTER_FLOW_WIDGET_KEY_OVERALL_GAMMA] = float(RECOMMENDATION_OVERALL_GAMMA)
+
+
+def _seed_weight_comm_sliders(state: MutableMapping[str, Any]) -> None:
+    """Reset per-community weight slider keys to neutral (matches default raw)."""
+    bias = community_weight_bias_from_stored(
+        float(RECOMMENDATION_DEFAULT_COMMUNITY_WEIGHT_RAW),
+    )
+    for k in list(state.keys()):
+        if isinstance(k, str) and k.startswith("weight_comm_"):
+            state[k] = bias
+    state[SEMANTIC_RAG_MAX_DISTANCE_KEY] = 1.0
+
+
+def _pop_taste_wizard_widget_session_keys(state: MutableMapping[str, Any]) -> None:
+    """Reset Streamlit widget keys so checkboxes/sliders re-sync to cleared data.
+
+    Checkbox keys (``broad_cat_*``, ``comm_sel_*``) are explicitly set to
+    ``False``; ``weight_comm_*`` keys are popped (re-created on next visit).
+    Main Schritt-3 sliders are written via ``_seed_filter_flow_main_sliders``
+    for the same reason as checkboxes (Streamlit widget cache).
     """
     for k in list(state.keys()):
         if not isinstance(k, str):
             continue
-        if any(k.startswith(p) for p in TASTE_WIZARD_WIDGET_KEY_PREFIXES):
+        if k.startswith(("broad_cat_", "comm_sel_")):
+            state[k] = False
+        elif k.startswith("weight_comm_"):
             state.pop(k, None)
-    for k in FILTER_FLOW_WIDGET_KEYS:
-        state.pop(k, None)
+    _seed_filter_flow_main_sliders(state)
 
 
 def _reset_filters() -> None:
@@ -1253,6 +1310,148 @@ def reset_taste_preferences() -> None:
     _reset_filters()
     mark_taste_wizard_reset_pending(st.session_state)
     st.session_state["flow_mode"] = None
+
+
+def _drop_widget_keys_for_community(state: MutableMapping[str, Any], cid: str) -> None:
+    """Reset per-community Streamlit widget keys so checkbox/slider state resets.
+
+    Checkbox keys are set to ``False`` (Streamlit's widget cache otherwise
+    repopulates the prior value); slider keys are popped to fall back to the
+    default value declared at render time.
+    """
+    state[f"comm_sel_{cid}"] = False
+    state.pop(f"weight_comm_{cid}", None)
+
+
+def prune_weights_to_selected_communities() -> int:
+    """Drop community weights for communities that are no longer selected.
+
+    Returns the number of removed weight entries. Also clears widget keys so the
+    corresponding sliders disappear on the next rerun.
+    """
+    weights = st.session_state.get("community_weights_raw")
+    if not isinstance(weights, dict) or not weights:
+        return 0
+    selected_raw = st.session_state.get("selected_communities")
+    if isinstance(selected_raw, set):
+        selected = {str(c) for c in selected_raw}
+    else:
+        selected = set()
+    stale = [cid for cid in list(weights.keys()) if str(cid) not in selected]
+    for cid in stale:
+        weights.pop(cid, None)
+        st.session_state.pop(f"weight_comm_{cid}", None)
+    st.session_state["community_weights_raw"] = weights
+    return len(stale)
+
+
+def prune_communities_to_selected_broad_categories() -> int:
+    """Drop selected communities whose broad categories are no longer selected.
+
+    When the user has not selected any broad category, every community is
+    visible and nothing is pruned. Returns the number of removed community IDs.
+    Also cascades into ``prune_weights_to_selected_communities`` so orphaned
+    weights do not stick around.
+    """
+    selected_broad_raw = st.session_state.get("selected_broad_categories")
+    if not isinstance(selected_broad_raw, set) or not selected_broad_raw:
+        return 0
+    selected_comms_raw = st.session_state.get("selected_communities")
+    if not isinstance(selected_comms_raw, set) or not selected_comms_raw:
+        return 0
+    _broad_cats, mappings = load_broad_categories_res_10()
+    if not mappings:
+        return 0
+    selected_broad: set[str] = {str(c) for c in selected_broad_raw}
+    keep: set[str] = set()
+    removed: list[str] = []
+    for cid_raw in selected_comms_raw:
+        cid = str(cid_raw)
+        cats = mappings.get(cid) or ["Sonstige"]
+        if set(cats) & selected_broad:
+            keep.add(cid)
+        else:
+            removed.append(cid)
+    if not removed:
+        return 0
+    st.session_state["selected_communities"] = keep
+    for cid in removed:
+        _drop_widget_keys_for_community(st.session_state, cid)
+    prune_weights_to_selected_communities()
+    return len(removed)
+
+
+def _reset_step3_filter_and_weights() -> None:
+    """Shared cleanup for Schritt 3: filter + weights + semantic chat state."""
+    st.session_state["filter_settings"] = {}
+    st.session_state["community_weights_raw"] = {}
+    st.session_state["free_text_query"] = ""
+    st.session_state.pop(SEMANTIC_CHAT_MESSAGES_KEY, None)
+    st.session_state.pop(SEMANTIC_CHAT_INPUT_KEY, None)
+    st.session_state.pop(FILTER_PLATTENLABEL_MULTISELECT_KEY, None)
+    _seed_filter_flow_main_sliders(st.session_state)
+    _seed_weight_comm_sliders(st.session_state)
+
+
+def reset_step1_cascade() -> None:
+    """Cascade reset starting at Schritt 1 (clears all three steps)."""
+    reset_taste_preferences()
+
+
+def reset_step2_cascade() -> None:
+    """Cascade reset starting at Schritt 2: clears fine styles and per-style weights.
+
+    Schritt 1 (broad categories) and Schritt 3 filter settings (year, rating,
+    overall weights) stay untouched since they are conceptually independent.
+    """
+    st.session_state["selected_communities"] = set()
+    st.session_state["artist_flow_selected_communities"] = set()
+    st.session_state["genre_flow_selected_communities"] = set()
+    st.session_state["community_weights_raw"] = {}
+    for key in list(st.session_state.keys()):
+        if not isinstance(key, str):
+            continue
+        if key.startswith("comm_sel_"):
+            st.session_state[key] = False
+        elif key.startswith("weight_comm_"):
+            st.session_state.pop(key, None)
+    mark_taste_wizard_reset_pending(st.session_state)
+
+
+def reset_step3() -> None:
+    """Reset only Schritt 3 (filter + weighting); leaves Schritt 1 and 2 intact."""
+    _reset_step3_filter_and_weights()
+    mark_taste_wizard_reset_pending(st.session_state)
+
+
+def has_step1_state() -> bool:
+    """True when Schritt 1 holds any broad-category selection."""
+    raw = st.session_state.get("selected_broad_categories")
+    return bool(isinstance(raw, set) and raw)
+
+
+def has_step2_state() -> bool:
+    """True when Schritt 2 holds any fine-style (community) selection."""
+    raw = st.session_state.get("selected_communities")
+    if isinstance(raw, set) and raw:
+        return True
+    artist = st.session_state.get("artist_flow_selected_communities")
+    genre = st.session_state.get("genre_flow_selected_communities")
+    if isinstance(artist, set) and artist:
+        return True
+    return bool(isinstance(genre, set) and genre)
+
+
+def has_step3_state() -> bool:
+    """True when Schritt 3 holds filter settings, weights, or a semantic query."""
+    fs = st.session_state.get("filter_settings")
+    if isinstance(fs, dict) and fs:
+        return True
+    weights = st.session_state.get("community_weights_raw")
+    if isinstance(weights, dict) and weights:
+        return True
+    free_text = st.session_state.get("free_text_query")
+    return bool(isinstance(free_text, str) and free_text.strip())
 
 
 def logout_active_profile() -> None:
@@ -1497,6 +1696,49 @@ def clear_spotify_session_snapshot_cookie() -> None:
         cm,
         SPOTIFY_SESSION_SNAPSHOT_COOKIE_NAME,
         key="mr_cookie_spotify_snapshot_del",
+    )
+
+
+def persist_spotify_oauth_return_page_cookie(value: str) -> None:
+    """Remember which page started the Spotify OAuth flow (short-lived cookie)."""
+    if not isinstance(value, str) or not value.strip():
+        return
+    cm = profile_cookie_manager()
+    cm.set(
+        SPOTIFY_OAUTH_RETURN_PAGE_COOKIE_NAME,
+        value.strip(),
+        key="mr_cookie_spotify_return_set",
+        max_age=600.0,
+        same_site="lax",
+    )
+
+
+def peek_spotify_oauth_return_page_from_context_cookies() -> str | None:
+    """Return OAuth-return-page hint from HTTP cookies (faster than CookieManager)."""
+    try:
+        raw = st.context.cookies.to_dict().get(SPOTIFY_OAUTH_RETURN_PAGE_COOKIE_NAME)
+    except Exception:
+        return None
+    return raw.strip() if isinstance(raw, str) and raw.strip() else None
+
+
+def peek_spotify_oauth_return_page_cookie() -> str | None:
+    """Return the OAuth-return-page hint set before redirect, or None."""
+    raw_ctx = peek_spotify_oauth_return_page_from_context_cookies()
+    if raw_ctx:
+        return raw_ctx
+    cm = profile_cookie_manager()
+    raw = cm.get(SPOTIFY_OAUTH_RETURN_PAGE_COOKIE_NAME)
+    return raw.strip() if isinstance(raw, str) and raw.strip() else None
+
+
+def clear_spotify_oauth_return_page_cookie() -> None:
+    """Remove the OAuth-return-page cookie after we have honored or discarded it."""
+    cm = profile_cookie_manager()
+    _safe_cookie_manager_delete(
+        cm,
+        SPOTIFY_OAUTH_RETURN_PAGE_COOKIE_NAME,
+        key="mr_cookie_spotify_return_del",
     )
 
 
