@@ -19,11 +19,6 @@ from pages.page_helpers import (
     FILTER_FLOW_WIDGET_KEY_YEAR_RANGE,
     FILTER_PLATTENLABEL_MULTISELECT_KEY,
     PLATTENLABEL_SONSTIGE_UI,
-    SEMANTIC_CHAT_INPUT_KEY,
-    SEMANTIC_CHAT_MESSAGES_KEY,
-    SEMANTIC_CHAT_RESET_BUTTON_KEY,
-    SEMANTIC_RAG_MAX_DISTANCE_KEY,
-    SEMANTIC_SEARCH_CHAT_AVATAR_CSS,
     SPECTRUM_CROSSOVER_STOPS,
     STYLE_MATCH_FILTER_PERCENT_STEP,
     WIZARD_ACCOUNT_SAVE_INTENT_KEY,
@@ -52,7 +47,6 @@ from pages.page_helpers import (
 )
 
 from music_review.config import (
-    DASHBOARD_SEMANTIC_SEARCH_ENABLED,
     RECOMMENDATION_DEFAULT_COMMUNITY_CROSSOVER,
     RECOMMENDATION_DEFAULT_COMMUNITY_WEIGHT_RAW,
     RECOMMENDATION_OVERALL_ALPHA,
@@ -66,9 +60,6 @@ from music_review.dashboard.community_weight_mapping import (
 
 
 def _filter_css() -> None:
-    semantic_chat_css = (
-        SEMANTIC_SEARCH_CHAT_AVATAR_CSS if DASHBOARD_SEMANTIC_SEARCH_ENABLED else ""
-    )
     st.markdown(
         """
         <style>
@@ -313,9 +304,6 @@ def _filter_css() -> None:
             line-height: 1.45;
             max-width: 40rem;
         }
-        """
-        + semantic_chat_css
-        + """
         </style>
         """,
         unsafe_allow_html=True,
@@ -336,8 +324,6 @@ def _ensure_session_state() -> None:
         st.session_state["filter_settings"] = {}
     if "community_weights_raw" not in st.session_state:
         st.session_state["community_weights_raw"] = {}
-    if "free_text_query" not in st.session_state:
-        st.session_state["free_text_query"] = ""
 
 
 def _render_style_weights(
@@ -856,91 +842,8 @@ def main() -> None:
 
     st.markdown('<div style="margin-top:1rem;"></div>', unsafe_allow_html=True)
 
-    if DASHBOARD_SEMANTIC_SEARCH_ENABLED:
-        with st.expander("Semantische Suche"):
-            st.markdown(
-                '<div class="filter-expander-desc-wrap" '
-                'style="text-align:center;width:100%;">'
-                '<p class="filter-desc" style="text-align:center;margin-left:auto;'
-                'margin-right:auto;max-width:34rem;">'
-                "Beschreibe Stimmung, Klang oder Inhalte. Auf der Seite "
-                "<strong>Empfehlungen</strong> erscheinen darauf passende Alben "
-                "(Schnittmenge mit deiner Rangliste und weitere semantische "
-                "Treffer)."
-                "</p></div>",
-                unsafe_allow_html=True,
-            )
-            _filter_vertical_space("md")
-
-            chat_reset = st.button(
-                "Chat zurücksetzen",
-                key=SEMANTIC_CHAT_RESET_BUTTON_KEY,
-            )
-            if chat_reset:
-                st.session_state["free_text_query"] = ""
-                st.session_state[SEMANTIC_CHAT_MESSAGES_KEY] = []
-
-            chat_messages = st.session_state.get(SEMANTIC_CHAT_MESSAGES_KEY)
-            if not isinstance(chat_messages, list):
-                chat_messages = []
-            if not chat_messages:
-                chat_messages = [
-                    {
-                        "role": "assistant",
-                        "content": (
-                            "Kannst du mir beschreiben, nach welcher Musik du "
-                            "gerade suchst?"
-                        ),
-                    },
-                ]
-
-            chat_input = st.chat_input(
-                "Stimmung oder Inhalte beschreiben …",
-                key=SEMANTIC_CHAT_INPUT_KEY,
-            )
-            if chat_input is not None:
-                chat_input_clean = chat_input.strip()
-                st.session_state["free_text_query"] = chat_input_clean
-                if chat_input_clean:
-                    chat_messages.append({"role": "user", "content": chat_input_clean})
-                    chat_messages.append(
-                        {
-                            "role": "assistant",
-                            "content": (
-                                "Alles klar - ich passe die Trefferliste "
-                                "an deine Beschreibung an."
-                            ),
-                        },
-                    )
-            st.session_state[SEMANTIC_CHAT_MESSAGES_KEY] = chat_messages
-
-            for msg in chat_messages:
-                role = msg.get("role")
-                content = msg.get("content")
-                if role not in {"assistant", "user"}:
-                    continue
-                if not isinstance(content, str):
-                    continue
-                with st.chat_message(role):
-                    st.markdown(content)
-
-            q_show = (st.session_state.get("free_text_query") or "").strip()
-            if q_show:
-                st.caption(f"**Aktuelle Freitext-Suche:** {q_show}")
-
-            free_text_semantic = (st.session_state.get("free_text_query") or "").strip()
-            st.slider(
-                "Ähnlichkeit (niedriger = passender)",
-                min_value=0.0,
-                max_value=2.0,
-                value=1.0,
-                step=0.05,
-                disabled=not bool(free_text_semantic),
-                key=SEMANTIC_RAG_MAX_DISTANCE_KEY,
-            )
-
     # ── Session State speichern ──────────────────────────────────
-    # Sortierung/Serendipity: Empfehlungsseite; Freitext-Strategie fest B (kein UI).
+    # Sortierung/Serendipity: Empfehlungsseite.
     merged_fs: dict[str, Any] = dict(
         st.session_state.get("filter_settings") or {},
     )
@@ -956,7 +859,6 @@ def main() -> None:
             "overall_weight_alpha": overall_weight_alpha,
             "overall_weight_beta": overall_weight_beta,
             "overall_weight_gamma": overall_weight_gamma,
-            "rag_query_strategy": "B",
         },
     )
     p_freq, p_rare, _p_n = load_plattenlabel_filter_buckets()

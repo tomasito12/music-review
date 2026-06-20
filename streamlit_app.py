@@ -287,10 +287,8 @@ def _navigation_pages() -> list[Any]:
         st.Page("pages/1_Community_Auswahl.py", title="Genre / Stil"),
         st.Page("pages/5_Filter_Flow.py", title="Filter"),
         st.Page("pages/2_Entdecken.py", title="Entdecken"),
-        st.Page("pages/4_Text_Flow.py", title="Freitext"),
         st.Page("pages/6_Recommendations_Flow.py", title="Empfehlungen"),
         st.Page("pages/8_Neueste_Rezensionen.py", title="Neueste Rezensionen"),
-        st.Page("pages/7_Freitext_Qualitaet.py", title="Freitext-Qualität"),
         _playlist_hub_nav_page(),
     ]
     if session_taste_setup_complete():

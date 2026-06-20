@@ -229,13 +229,6 @@ FILTER_PLATTENLABEL_MULTISELECT_KEY = "filter_plattenlabel_multiselect"
 FILTER_ACCOUNT_SAVE_PROMPT_ACTIVE_KEY = "filter_account_save_prompt_active"
 WIZARD_ACCOUNT_SAVE_INTENT_KEY = "wizard_account_save_intent"
 
-# Semantische Freitext-Suche (Expander im Filter-Flow; siehe
-# ``DASHBOARD_SEMANTIC_SEARCH_ENABLED`` in ``music_review.config``).
-SEMANTIC_CHAT_RESET_BUTTON_KEY = "rec_chat_reset_button"
-SEMANTIC_CHAT_INPUT_KEY = "rec_chat_input"
-SEMANTIC_RAG_MAX_DISTANCE_KEY = "rec_rag_max_distance"
-SEMANTIC_CHAT_MESSAGES_KEY = "rec_chat_messages"
-
 # Browser cookie for session-token-based login (replaces plain slug cookie).
 SESSION_TOKEN_COOKIE_NAME = "mr_session_token"
 
@@ -836,9 +829,6 @@ _REC_FLOW_SHELL_CHAT_AVATAR_CSS = """
         }
 """
 
-# Assistant-Avatar im Finetuning-Expander „Semantische Suche“ (Filter-Flow).
-SEMANTIC_SEARCH_CHAT_AVATAR_CSS = _REC_FLOW_SHELL_CHAT_AVATAR_CSS.strip()
-
 # Shared by Empfehlungen (6) and Neueste Rezensionen (8); keep in sync visually.
 _RECOMMENDATION_FLOW_SHELL_CSS_BASE = """
         .rec-hero {
@@ -1073,30 +1063,6 @@ def normalize_filter_expander_vspace_gap(gap: str) -> str:
     return gap if gap in _FILTER_EXPANDER_VSPACE_GAPS else "md"
 
 
-@st.cache_data(ttl=3600)
-def search_rag_hits_for_dashboard(
-    query_text: str,
-    *,
-    strategy: str = "B",
-    n_results: int = 2500,
-    top_k_per_variant: int = 2500,
-) -> list[dict[str, Any]]:
-    """Run Chroma semantic search for the dashboard free-text field."""
-    from music_review.pipeline.retrieval.vector_store import (
-        CHUNK_COLLECTION_NAME,
-        search_reviews_with_variants,
-    )
-
-    return search_reviews_with_variants(
-        query_text,
-        strategy=strategy,
-        n_results=n_results,
-        top_k_per_variant=top_k_per_variant,
-        where=None,
-        collection_name=CHUNK_COLLECTION_NAME,
-    )
-
-
 def get_selected_communities() -> set[str]:
     """Return the set of selected community IDs.
 
@@ -1256,7 +1222,6 @@ def _seed_weight_comm_sliders(state: MutableMapping[str, Any]) -> None:
     for k in list(state.keys()):
         if isinstance(k, str) and k.startswith("weight_comm_"):
             state[k] = bias
-    state[SEMANTIC_RAG_MAX_DISTANCE_KEY] = 1.0
 
 
 def _pop_taste_wizard_widget_session_keys(state: MutableMapping[str, Any]) -> None:
@@ -1285,10 +1250,6 @@ def _reset_filters() -> None:
     st.session_state["genre_flow_selected_communities"] = set()
     st.session_state["filter_settings"] = {}
     st.session_state["community_weights_raw"] = {}
-    st.session_state["free_text_query"] = ""
-    st.session_state.pop(SEMANTIC_CHAT_MESSAGES_KEY, None)
-    st.session_state.pop(SEMANTIC_RAG_MAX_DISTANCE_KEY, None)
-    st.session_state.pop(SEMANTIC_CHAT_INPUT_KEY, None)
     st.session_state.pop(FILTER_PLATTENLABEL_MULTISELECT_KEY, None)
     _pop_taste_wizard_widget_session_keys(st.session_state)
 
@@ -1370,12 +1331,9 @@ def prune_communities_to_selected_broad_categories() -> int:
 
 
 def _reset_step3_filter_and_weights() -> None:
-    """Shared cleanup for Schritt 3: filter + weights + semantic chat state."""
+    """Shared cleanup for Schritt 3: filter settings and per-style weights."""
     st.session_state["filter_settings"] = {}
     st.session_state["community_weights_raw"] = {}
-    st.session_state["free_text_query"] = ""
-    st.session_state.pop(SEMANTIC_CHAT_MESSAGES_KEY, None)
-    st.session_state.pop(SEMANTIC_CHAT_INPUT_KEY, None)
     st.session_state.pop(FILTER_PLATTENLABEL_MULTISELECT_KEY, None)
     _seed_filter_flow_main_sliders(st.session_state)
     _seed_weight_comm_sliders(st.session_state)
@@ -1431,15 +1389,12 @@ def has_step2_state() -> bool:
 
 
 def has_step3_state() -> bool:
-    """True when Schritt 3 holds filter settings, weights, or a semantic query."""
+    """True when Schritt 3 holds filter settings or per-style weights."""
     fs = st.session_state.get("filter_settings")
     if isinstance(fs, dict) and fs:
         return True
     weights = st.session_state.get("community_weights_raw")
-    if isinstance(weights, dict) and weights:
-        return True
-    free_text = st.session_state.get("free_text_query")
-    return bool(isinstance(free_text, str) and free_text.strip())
+    return bool(isinstance(weights, dict) and weights)
 
 
 def logout_active_profile() -> None:

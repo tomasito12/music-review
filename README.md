@@ -1,11 +1,10 @@
 # music-review
 
-Music review scraper and RAG data pipeline.
+Music review scraper and enrichment pipeline.
 
 Scrapes album reviews from [plattentests.de](https://www.plattentests.de),
 enriches them with metadata from the [MusicBrainz](https://musicbrainz.org) API,
-and indexes the reviews into a [ChromaDB](https://www.trychroma.com) vector store
-using OpenAI embeddings for semantic search and retrieval.
+and builds a reference graph with community labels for the Streamlit dashboard.
 
 ## How the data files are created
 
@@ -75,10 +74,7 @@ hatch run python -m music_review.pipeline.enrichment.artist_genres \
   --artist-profiles-output data/artist_genres.json \
   --imputed-metadata-output data/metadata_imputed.jsonl
 
-# Build the vector store (requires OPENAI_API_KEY)
-hatch run python -m music_review.pipeline.retrieval.vector_store
-
-# Start the Streamlit dashboard (browse reviews and metadata)
+# Start the Streamlit dashboard (browse reviews and recommendations)
 hatch run dashboard
 ```
 
@@ -96,16 +92,13 @@ Then open the URL shown in the terminal (default: http://localhost:8501). Select
 
 ### One command (full update)
 
-Updates reviews, metadata, imputation, **reference graph** (`artist_reference_graph.graphml`), **community exports** (`communities_res_10.json`, `community_memberships.jsonl`), **`album_community_affinities.jsonl`**, and **by default** incremental **Chroma chunks** (`music_reviews_chunks_v1`, OpenAI Batch API). Paths resolve relative to the project root (or `MUSIC_REVIEW_PROJECT_ROOT`).
+Updates reviews, metadata, imputation, **reference graph** (`artist_reference_graph.graphml`), **community exports** (`communities_res_10.json`, `community_memberships.jsonl`), **`album_community_affinities.jsonl`**, and a data-quality report. Paths resolve relative to the project root (or `MUSIC_REVIEW_PROJECT_ROOT`).
 
 **Stable communities:** `update-db` keeps existing `C00x` IDs from `community_memberships.jsonl` and only assigns **new** artists via the reference graph (so `community_genre_labels_res_10.json` stays valid). The first run on a machine without that file falls back to Louvain once. To **rebuild** clusters from scratch (new IDs — relabel communities afterwards), use `--recluster-communities`.
 
 ```bash
-# Full pipeline including graph + affinities + chunk Chroma (OPENAI_API_KEY for Chroma)
+# Full pipeline including graph + affinities + DQ report
 hatch run update-db
-
-# Skip Chroma only (still rebuilds graph + album_community_affinities)
-hatch run update-db -- --skip-chroma
 
 # Skip graph/affinities (faster; keeps existing album_community_affinities.jsonl)
 hatch run update-db -- --skip-graph-affinities
@@ -113,18 +106,13 @@ hatch run update-db -- --skip-graph-affinities
 # Full Louvain recluster (invalidates community genre labels until you re-run LLM labels)
 hatch run update-db -- --recluster-communities
 
-# Also update the legacy whole-review collection (music_reviews)
-hatch run update-db -- --chroma-legacy
-
 # Or specify a maximum review ID for the scraper
 hatch run update-db -- --max-id MAX_ID
 ```
 
 `hatch run full-data-update` is the same script; pass through the same flags.
 
-Options: `--verbose`, `--metadata-update`, `--skip-reviews`, `--metadata-min-review-id ID`, `--skip-graph-affinities`, `--recluster-communities`, `--skip-chroma`, `--chroma-legacy`.
-
-**Chroma:** Without `OPENAI_API_KEY`, JSONL steps still run; Chroma is **skipped** with a warning.
+Options: `--verbose`, `--metadata-update`, `--skip-reviews`, `--metadata-min-review-id ID`, `--skip-graph-affinities`, `--recluster-communities`, `--skip-dq`, `--dq-strict`.
 
 **Metadata fetch behaviour:** By default, `fetch_metadata` **skips** any `review_id` that already exists in `metadata.jsonl` and only calls MusicBrainz for **missing** rows. It still **scans** the whole `reviews.jsonl`, so you may see log lines for low ids if those rows are missing from metadata (e.g. gaps or a new output file). **`--metadata-update`** re-fetches **every** review (slow). After a scraper `resume`, if you only want MusicBrainz for **new high ids** and accept not filling old gaps, use e.g. `--metadata-min-review-id 21300` (pick the first id you care about).
 

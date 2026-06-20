@@ -25,9 +25,11 @@ Status legend:
 
 - `- [x] playlist-tunemyusic-export: Vorschlagsliste als TXT/CSV/Freitext für TuneMyMusic exportieren`
 
+- `- [x] chroma-removal: ChromaDB und semantische Suche aus Pipeline und App entfernt`
+
 - `- [ ] playlist-spotify-direct-publish: Optional Spotify-Playlist direkt per Web API veröffentlichen (Deezer weiter über TuneMyMusic)`
 
-- `- [ ] rag-system-search: Semantische Suche zu einem echten RAG-System ausbauen (Chunks als Kontext an ein LLM geben)`
+- `- [x] rag-system-search: Semantische Suche / RAG — nicht weiterverfolgt (Chroma entfernt)`
 
 - `- [ ] react-frontend: Neues Frontend auf Basis von React erstellen (Architektur/Scope klären)`
 
@@ -42,9 +44,9 @@ Now (high impact):
 
 - `- [x] dq-monitoring: Data-Quality-Checks + Pipeline-Health-Report nach jedem Update (Pflichtfelder, Duplikate, Ausreißer, Nullraten)`
 
-- `- [ ] retrieval-eval-goldset: Goldset für Retrieval aufbauen (30-100 Queries) + Metriken (Recall@k/nDCG) als Regressionstest`
+- `- [x] retrieval-eval-goldset: Goldset für Retrieval — nicht weiterverfolgt (Chroma entfernt)`
 
-- `- [ ] incremental-indexing: Inkrementelles Embedding/Indexing einführen (nur neue/geänderte Reviews, idempotent mit Checksums)`
+- `- [x] incremental-indexing: Inkrementelles Embedding/Indexing — nicht weiterverfolgt (Chroma entfernt)`
 
 - `- [ ] api-resilience: Einheitliche Retry/Backoff/Timeout-Policy für OpenAI/MusicBrainz/Scraper + Fehlerklassifikation`
 
@@ -54,7 +56,7 @@ Next (productization):
 
 - `- [ ] structured-logging-observability: Strukturierte Logs mit run_id/stage/review_id + Laufzeit-/Fehler-Metriken`
 
-- `- [ ] integration-tests-pipeline: End-to-end-nahe Integrationstests über Stage-Grenzen (Scrape -> Enrich -> Index -> Search)`
+- `- [x] integration-tests-pipeline: End-to-end Integrationstests — Search/Index-Teil entfällt mit Chroma-Removal`
 
 - `- [ ] recommendation-explainability: Erklärbarkeit im UI ergänzen ("Warum empfohlen?" inkl. Top-Signale)`
 

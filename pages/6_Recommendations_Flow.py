@@ -126,7 +126,6 @@ def _render_sort_settings_widgets_and_persist() -> None:
         )
     fs["sort_mode"] = sort_mode
     fs["serendipity"] = serendipity
-    fs["rag_query_strategy"] = "B"
     st.session_state["filter_settings"] = fs
 
 

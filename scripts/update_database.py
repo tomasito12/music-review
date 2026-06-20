@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Update the full database: reviews, metadata, imputation, and (by default) Chroma."""
+"""Update the full database: reviews, metadata, imputation, graph, and DQ."""
 
 from __future__ import annotations
 
@@ -34,49 +34,13 @@ def run_module(module: str, args: list[str]) -> bool:
     return True
 
 
-def _run_chroma_incremental(*, include_legacy: bool) -> int:
-    """Chunk batch index by default; optional legacy whole-review collection."""
-    from music_review.pipeline.retrieval.vector_store import (
-        build_index,
-        build_index_chunks_v1,
-    )
-
-    if include_legacy:
-        try:
-            added = build_index(recreate=False)
-        except RuntimeError as e:
-            if "OPENAI_API_KEY" in str(e):
-                logger.error("%s", e)
-                return 1
-            raise
-        logger.info(
-            "Chroma legacy collection: indexed %d new review(s) (music_reviews).",
-            added,
-        )
-
-    logger.info("Starting chunk batch indexing (music_reviews_chunks_v1) …")
-    try:
-        added_chunks = build_index_chunks_v1(recreate=False)
-    except RuntimeError as e:
-        if "OPENAI_API_KEY" in str(e):
-            logger.error("%s", e)
-            return 1
-        raise
-    logger.info(
-        "Chroma chunk collection: added %d new chunk(s).",
-        added_chunks,
-    )
-    return 0
-
-
 def main() -> int:
     parser = argparse.ArgumentParser(
         description=(
             "Update reviews JSONL, MusicBrainz metadata, genre imputation, "
             "reference graph + stable communities (res 10) + "
-            "album_community_affinities.jsonl, and by default incremental Chroma "
-            "chunk index (OpenAI Batch API). "
-            "Use --skip-graph-affinities or --skip-chroma to skip steps."
+            "album_community_affinities.jsonl. "
+            "Use --skip-graph-affinities to skip graph steps."
         ),
     )
     parser.add_argument(
@@ -153,19 +117,6 @@ def main() -> int:
             "Invalidates existing community_genre_labels JSON — relabel communities "
             "afterwards. Default is incremental mode (stable IDs from "
             "community_memberships.jsonl)."
-        ),
-    )
-    parser.add_argument(
-        "--skip-chroma",
-        action="store_true",
-        help=("Skip vector indexing after the JSONL steps (no OpenAI / Chroma calls)."),
-    )
-    parser.add_argument(
-        "--chroma-legacy",
-        action="store_true",
-        help=(
-            "Also incrementally index the legacy whole-review Chroma collection "
-            "(music_reviews). By default only the chunk collection is updated."
         ),
     )
     parser.add_argument(
@@ -288,18 +239,6 @@ def main() -> int:
             "Database update complete (reviews + metadata + imputation + graph "
             "+ album_community_affinities).",
         )
-
-    if args.skip_chroma:
-        logger.info("Skipping Chroma (--skip-chroma).")
-    elif not os.environ.get("OPENAI_API_KEY"):
-        logger.warning(
-            "OPENAI_API_KEY not set; skipping Chroma. "
-            "Set it in .env and re-run without --skip-chroma, or index manually.",
-        )
-    else:
-        rc = _run_chroma_incremental(include_legacy=args.chroma_legacy)
-        if rc != 0:
-            return rc
 
     logger.info("Full update pipeline finished.")
 

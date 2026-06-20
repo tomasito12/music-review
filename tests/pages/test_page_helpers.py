@@ -5,7 +5,6 @@ from __future__ import annotations
 from datetime import date, datetime
 from pathlib import Path
 from types import SimpleNamespace
-from unittest.mock import patch
 
 import pages.page_helpers as page_helpers_module
 import pytest
@@ -16,8 +15,6 @@ from pages.page_helpers import (
     OVERALL_WEIGHT_TRADEOFF_RED_LIGHT,
     OVERALL_WEIGHT_TRADEOFF_RED_MID,
     PLATTENLABEL_SONSTIGE_UI,
-    SEMANTIC_CHAT_INPUT_KEY,
-    SEMANTIC_RAG_MAX_DISTANCE_KEY,
     SPECTRUM_CROSSOVER_STOPS,
     STYLE_MATCH_FILTER_PERCENT_STEP,
     build_community_broad_category_index,
@@ -55,7 +52,6 @@ from pages.page_helpers import (
     reset_step3,
     reset_taste_preferences,
     review_raw_release_year,
-    search_rag_hits_for_dashboard,
     session_taste_setup_complete,
     snap_spectrum_crossover,
     spectrum_crossover_option_label,
@@ -687,24 +683,6 @@ class TestRecommendationCardCommunityTagsFilteredHighlight:
         assert "rec-comm-tag--filtered" in html
 
 
-class TestSearchRagHitsForDashboard:
-    def test_delegates_to_search_reviews_with_variants(self) -> None:
-        """Semantic search helper forwards to the vector store with strategy B."""
-        fake_hits = [{"review_id": 7, "distance": 0.5}]
-        with patch(
-            "music_review.pipeline.retrieval.vector_store.search_reviews_with_variants",
-            return_value=fake_hits,
-        ) as mocked:
-            search_rag_hits_for_dashboard.clear()
-            out = search_rag_hits_for_dashboard("melodic metal")
-        assert out == fake_hits
-        mocked.assert_called_once()
-        kwargs = mocked.call_args.kwargs
-        assert kwargs["strategy"] == "B"
-        assert kwargs["n_results"] == 2500
-        assert kwargs["top_k_per_variant"] == 2500
-
-
 def test_safe_cookie_manager_delete_suppresses_keyerror() -> None:
     class CM:
         def delete(self, *_a: object, **_k: object) -> None:
@@ -777,13 +755,11 @@ class TestTasteSetupSessionHelpers:
             "genre_flow_selected_communities": set(),
             "filter_settings": {"year_min": 1990},
             "community_weights_raw": {"a": 1.0},
-            "free_text_query": "x",
             "flow_mode": "combined",
             "comm_sel_C001": True,
             "broad_cat_Rock": True,
             "weight_comm_a": 0.25,
             FILTER_FLOW_WIDGET_KEY_YEAR_RANGE: (2000, 2010),
-            SEMANTIC_CHAT_INPUT_KEY: "stale",
         }
         monkeypatch.setattr(
             page_helpers_module,
@@ -801,7 +777,6 @@ class TestTasteSetupSessionHelpers:
         assert sess["selected_communities"] == set()
         assert sess["filter_settings"] == {}
         assert sess["community_weights_raw"] == {}
-        assert sess["free_text_query"] == ""
         assert sess["flow_mode"] is None
         assert sess.get(TASTE_WIZARD_RESET_PENDING_KEY) is True
         assert sess.get("comm_sel_C001") is False
@@ -829,7 +804,6 @@ class TestTasteSetupSessionHelpers:
             sess[mod.FILTER_FLOW_WIDGET_KEY_OVERALL_GAMMA]
             == RECOMMENDATION_OVERALL_GAMMA
         )
-        assert SEMANTIC_CHAT_INPUT_KEY not in sess
 
     def test_refresh_taste_wizard_after_filter_save_clears_pending(
         self,
@@ -1002,17 +976,6 @@ class TestWizardStatePredicates:
         )
         assert has_step3_state() is True
 
-    def test_has_step3_state_true_for_free_text_query(
-        self,
-        monkeypatch: pytest.MonkeyPatch,
-    ) -> None:
-        monkeypatch.setattr(
-            page_helpers_module.st,
-            "session_state",
-            {"free_text_query": "dreamy"},
-        )
-        assert has_step3_state() is True
-
     def test_has_step3_state_false_when_empty(
         self,
         monkeypatch: pytest.MonkeyPatch,
@@ -1023,7 +986,6 @@ class TestWizardStatePredicates:
             {
                 "filter_settings": {},
                 "community_weights_raw": {},
-                "free_text_query": "",
             },
         )
         assert has_step3_state() is False
@@ -1119,7 +1081,6 @@ class TestResetStepCascades:
             "selected_communities": {"C001"},
             "filter_settings": {"year_min": 1990},
             "community_weights_raw": {"C001": 0.5},
-            "free_text_query": "dreamy",
             "broad_cat_Rock": True,
             "comm_sel_C001": True,
             "weight_comm_C001": 0.5,
@@ -1142,7 +1103,6 @@ class TestResetStepCascades:
         assert sess["selected_communities"] == set()
         assert sess["filter_settings"] == {}
         assert sess["community_weights_raw"] == {}
-        assert sess["free_text_query"] == ""
         assert sess.get("broad_cat_Rock") is False
         assert sess.get("comm_sel_C001") is False
         assert "weight_comm_C001" not in sess
@@ -1184,10 +1144,8 @@ class TestResetStepCascades:
             "selected_communities": {"C001"},
             "filter_settings": {"year_min": 1990, "rating_min": 7},
             "community_weights_raw": {"C001": 0.4},
-            "free_text_query": "warm",
             "weight_comm_C001": 0.4,
             FILTER_FLOW_WIDGET_KEY_YEAR_RANGE: (1990, 2020),
-            SEMANTIC_CHAT_INPUT_KEY: "stale",
         }
         monkeypatch.setattr(
             page_helpers_module,
@@ -1205,8 +1163,6 @@ class TestResetStepCascades:
         assert sess["selected_communities"] == {"C001"}
         assert sess["filter_settings"] == {}
         assert sess["community_weights_raw"] == {}
-        assert sess["free_text_query"] == ""
-        assert SEMANTIC_CHAT_INPUT_KEY not in sess
         expected_bias = community_weight_bias_from_stored(
             float(RECOMMENDATION_DEFAULT_COMMUNITY_WEIGHT_RAW),
         )
@@ -1233,5 +1189,4 @@ class TestResetStepCascades:
             sess[mod.FILTER_FLOW_WIDGET_KEY_OVERALL_GAMMA]
             == RECOMMENDATION_OVERALL_GAMMA
         )
-        assert sess[SEMANTIC_RAG_MAX_DISTANCE_KEY] == 1.0
         assert sess.get(TASTE_WIZARD_RESET_PENDING_KEY) is True
