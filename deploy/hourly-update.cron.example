@@ -1,0 +1,3 @@
+# Run the production update once per hour.
+# Replace /path/to/music-review with the repository path on the server.
+0 * * * * cd /path/to/music-review && mkdir -p logs && docker compose run --rm music-review-update >> logs/hourly-update.log 2>&1

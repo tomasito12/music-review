@@ -1,0 +1,14 @@
+---
+description: German Streamlit/UI copy must use proper umlauts and ß
+globs: pages/**/*.py,streamlit_app.py
+---
+
+# German Frontend Copy (Umlauts and Eszett)
+
+User-visible German text in the Streamlit app (`pages/`, `streamlit_app.py`) must follow standard German orthography: use **ä, ö, ü** and **ß** where applicable (for example *höhere*, *möchten*, *außerhalb*, *zulässig*, *Präferenz*, *Größe*, *ausführen*, *zurücksetzen*).
+
+- Do not use ASCII transliterations (`ae`, `oe`, `ue`) or `ss` instead of **ß** for German words shown to users when standard spelling uses the special characters.
+- Leave unchanged: English UI or technical terms, identifiers, URLs, file paths, env var names, and non-German strings.
+- Package and CLI code under `src/music_review/` may stay ASCII unless the string is shown in the Streamlit UI.
+
+When adding or editing UI strings, match the spelling already used on neighboring labels in the same page.

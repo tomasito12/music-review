@@ -1,0 +1,348 @@
+"""User profiles backed by SQLite (with password authentication).
+
+Public API is kept compatible with the original JSON-file store so that
+consumer modules (Streamlit pages) require minimal changes.  Internally
+all data lives in ``data/plattenradar.db`` via :mod:`user_db`.
+"""
+
+from __future__ import annotations
+
+import copy
+import re
+import sqlite3
+from collections.abc import Mapping, MutableMapping
+from datetime import UTC, datetime
+from enum import Enum, auto
+from pathlib import Path
+from typing import Any
+
+from music_review.config import resolve_data_path
+from music_review.dashboard.taste_setup import (
+    TASTE_WIZARD_RESET_PENDING_KEY,
+    clear_taste_wizard_reset_pending,
+    data_implies_taste_setup_complete,
+    mark_taste_wizard_reset_pending,
+    session_has_guest_taste_or_filter_prefs,
+)
+from music_review.dashboard.user_db import (
+    get_connection,
+    load_user_profile,
+    save_user_profile,
+    user_exists,
+)
+
+SCHEMA_VERSION = 1
+MAX_SLUG_LEN = 48
+ACTIVE_PROFILE_SESSION_KEY = "active_profile_slug"
+ACTIVE_PROFILE_COOKIE_NAME = "mr_active_profile_slug"
+LOGIN_PROFILE_MERGE_PENDING_KEY = "login_profile_merge_pending"
+LOGIN_GUEST_SESSION_PINNED_KEY = "login_guest_session_pinned"
+_SLUG_PATTERN = re.compile(r"^[a-z0-9][a-z0-9_-]*$")
+
+
+class ProfileHydrationResult(Enum):
+    """Outcome of syncing session profile fields from DB."""
+
+    NO_ACTIVE_SLUG = auto()
+    HYDRATED = auto()
+    CLEARED_MISSING_PROFILE_FILE = auto()
+    CLEARED_INVALID_SLUG = auto()
+
+
+# ---- Slug helpers -----------------------------------------------------------
+
+
+def normalize_profile_slug(raw: str) -> str:
+    """Normalize user input to a safe identifier.
+
+    Raises:
+        ValueError: if empty, contains internal whitespace, or invalid.
+    """
+    s = raw.strip()
+    if any(ch.isspace() for ch in s):
+        raise ValueError(
+            "Bitte verzichte auf Leerzeichen im Profilnamen "
+            "(Bindestrich oder Unterstrich sind erlaubt).",
+        )
+    s = s.lower()
+    s = re.sub(r"[^a-z0-9_-]+", "", s)
+    s = s.strip("-_")
+    if not s:
+        raise ValueError("Profilname darf nicht leer sein.")
+    if len(s) > MAX_SLUG_LEN:
+        raise ValueError(
+            f"Profilname maximal {MAX_SLUG_LEN} Zeichen (nach Normalisierung).",
+        )
+    if not _SLUG_PATTERN.match(s):
+        raise ValueError(
+            "Profilname nur Kleinbuchstaben, Ziffern, Bindestrich und Unterstrich.",
+        )
+    return s
+
+
+# ---- Legacy path helpers (kept for backward compat / tests) -----------------
+
+
+def default_profiles_dir() -> Path:
+    """Return the legacy profiles dir (now used only as a hint)."""
+    return resolve_data_path("data/user_profiles")
+
+
+def profile_file_path(base_dir: Path, slug: str) -> Path:
+    """Legacy helper -- returns path under base_dir for the given slug."""
+    safe = normalize_profile_slug(slug)
+    return base_dir / f"{safe}.json"
+
+
+def list_profile_slugs(base_dir: Path | None = None) -> list[str]:
+    """Return all registered user slugs (from DB)."""
+    conn = get_connection()
+    from music_review.dashboard.user_db import list_user_slugs
+
+    return list_user_slugs(conn)
+
+
+# ---- Load / Save (DB-backed) -----------------------------------------------
+
+
+def _db_conn() -> sqlite3.Connection:
+    return get_connection()
+
+
+def load_profile(
+    base_dir: Path,
+    slug: str,
+) -> dict[str, Any] | None:
+    """Load profile data from the database."""
+    try:
+        safe = normalize_profile_slug(slug)
+    except ValueError:
+        return None
+    conn = _db_conn()
+    if not user_exists(conn, safe):
+        return None
+    data = load_user_profile(conn, safe)
+    return data
+
+
+def save_profile(
+    base_dir: Path,
+    slug: str,
+    payload: dict[str, Any],
+) -> None:
+    """Persist profile data to the database."""
+    safe = normalize_profile_slug(slug)
+    conn = _db_conn()
+    save_user_profile(conn, safe, payload)
+
+
+# ---- Timestamp helpers ------------------------------------------------------
+
+
+def parse_iso_datetime_utc(raw: Any) -> datetime | None:
+    """Parse ISO-8601 timestamps; return timezone-aware UTC."""
+    if not isinstance(raw, str):
+        return None
+    s = raw.strip()
+    if not s:
+        return None
+    if s.endswith("Z"):
+        s = s[:-1] + "+00:00"
+    try:
+        dt = datetime.fromisoformat(s)
+    except ValueError:
+        return None
+    if dt.tzinfo is None:
+        return dt.replace(tzinfo=UTC)
+    return dt.astimezone(UTC)
+
+
+# ---- Profile payload construction ------------------------------------------
+
+
+def _sorted_community_list(raw: set[str] | list[str] | None) -> list[str]:
+    if raw is None:
+        return []
+    if isinstance(raw, set):
+        return sorted(raw)
+    return [str(x) for x in raw]
+
+
+def build_profile_payload(
+    *,
+    profile_slug: str,
+    flow_mode: Any,
+    selected_communities: set[str] | list[str] | None = None,
+    artist_communities: set[str] | list[str] | None = None,
+    genre_communities: set[str] | list[str] | None = None,
+    filter_settings: Mapping[str, Any] | None,
+    community_weights_raw: Mapping[str, float] | None,
+) -> dict[str, Any]:
+    """Build versioned profile document for persistence."""
+    sel_list = _sorted_community_list(selected_communities)
+    artist_list = _sorted_community_list(artist_communities)
+    genre_list = _sorted_community_list(genre_communities)
+    if sel_list and not artist_list and not genre_list:
+        artist_list = sel_list
+
+    weights = community_weights_raw or {}
+    w_out: dict[str, float] = {
+        str(k): float(v) for k, v in weights.items() if isinstance(v, (int, float))
+    }
+
+    fs = dict(filter_settings) if filter_settings else {}
+
+    return {
+        "schema_version": SCHEMA_VERSION,
+        "profile_name": normalize_profile_slug(profile_slug),
+        "saved_at": datetime.now(UTC)
+        .replace(microsecond=0)
+        .isoformat()
+        .replace("+00:00", "Z"),
+        "flow_mode": (
+            flow_mode if flow_mode is None or isinstance(flow_mode, str) else None
+        ),
+        "selected_communities": sel_list,
+        "artist_flow_selected_communities": artist_list,
+        "genre_flow_selected_communities": genre_list,
+        "filter_settings": fs,
+        "community_weights_raw": w_out,
+    }
+
+
+# ---- Session application ---------------------------------------------------
+
+
+def apply_profile_to_session(
+    session: MutableMapping[str, Any],
+    data: Mapping[str, Any],
+) -> None:
+    """Apply loaded profile dict to a session-like mapping."""
+    sel = data.get("selected_communities")
+    if isinstance(sel, list) and sel:
+        merged = {str(x) for x in sel}
+    else:
+        artist = data.get("artist_flow_selected_communities")
+        genre = data.get("genre_flow_selected_communities")
+        artist_set = {str(x) for x in artist} if isinstance(artist, list) else set()
+        genre_set = {str(x) for x in genre} if isinstance(genre, list) else set()
+        merged = artist_set | genre_set
+
+    session["selected_communities"] = merged
+    session["artist_flow_selected_communities"] = merged
+    session["genre_flow_selected_communities"] = set()
+
+    fs = data.get("filter_settings")
+    if isinstance(fs, dict):
+        session["filter_settings"] = dict(fs)
+
+    weights = data.get("community_weights_raw")
+    if isinstance(weights, dict):
+        parsed: dict[str, float] = {}
+        for k, v in weights.items():
+            if isinstance(v, (int, float)):
+                parsed[str(k)] = float(v)
+        session["community_weights_raw"] = parsed
+
+    fm = data.get("flow_mode")
+    if fm is None or isinstance(fm, str):
+        session["flow_mode"] = fm
+
+    if data_implies_taste_setup_complete(session):
+        clear_taste_wizard_reset_pending(session)
+    else:
+        mark_taste_wizard_reset_pending(session)
+
+
+def profile_document_implies_taste_complete(data: Mapping[str, Any]) -> bool:
+    """True when a stored profile has communities plus merged filter bounds."""
+    fake: dict[str, Any] = {}
+    apply_profile_to_session(fake, data)
+    return data_implies_taste_setup_complete(fake)
+
+
+def profile_taste_from_account_applied_to_session(session: Mapping[str, Any]) -> bool:
+    """True when DB-backed profile taste may overwrite session keys (normal hydration).
+
+    If false, Empfehlungen / Neueste rankings must use only in-session taste keys, not a
+    profile document loaded aside from ``session_state``.
+    """
+    raw = session.get(ACTIVE_PROFILE_SESSION_KEY)
+    if not isinstance(raw, str) or not raw.strip():
+        return False
+    if session.get(LOGIN_PROFILE_MERGE_PENDING_KEY):
+        return False
+    return not bool(session.get(LOGIN_GUEST_SESSION_PINNED_KEY))
+
+
+def post_login_maybe_defer_profile_apply(
+    session: MutableMapping[str, Any],
+    *,
+    profile_slug: str,
+    server_profile: Mapping[str, Any] | None,
+) -> bool:
+    """Set merge pending when guest prefs exist; else apply server profile to session.
+
+    Returns:
+        True if the UI must resolve session vs. profile (merge pending set).
+        False if the server profile was applied immediately (or none to apply).
+    """
+    safe_slug = normalize_profile_slug(profile_slug)
+    if session_has_guest_taste_or_filter_prefs(session):
+        snapshot: dict[str, Any] = {}
+        if server_profile is not None:
+            snapshot = copy.deepcopy(dict(server_profile))
+        session[LOGIN_PROFILE_MERGE_PENDING_KEY] = {"server_profile": snapshot}
+        session[ACTIVE_PROFILE_SESSION_KEY] = safe_slug
+        return True
+    session[ACTIVE_PROFILE_SESSION_KEY] = safe_slug
+    if server_profile is not None:
+        apply_profile_to_session(session, server_profile)
+    return False
+
+
+# ---- Hydration from DB on every page run ------------------------------------
+
+
+def ensure_active_profile_hydrated(
+    session: MutableMapping[str, Any],
+    *,
+    profiles_dir: Path | None = None,
+) -> ProfileHydrationResult:
+    """Re-load profile from DB when ``ACTIVE_PROFILE_SESSION_KEY`` is set.
+
+    Keeps communities, filters, and weights in sync with the database on
+    every page run so a partial ``session_state`` loss does not leave the
+    user signed in with empty preferences.
+    """
+    raw_slug = session.get(ACTIVE_PROFILE_SESSION_KEY)
+    if raw_slug is None or not isinstance(raw_slug, str) or not raw_slug.strip():
+        return ProfileHydrationResult.NO_ACTIVE_SLUG
+
+    try:
+        safe_slug = normalize_profile_slug(raw_slug)
+    except ValueError:
+        session.pop(ACTIVE_PROFILE_SESSION_KEY, None)
+        return ProfileHydrationResult.CLEARED_INVALID_SLUG
+
+    conn = _db_conn()
+    if not user_exists(conn, safe_slug):
+        session.pop(ACTIVE_PROFILE_SESSION_KEY, None)
+        return ProfileHydrationResult.CLEARED_MISSING_PROFILE_FILE
+
+    if safe_slug != raw_slug:
+        session[ACTIVE_PROFILE_SESSION_KEY] = safe_slug
+
+    if session.get(TASTE_WIZARD_RESET_PENDING_KEY):
+        return ProfileHydrationResult.HYDRATED
+
+    if session.get(LOGIN_PROFILE_MERGE_PENDING_KEY):
+        return ProfileHydrationResult.HYDRATED
+
+    if session.get(LOGIN_GUEST_SESSION_PINNED_KEY):
+        return ProfileHydrationResult.HYDRATED
+
+    data = load_user_profile(conn, safe_slug)
+    if data is not None:
+        apply_profile_to_session(session, data)
+    return ProfileHydrationResult.HYDRATED

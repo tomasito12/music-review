@@ -1,0 +1,14 @@
+# Bind and open the app on the numeric loopback host so the address bar matches
+# SPOTIFY_REDIRECT_URI values like http://127.0.0.1:8501/spotify_playlists
+# (localhost and 127.0.0.1 differ for OAuth and session hints). Override with
+# CLI flags or STREAMLIT_* env vars when needed (e.g. --server.address 0.0.0.0).
+[server]
+address = "127.0.0.1"
+
+[browser]
+serverAddress = "127.0.0.1"
+
+# Force light theme (disable dark mode as default)
+[theme]
+base = "light"
+primaryColor = "#dc2626"
