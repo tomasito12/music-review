@@ -21,10 +21,17 @@ from music_review.dashboard.playlist_builder import (
     build_album_weights,
     build_playlist_suggestions,
 )
+from music_review.dashboard.playlist_export import (
+    format_tune_my_music_csv,
+    format_tune_my_music_txt,
+    suggested_export_filename,
+)
 from music_review.domain.models import Review
 
 PLAYLIST_LAST_SUGGESTIONS_KEY = "playlist_last_suggestions_v1"
 PLAYLIST_LAST_NAME_KEY = "playlist_last_display_name_v1"
+
+TUNEMYMUSIC_FILE_TO_DEEZER_URL = "https://www.tunemymusic.com/transfer/file-to-deezer"
 
 _TASTE_ORIENTATION_OPTIONS: tuple[str, ...] = (
     "gar nicht",
@@ -77,6 +84,54 @@ def _render_suggestions_table(suggestions: list[PlaylistSuggestion]) -> None:
     rows = _suggestions_to_display_rows(suggestions)
     st.dataframe(pd.DataFrame(rows), width="stretch", hide_index=True)
     st.caption(f"{len(suggestions)} Titel in der Vorschlagsliste.")
+
+
+def _render_export_section(
+    suggestions: list[PlaylistSuggestion],
+    playlist_name: str,
+    *,
+    key_prefix: str,
+) -> None:
+    """Offer TXT/CSV download and copy-paste export for TuneMyMusic."""
+    display_name = playlist_name.strip() or _default_playlist_name()
+    txt_body = format_tune_my_music_txt(suggestions)
+    csv_body = format_tune_my_music_csv(suggestions, display_name)
+
+    st.markdown("#### In Deezer importieren (TuneMyMusic)")
+    st.markdown(
+        "1. [TuneMyMusic öffnen](https://www.tunemymusic.com) "
+        f"oder direkt [Datei → Deezer]({TUNEMYMUSIC_FILE_TO_DEEZER_URL}).\n"
+        "2. Als Quelle **Datei hochladen** oder **Freitext** wählen "
+        "(Text unten einfügen).\n"
+        "3. Als Ziel **Deezer** verbinden und Transfer starten."
+    )
+
+    col_txt, col_csv = st.columns(2)
+    with col_txt:
+        st.download_button(
+            "Als Textdatei herunterladen",
+            data=txt_body.encode("utf-8"),
+            file_name=suggested_export_filename(display_name, extension=".txt"),
+            mime="text/plain",
+            key=f"{key_prefix}-export-txt",
+            width="stretch",
+        )
+    with col_csv:
+        st.download_button(
+            "Als CSV herunterladen",
+            data=csv_body.encode("utf-8"),
+            file_name=suggested_export_filename(display_name, extension=".csv"),
+            mime="text/csv",
+            key=f"{key_prefix}-export-csv",
+            width="stretch",
+        )
+
+    st.text_area(
+        "Für TuneMyMusic (Freitext)",
+        value=txt_body,
+        height=160,
+        key=f"{key_prefix}-export-free-text",
+    )
 
 
 def _generate_suggestions(
@@ -135,7 +190,7 @@ def render_playlist_section(
     if name_key not in st.session_state:
         st.session_state[name_key] = _default_playlist_name()
     playlist_name = st.text_input(
-        "Name der Playlist (nur Anzeige)",
+        "Name der Playlist",
         key=name_key,
     )
 
@@ -175,9 +230,19 @@ def render_playlist_section(
     stored = st.session_state.get(PLAYLIST_LAST_SUGGESTIONS_KEY)
     if isinstance(stored, list) and stored:
         display_name = st.session_state.get(PLAYLIST_LAST_NAME_KEY)
+        name_for_display = (
+            display_name.strip()
+            if isinstance(display_name, str) and display_name.strip()
+            else _default_playlist_name()
+        )
         if isinstance(display_name, str) and display_name.strip():
             st.subheader(display_name.strip())
         _render_suggestions_table(stored)
+        _render_export_section(
+            stored,
+            name_for_display,
+            key_prefix=key_prefix,
+        )
 
 
 def render_neueste_playlist_section(*, reviews: list[Review]) -> None:

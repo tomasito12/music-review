@@ -23,7 +23,9 @@ Status legend:
 
 - `- [x] playlist-generation: Playlist-Vorschlagsliste aus Rezensionen (ohne Streaming-API; Anzeige in Playlist erzeugen)`
 
-- `- [ ] playlist-tunemyusic-export: Vorschlagsliste als Text/URL für TuneMyMusic exportieren`
+- `- [x] playlist-tunemyusic-export: Vorschlagsliste als TXT/CSV/Freitext für TuneMyMusic exportieren`
+
+- `- [ ] playlist-spotify-direct-publish: Optional Spotify-Playlist direkt per Web API veröffentlichen (Deezer weiter über TuneMyMusic)`
 
 - `- [ ] rag-system-search: Semantische Suche zu einem echten RAG-System ausbauen (Chunks als Kontext an ein LLM geben)`
 
