@@ -6,7 +6,6 @@ from __future__ import annotations
 from typing import Any
 
 import streamlit as st
-from pages.neueste_reviews_pool import configure_spotify_playlist_logging_from_env
 from pages.page_helpers import (
     ACTIVE_PROFILE_SESSION_KEY,
     bootstrap_profile_session,
@@ -242,26 +241,8 @@ def render_start_page() -> None:
     st.markdown("</div>", unsafe_allow_html=True)
 
 
-def _spotify_nav_page() -> Any:
-    """Stable OAuth redirect path (must match ``SPOTIFY_REDIRECT_URI`` path segment)."""
-    return st.Page(
-        "pages/9_Spotify_Playlists.py",
-        title="Spotify-Verbindung",
-        url_path="spotify_playlists",
-    )
-
-
-def _deezer_callback_nav_page() -> Any:
-    """Stable Deezer OAuth callback path (must match ``DEEZER_REDIRECT_URI``)."""
-    return st.Page(
-        "pages/10_Deezer_Callback.py",
-        title="Deezer-Verbindung",
-        url_path="deezer_callback",
-    )
-
-
 def _playlist_hub_nav_page() -> Any:
-    """Unified playlist-creation hub for both Spotify and Deezer."""
+    """Playlist suggestion hub (newest reviews or archive)."""
     return st.Page(
         "pages/9_Playlist_Erzeugen.py",
         title="Playlist erzeugen",
@@ -288,18 +269,7 @@ def _navigation_pages() -> list[Any]:
         st.Page("pages/5_Filter_Flow.py", title="Filter"),
         # Hub after the three setup steps; shows a guard until setup is complete.
         st.Page("pages/2_Entdecken.py", title="Entdecken"),
-        # OAuth return can open a fresh session without taste setup; both the
-        # Spotify callback page *and* the Streaming-Verbindungen page must be
-        # registered, otherwise the "missing connection" callout's
-        # ``st.switch_page`` call into Streaming-Verbindungen would crash with
-        # ``StreamlitAPIException: Could not find page``.
-        st.Page(
-            "pages/3_Streaming_Verbindungen.py",
-            title="Streaming-Verbindungen",
-        ),
         _playlist_hub_nav_page(),
-        _spotify_nav_page(),
-        _deezer_callback_nav_page(),
     ]
     full_app = [
         st.Page(render_start_page, title="Start", default=True),
@@ -321,13 +291,7 @@ def _navigation_pages() -> list[Any]:
         st.Page("pages/6_Recommendations_Flow.py", title="Empfehlungen"),
         st.Page("pages/8_Neueste_Rezensionen.py", title="Neueste Rezensionen"),
         st.Page("pages/7_Freitext_Qualitaet.py", title="Freitext-Qualität"),
-        st.Page(
-            "pages/3_Streaming_Verbindungen.py",
-            title="Streaming-Verbindungen",
-        ),
         _playlist_hub_nav_page(),
-        _spotify_nav_page(),
-        _deezer_callback_nav_page(),
     ]
     if session_taste_setup_complete():
         return full_app
@@ -341,7 +305,6 @@ def main() -> None:
         layout="centered",
     )
 
-    configure_spotify_playlist_logging_from_env()
     bootstrap_profile_session()
     render_profile_sidebar()
 

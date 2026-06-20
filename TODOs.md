@@ -21,7 +21,9 @@ Status legend:
 
 - `- [x] chroma-strip-metadata: Bandnamen/Metadaten aus dem Vektor rausnehmen`
 
-- `- [ ] playlist-generation: Spotify/Deezer-Playlists aus den besten Hits erzeugen (im Recommendation Flow oder in Neueste Rezensionen)`
+- `- [x] playlist-generation: Playlist-Vorschlagsliste aus Rezensionen (ohne Streaming-API; Anzeige in Playlist erzeugen)`
+
+- `- [ ] playlist-tunemyusic-export: Vorschlagsliste als Text/URL für TuneMyMusic exportieren`
 
 - `- [ ] rag-system-search: Semantische Suche zu einem echten RAG-System ausbauen (Chunks als Kontext an ein LLM geben)`
 
@@ -44,10 +46,6 @@ Now (high impact):
 
 - `- [ ] api-resilience: Einheitliche Retry/Backoff/Timeout-Policy für OpenAI/MusicBrainz/Scraper + Fehlerklassifikation`
 
-- `- [ ] spotify-search-cache-trim: Spotify-Suche entlasten — weniger Query-Varianten, aggressiveres Caching von Suchergebnissen (429 / App-Rate-Limits bei vielen Nutzern)`
-
-- `- [ ] spotify-playlist-regenerate-hint: Streamlit-Hinweis bei Plattenradar — Nutzer auf mäßiges „Nochmal erzeugen“ hinweisen (viele API-Calls pro Playlist; gemeinsame App-Quota)`
-
 - `- [ ] typed-settings-validation: Zentrales typisiertes Settings-Modell mit Startup-Validierung (fail fast bei Fehlkonfiguration)`
 
 Next (productization):
@@ -61,8 +59,6 @@ Next (productization):
 - `- [ ] ranking-diversity-control: Diversitätssteuerung im Ranking ergänzen (Qualität + stilistische Breite balancieren)`
 
 - `- [ ] secrets-hygiene: Secret-Handling härten (Leak-Prüfung, Logging-Schutz, pre-commit secret scan)`
-
-- `- [ ] spotify-byo-developer-app: Eigene Spotify-App pro Nutzer — Anleitung (Developer Dashboard: App anlegen, Redirect URI); Nutzer gibt Client-ID (und ggf. Client Secret / Redirect) im UI ein; OAuth + Playlist-API nutzt dann deren App statt der Projekt-Default-App → umgeht Development-Allowlist (max. 5 Nutzer) und das Fehlen von Extended Quota für Privatpersonen`
 
 Later (larger initiatives):
 

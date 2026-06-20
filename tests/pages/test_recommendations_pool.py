@@ -187,7 +187,7 @@ class TestArchivePlaylistCandidates:
         # ``build_album_weights`` expects each row to expose ``review`` (a Review)
         # and ``overall_score`` (a float). Smoke-test the shape with the real
         # downstream function.
-        from music_review.dashboard.newest_spotify_playlist import build_album_weights
+        from music_review.dashboard.playlist_builder import build_album_weights
 
         review_a = _make_review(1)
         review_b = _make_review(2)

@@ -4,7 +4,7 @@ Used by:
 
 - The Empfehlungen page (``pages/6_Recommendations_Flow.py``) to render the
   ranked album list.
-- The Spotify-Playlists page (``pages/9_Spotify_Playlists.py``, archive mode) to
+- The playlist page (``pages/9_Playlist_Erzeugen.py``, archive mode) to
   build a candidate pool with the same scoring as the Empfehlungen page.
 
 Keeps the data loaders cached (``@st.cache_data``) so repeated calls within a
@@ -370,7 +370,7 @@ def archive_playlist_candidates() -> tuple[list[Review], list[dict[str, Any]] | 
     """Return reviews and ranked rows from :func:`compute_recommendations`.
 
     The shape matches what
-    :func:`music_review.dashboard.newest_spotify_playlist.build_album_weights`
+    :func:`music_review.dashboard.playlist_builder.build_album_weights`
     expects as ``(reviews, ranked_rows)``: each row contains ``review`` (the
     :class:`Review` object) and ``overall_score`` (float). The order follows the
     Empfehlungen ranking. Returns ``([], None)`` when no candidates are found

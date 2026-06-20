@@ -27,30 +27,27 @@ RES_KEY = "res_10"
 
 _LOGGER = logging.getLogger(__name__)
 
-_SPOTIFY_PLAYLIST_LOG_ENV = "MUSIC_REVIEW_SPOTIFY_PLAYLIST_LOG"
+_PLAYLIST_LOG_ENV = "MUSIC_REVIEW_PLAYLIST_LOG"
 
-# Loggers that participate in the newest-reviews Spotify playlist flow (English logs).
-_SPOTIFY_PLAYLIST_LOG_TARGET_NAMES: tuple[str, ...] = (
+_PLAYLIST_LOG_TARGET_NAMES: tuple[str, ...] = (
     "pages.neueste_reviews_pool",
-    "pages.neueste_spotify_playlist_section",
-    "pages.9_Spotify_Playlists",
-    "music_review.dashboard.newest_spotify_playlist",
+    "pages.playlist_section",
+    "music_review.dashboard.playlist_builder",
 )
 
-_spotify_playlist_log_configured = False
+_playlist_log_configured = False
 
 
-def configure_spotify_playlist_logging_from_env() -> None:
-    """Attach stderr logging for Spotify playlist debug when env requests it.
+def configure_playlist_logging_from_env() -> None:
+    """Attach stderr logging for playlist debug when env requests it.
 
-    Set ``MUSIC_REVIEW_SPOTIFY_PLAYLIST_LOG`` to ``debug``, ``info``, ``1``,
-    ``true``, or ``yes`` (case-insensitive) before starting Streamlit. Values
-    ``0``, ``false``, ``no``, ``off`` disable. Idempotent for the process.
+    Set ``MUSIC_REVIEW_PLAYLIST_LOG`` to ``debug``, ``info``, ``1``,
+    ``true``, or ``yes`` (case-insensitive) before starting Streamlit.
     """
-    global _spotify_playlist_log_configured
-    if _spotify_playlist_log_configured:
+    global _playlist_log_configured
+    if _playlist_log_configured:
         return
-    raw = os.environ.get(_SPOTIFY_PLAYLIST_LOG_ENV, "").strip().lower()
+    raw = os.environ.get(_PLAYLIST_LOG_ENV, "").strip().lower()
     if raw in ("", "0", "false", "no", "off"):
         return
     level = logging.DEBUG if raw in ("debug", "1", "true", "yes") else logging.INFO
@@ -59,12 +56,12 @@ def configure_spotify_playlist_logging_from_env() -> None:
     handler.setFormatter(
         logging.Formatter("%(levelname)s %(name)s: %(message)s"),
     )
-    for name in _SPOTIFY_PLAYLIST_LOG_TARGET_NAMES:
+    for name in _PLAYLIST_LOG_TARGET_NAMES:
         lg = logging.getLogger(name)
         lg.setLevel(level)
         lg.addHandler(handler)
         lg.propagate = False
-    _spotify_playlist_log_configured = True
+    _playlist_log_configured = True
 
 
 def ensure_neueste_session_defaults() -> None:
@@ -145,7 +142,7 @@ def preference_rank_rows_for_reviews(
     hydrated into the session (merge pending or guest session pinned), those
     keys are the temporary in-tab preferences, not a parallel DB read.
     """
-    configure_spotify_playlist_logging_from_env()
+    configure_playlist_logging_from_env()
     ensure_neueste_session_defaults()
     selected_comms = get_selected_communities()
     if not selected_comms:
@@ -197,7 +194,7 @@ def fetch_newest_reviews_pool(
     n_show: int,
 ) -> tuple[list[Review], list[dict[str, Any]] | None]:
     """Newest reviews and optional preference-ranked rows."""
-    configure_spotify_playlist_logging_from_env()
+    configure_playlist_logging_from_env()
     ensure_neueste_session_defaults()
     reviews = _load_newest_reviews(n_show)
     ranked_rows = preference_rank_rows_for_reviews(reviews)

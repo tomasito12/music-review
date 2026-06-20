@@ -16,14 +16,13 @@ def test_hub_destinations_returns_tuple_of_cards() -> None:
         assert d.page_path.endswith(".py")
 
 
-def test_hub_has_separate_streaming_connection_and_playlist_cards() -> None:
-    """Streaming setup and playlist creation must be two distinct hub cards."""
+def test_hub_has_playlist_card_without_streaming_connection() -> None:
+    """Playlist suggestions are a hub card; streaming OAuth setup was removed."""
     dests = hub_destinations()
     paths = [d.page_path for d in dests]
-    assert "pages/3_Streaming_Verbindungen.py" in paths
     assert "pages/9_Playlist_Erzeugen.py" in paths
+    assert "pages/3_Streaming_Verbindungen.py" not in paths
     titles = {d.page_path: d.title for d in dests}
-    assert titles["pages/3_Streaming_Verbindungen.py"] == "Streaming-Dienste verbinden"
     assert titles["pages/9_Playlist_Erzeugen.py"] == "Playlist erzeugen"
 
 
@@ -36,10 +35,11 @@ def test_playlist_card_description_mentions_both_playlist_sources() -> None:
     assert "Archiv" in desc
 
 
-def test_playlist_card_description_mentions_both_streaming_providers() -> None:
-    """The unified hub card surfaces both Spotify and Deezer as targets."""
+def test_playlist_card_description_is_provider_agnostic() -> None:
+    """The hub card no longer references Spotify or Deezer."""
     dests = hub_destinations()
     by_path = {d.page_path: d for d in dests}
     desc = by_path["pages/9_Playlist_Erzeugen.py"].description
-    assert "Spotify" in desc
-    assert "Deezer" in desc
+    assert "Spotify" not in desc
+    assert "Deezer" not in desc
+    assert "Vorschlagsliste" in desc
