@@ -51,6 +51,9 @@ jobs:
       - name: Check out repository
         uses: actions/checkout@v4
 
+      - name: Create empty CI env file
+        run: touch .env
+
       - name: Build application image
         run: docker compose build music-review
 

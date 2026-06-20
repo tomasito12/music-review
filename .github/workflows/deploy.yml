@@ -53,6 +53,9 @@ jobs:
       - name: Run tests
         run: hatch run test:run
 
+      - name: Create empty CI env file
+        run: touch .env
+
       - name: Build application image
         run: docker compose build music-review
 
