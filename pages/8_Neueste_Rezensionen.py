@@ -29,6 +29,7 @@ from music_review.config import (
     RECOMMENDATION_RATING_DEFAULT_WHEN_MISSING,
     resolve_data_path,
 )
+from music_review.dashboard.cache_keys import FileCacheSignature, file_cache_signature
 from music_review.dashboard.neueste_batch_score_chart import (
     build_newest_batch_score_figure,
     newest_batch_score_chart_config,
@@ -75,7 +76,11 @@ def _newest_css() -> None:
 
 
 @st.cache_data(ttl=3600)
-def _load_affinity_top_map(*, top_k: int = 5) -> dict[int, list[tuple[str, float]]]:
+def _load_affinity_top_map_cached(
+    signature: FileCacheSignature,
+    *,
+    top_k: int = 5,
+) -> dict[int, list[tuple[str, float]]]:
     path = resolve_data_path("data/album_community_affinities.jsonl")
     if not path.is_file():
         return {}
@@ -98,6 +103,11 @@ def _load_affinity_top_map(*, top_k: int = 5) -> dict[int, list[tuple[str, float
         items.sort(key=lambda t: t[1], reverse=True)
         result[review_id] = items[:top_k]
     return result
+
+
+def _load_affinity_top_map(*, top_k: int = 5) -> dict[int, list[tuple[str, float]]]:
+    path = resolve_data_path("data/album_community_affinities.jsonl")
+    return _load_affinity_top_map_cached(file_cache_signature(path), top_k=top_k)
 
 
 def _top_communities_display(

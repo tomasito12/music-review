@@ -45,6 +45,7 @@ from music_review.config import (
     normalize_overall_weights,
     resolve_data_path,
 )
+from music_review.dashboard.cache_keys import FileCacheSignature, file_cache_signature
 from music_review.dashboard.recommendation_scoring import (
     breadth_raw_from_selected_community_masses,
     community_spectrum_norm_batch,
@@ -76,7 +77,10 @@ SORT_MODE_MIGRATION: dict[str, str] = {
 
 
 @st.cache_data(ttl=3600)
-def load_reviews_and_metadata() -> tuple[list[Review], dict[int, dict[str, Any]]]:
+def _load_reviews_and_metadata_cached(
+    reviews_signature: FileCacheSignature,
+    metadata_signature: FileCacheSignature,
+) -> tuple[list[Review], dict[int, dict[str, Any]]]:
     """Load the corpus reviews plus the (optional) imputed metadata map."""
     reviews_path = resolve_data_path("data/reviews.jsonl")
     imputed_path = resolve_data_path("data/metadata_imputed.jsonl")
@@ -97,8 +101,22 @@ def load_reviews_and_metadata() -> tuple[list[Review], dict[int, dict[str, Any]]
     return reviews, metadata
 
 
+def load_reviews_and_metadata() -> tuple[list[Review], dict[int, dict[str, Any]]]:
+    """Load the corpus reviews plus the (optional) imputed metadata map."""
+    reviews_path = resolve_data_path("data/reviews.jsonl")
+    imputed_path = resolve_data_path("data/metadata_imputed.jsonl")
+    fallback_path = resolve_data_path("data/metadata.jsonl")
+    metadata_path = imputed_path if imputed_path.exists() else fallback_path
+    return _load_reviews_and_metadata_cached(
+        file_cache_signature(reviews_path),
+        file_cache_signature(metadata_path),
+    )
+
+
 @st.cache_data(ttl=3600)
-def load_affinities() -> list[dict[str, Any]]:
+def _load_affinities_cached(
+    signature: FileCacheSignature,
+) -> list[dict[str, Any]]:
     """Load the album-to-community affinity records used for scoring."""
     path = resolve_data_path("data/album_community_affinities.jsonl")
     p = Path(path)
@@ -109,6 +127,12 @@ def load_affinities() -> list[dict[str, Any]]:
         if isinstance(obj, dict) and "review_id" in obj and "communities" in obj:
             records.append(obj)
     return records
+
+
+def load_affinities() -> list[dict[str, Any]]:
+    """Load the album-to-community affinity records used for scoring."""
+    path = resolve_data_path("data/album_community_affinities.jsonl")
+    return _load_affinities_cached(file_cache_signature(path))
 
 
 def compute_recommendations() -> list[dict[str, Any]]:

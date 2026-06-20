@@ -20,6 +20,7 @@ from music_review.config import (
     RECOMMENDATION_OVERALL_GAMMA,
     resolve_data_path,
 )
+from music_review.dashboard.cache_keys import FileCacheSignature, file_cache_signature
 from music_review.dashboard.community_weight_mapping import (
     community_weight_bias_from_stored,
 )
@@ -59,7 +60,9 @@ from music_review.pipeline.retrieval.reference_graph import load_artist_communit
 
 
 @st.cache_data(ttl=3600)
-def load_communities_res_10() -> list[dict[str, Any]]:
+def _load_communities_res_10_cached(
+    signature: FileCacheSignature,
+) -> list[dict[str, Any]]:
     """Load resolution-10 communities with top artists."""
     data_dir = resolve_data_path("data")
     path = Path(data_dir) / "communities_res_10.json"
@@ -76,8 +79,16 @@ def load_communities_res_10() -> list[dict[str, Any]]:
     return [c for c in comms if isinstance(c, dict) and c.get("id")]
 
 
+def load_communities_res_10() -> list[dict[str, Any]]:
+    """Load resolution-10 communities with top artists."""
+    path = resolve_data_path("data/communities_res_10.json")
+    return _load_communities_res_10_cached(file_cache_signature(path))
+
+
 @st.cache_data(ttl=3600)
-def load_genre_labels_res_10() -> dict[str, str]:
+def _load_genre_labels_res_10_cached(
+    signature: FileCacheSignature,
+) -> dict[str, str]:
     """Load LLM-assigned genre labels for communities (res_10)."""
     data_dir = resolve_data_path("data")
     path = Path(data_dir) / "community_genre_labels_res_10.json"
@@ -103,8 +114,16 @@ def load_genre_labels_res_10() -> dict[str, str]:
     return mapping
 
 
+def load_genre_labels_res_10() -> dict[str, str]:
+    """Load LLM-assigned genre labels for communities (res_10)."""
+    path = resolve_data_path("data/community_genre_labels_res_10.json")
+    return _load_genre_labels_res_10_cached(file_cache_signature(path))
+
+
 @st.cache_data(ttl=3600)
-def load_broad_categories_res_10() -> tuple[list[str], dict[str, list[str]]]:
+def _load_broad_categories_res_10_cached(
+    signature: FileCacheSignature,
+) -> tuple[list[str], dict[str, list[str]]]:
     """Load broad categories and per-community mappings.
 
     Returns (category names, community_id -> [broad_category, ...]).
@@ -134,6 +153,12 @@ def load_broad_categories_res_10() -> tuple[list[str], dict[str, list[str]]]:
         if isinstance(cid, str) and isinstance(bc, list):
             mapping[cid] = [str(c) for c in bc]
     return cats, mapping
+
+
+def load_broad_categories_res_10() -> tuple[list[str], dict[str, list[str]]]:
+    """Load broad categories and per-community mappings."""
+    path = resolve_data_path("data/community_broad_categories_res_10.json")
+    return _load_broad_categories_res_10_cached(file_cache_signature(path))
 
 
 def community_display_label(
@@ -346,7 +371,9 @@ def min_release_year_in_jsonl(path: Path) -> int | None:
 
 
 @st.cache_data(ttl=3600)
-def max_release_year_from_corpus() -> int:
+def _max_release_year_from_corpus_cached(
+    signature: FileCacheSignature,
+) -> int:
     """Upper bound for year sliders: max year in data/reviews.jsonl or this year."""
     data_dir = resolve_data_path("data")
     path = Path(data_dir) / "reviews.jsonl"
@@ -356,8 +383,16 @@ def max_release_year_from_corpus() -> int:
     return m
 
 
+def max_release_year_from_corpus() -> int:
+    """Upper bound for year sliders: max year in data/reviews.jsonl or this year."""
+    path = resolve_data_path("data/reviews.jsonl")
+    return _max_release_year_from_corpus_cached(file_cache_signature(path))
+
+
 @st.cache_data(ttl=3600)
-def min_release_year_from_corpus() -> int:
+def _min_release_year_from_corpus_cached(
+    signature: FileCacheSignature,
+) -> int:
     """Lower bound for year sliders: min year in data/reviews.jsonl or fallback."""
     data_dir = resolve_data_path("data")
     path = Path(data_dir) / "reviews.jsonl"
@@ -365,6 +400,12 @@ def min_release_year_from_corpus() -> int:
     if m is None:
         return YEAR_SLIDER_FALLBACK_FLOOR
     return m
+
+
+def min_release_year_from_corpus() -> int:
+    """Lower bound for year sliders: min year in data/reviews.jsonl or fallback."""
+    path = resolve_data_path("data/reviews.jsonl")
+    return _min_release_year_from_corpus_cached(file_cache_signature(path))
 
 
 def clamp_year_filter_bounds(
@@ -649,10 +690,18 @@ def plattenlabel_album_count_buckets_from_reviews_jsonl(
 
 
 @st.cache_data(ttl=3600)
-def load_plattenlabel_filter_buckets() -> tuple[list[str], list[str], int]:
+def _load_plattenlabel_filter_buckets_cached(
+    signature: FileCacheSignature,
+) -> tuple[list[str], list[str], int]:
     """Cached head/tail Plattenlabel buckets from ``data/reviews.jsonl``."""
     p = Path(resolve_data_path("data/reviews.jsonl"))
     return plattenlabel_album_count_buckets_from_reviews_jsonl(p)
+
+
+def load_plattenlabel_filter_buckets() -> tuple[list[str], list[str], int]:
+    """Cached head/tail Plattenlabel buckets from ``data/reviews.jsonl``."""
+    path = resolve_data_path("data/reviews.jsonl")
+    return _load_plattenlabel_filter_buckets_cached(file_cache_signature(path))
 
 
 def expand_plattenlabel_ui_selection(
@@ -685,10 +734,20 @@ def collapse_plattenlabel_ui_selection(
 
 
 @st.cache_data(ttl=3600)
-def load_sorted_unique_plattenlabels_from_reviews() -> list[str]:
+def _load_sorted_unique_plattenlabels_from_reviews_cached(
+    signature: FileCacheSignature,
+) -> list[str]:
     """Load sorted unique Plattenlabels from ``data/reviews.jsonl`` (cached)."""
     p = Path(resolve_data_path("data/reviews.jsonl"))
     return unique_plattenlabels_from_reviews_jsonl(p)
+
+
+def load_sorted_unique_plattenlabels_from_reviews() -> list[str]:
+    """Load sorted unique Plattenlabels from ``data/reviews.jsonl`` (cached)."""
+    path = resolve_data_path("data/reviews.jsonl")
+    return _load_sorted_unique_plattenlabels_from_reviews_cached(
+        file_cache_signature(path),
+    )
 
 
 def plattenlabel_filter_passes(
@@ -1131,10 +1190,18 @@ def format_release_date(value: Any, release_year: Any) -> str:
 
 
 @st.cache_data(ttl=3600)
-def load_community_memberships() -> dict[str, dict[str, str]]:
+def _load_community_memberships_cached(
+    signature: FileCacheSignature,
+) -> dict[str, dict[str, str]]:
     """Load artist key (normalized) -> resolution keys -> community id."""
     mp = resolve_data_path("data/community_memberships.jsonl")
     return load_artist_communities(mp)
+
+
+def load_community_memberships() -> dict[str, dict[str, str]]:
+    """Load artist key (normalized) -> resolution keys -> community id."""
+    path = resolve_data_path("data/community_memberships.jsonl")
+    return _load_community_memberships_cached(file_cache_signature(path))
 
 
 def build_session_profile_payload(*, profile_slug: str) -> dict[str, Any]:

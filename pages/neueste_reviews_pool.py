@@ -11,6 +11,7 @@ import streamlit as st
 from pages.page_helpers import get_selected_communities, load_community_memberships
 
 from music_review.config import resolve_data_path
+from music_review.dashboard.cache_keys import FileCacheSignature, file_cache_signature
 from music_review.dashboard.preference_ranking import (
     global_breadth_norm_by_review_id,
     preference_ranked_rows,
@@ -73,7 +74,10 @@ def ensure_neueste_session_defaults() -> None:
 
 
 @st.cache_data(ttl=300)
-def _load_newest_reviews(n: int) -> list[Review]:
+def _load_newest_reviews_cached(
+    n: int,
+    signature: FileCacheSignature,
+) -> list[Review]:
     path = resolve_data_path("data/reviews.jsonl")
     if not path.is_file():
         return []
@@ -82,13 +86,20 @@ def _load_newest_reviews(n: int) -> list[Review]:
     return reviews[: max(1, n)]
 
 
+def _load_newest_reviews(n: int) -> list[Review]:
+    path = resolve_data_path("data/reviews.jsonl")
+    return _load_newest_reviews_cached(n, file_cache_signature(path))
+
+
 def load_newest_reviews_slice(n: int) -> list[Review]:
     """Return the ``n`` newest reviews by id (cached); ranking may run later."""
     return _load_newest_reviews(max(1, n))
 
 
 @st.cache_data(ttl=300)
-def _load_all_reviews_for_breadth_norm() -> list[Review]:
+def _load_all_reviews_for_breadth_norm(
+    signature: FileCacheSignature,
+) -> list[Review]:
     """Full corpus for global coverage percentile (breadth_norm)."""
     path = resolve_data_path("data/reviews.jsonl")
     if not path.is_file():
@@ -98,12 +109,14 @@ def _load_all_reviews_for_breadth_norm() -> list[Review]:
 
 @st.cache_data(ttl=300)
 def _cached_global_breadth_norm_map(
-    _account_taste_hydrated: bool,
+    account_taste_hydrated: bool,
     selected_key: tuple[str, ...],
     weights_key: tuple[tuple[str, float], ...],
+    reviews_signature: FileCacheSignature,
+    memberships_signature: FileCacheSignature,
 ) -> dict[int, float]:
     """Breadth norms; first arg is cache-key only (hydrated vs. session-only taste)."""
-    all_rev = _load_all_reviews_for_breadth_norm()
+    all_rev = _load_all_reviews_for_breadth_norm(reviews_signature)
     if not all_rev:
         return {}
     memberships = load_community_memberships()
@@ -117,7 +130,9 @@ def _cached_global_breadth_norm_map(
 
 
 @st.cache_data(ttl=3600)
-def _load_affinity_by_review_id() -> dict[int, dict[str, Any]]:
+def _load_affinity_by_review_id(
+    signature: FileCacheSignature,
+) -> dict[int, dict[str, Any]]:
     path = Path(resolve_data_path("data/album_community_affinities.jsonl"))
     if not path.is_file():
         return {}
@@ -154,14 +169,19 @@ def preference_rank_rows_for_reviews(
         return None
     filter_settings: dict[str, Any] = st.session_state.get("filter_settings") or {}
     weights_raw: dict[str, float] = st.session_state.get("community_weights_raw") or {}
-    aff_map_full = _load_affinity_by_review_id()
     memberships = load_community_memberships()
     weights_key = tuple((str(k), float(v)) for k, v in sorted(weights_raw.items()))
     taste_hydrated = profile_taste_from_account_applied_to_session(st.session_state)
+    reviews_path = resolve_data_path("data/reviews.jsonl")
+    memberships_path = resolve_data_path("data/community_memberships.jsonl")
+    affinities_path = resolve_data_path("data/album_community_affinities.jsonl")
+    aff_map_full = _load_affinity_by_review_id(file_cache_signature(affinities_path))
     breadth_norm_global = _cached_global_breadth_norm_map(
         taste_hydrated,
         tuple(sorted(selected_comms)),
         weights_key,
+        file_cache_signature(reviews_path),
+        file_cache_signature(memberships_path),
     )
     ranked_rows = preference_ranked_rows(
         reviews,

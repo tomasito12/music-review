@@ -29,7 +29,19 @@ services:
       - "127.0.0.1:8501:8501"
     volumes:
       - ./data:/app/data
-      - ./chroma_db:/app/chroma_db
+
+  music-review-update:
+    profiles:
+      - jobs
+    build:
+      context: .
+    env_file:
+      - .env
+    environment:
+      MUSIC_REVIEW_PROJECT_ROOT: /app
+    volumes:
+      - ./data:/app/data
+    command: ["python", "-m", "music_review.pipeline.production_update", "-v"]
 
 volumes:
   caddy_data:

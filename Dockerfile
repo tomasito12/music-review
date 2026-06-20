@@ -27,7 +27,7 @@ COPY assets ./assets
 COPY pages ./pages
 COPY streamlit_app.py ./streamlit_app.py
 
-RUN mkdir -p /app/data /app/chroma_db
+RUN mkdir -p /app/data
 
 EXPOSE 8501
 
