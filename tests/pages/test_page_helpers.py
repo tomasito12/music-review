@@ -7,6 +7,8 @@ from pathlib import Path
 from types import SimpleNamespace
 
 import pages.page_helpers as page_helpers_module
+import pages.profile_session as profile_session_module
+import pages.wizard_state as wizard_state_module
 import pytest
 from pages.page_helpers import (
     ACTIVE_PROFILE_SESSION_KEY,
@@ -86,7 +88,7 @@ def test_render_toolbar_does_not_emit_markdown(
         calls.append(True)
 
     monkeypatch.setattr(
-        "pages.page_helpers.ensure_plattenradar_dashboard_chrome",
+        "pages.profile_session.ensure_plattenradar_dashboard_chrome",
         lambda: None,
     )
     monkeypatch.setattr(page_helpers_module.st, "markdown", capture_markdown)
@@ -690,7 +692,7 @@ def test_safe_cookie_manager_delete_suppresses_keyerror() -> None:
         def delete(self, *_a: object, **_k: object) -> None:
             raise KeyError("missing")
 
-    page_helpers_module._safe_cookie_manager_delete(CM(), "any", key="k")
+    profile_session_module._safe_cookie_manager_delete(CM(), "any", key="k")
 
 
 class TestPersistActiveProfileFromSession:
@@ -764,12 +766,12 @@ class TestTasteSetupSessionHelpers:
             FILTER_FLOW_WIDGET_KEY_YEAR_RANGE: (2000, 2010),
         }
         monkeypatch.setattr(
-            page_helpers_module,
+            wizard_state_module,
             "cached_min_release_year_from_corpus",
             lambda: 2000,
         )
         monkeypatch.setattr(
-            page_helpers_module,
+            wizard_state_module,
             "cached_max_release_year_from_corpus",
             lambda: 2100,
         )
@@ -855,12 +857,12 @@ class TestTasteSetupSessionHelpers:
         monkeypatch.setattr(page_helpers_module.st, "session_state", sess)
         cleared: list[str] = []
         monkeypatch.setattr(
-            page_helpers_module,
+            profile_session_module,
             "_invalidate_current_session_token",
             lambda: None,
         )
         monkeypatch.setattr(
-            page_helpers_module,
+            profile_session_module,
             "clear_session_token_cookie",
             lambda: cleared.append("cookie"),
         )
@@ -1024,7 +1026,7 @@ class TestPruneCommunitiesToSelectedBroadCategories:
         }
         monkeypatch.setattr(page_helpers_module.st, "session_state", sess)
         monkeypatch.setattr(
-            page_helpers_module,
+            wizard_state_module,
             "cached_load_broad_categories_res_10",
             lambda: (
                 ["Rock", "Pop"],
@@ -1089,12 +1091,12 @@ class TestResetStepCascades:
             FILTER_FLOW_WIDGET_KEY_YEAR_RANGE: (1990, 2020),
         }
         monkeypatch.setattr(
-            page_helpers_module,
+            wizard_state_module,
             "cached_min_release_year_from_corpus",
             lambda: 2000,
         )
         monkeypatch.setattr(
-            page_helpers_module,
+            wizard_state_module,
             "cached_max_release_year_from_corpus",
             lambda: 2100,
         )
@@ -1150,12 +1152,12 @@ class TestResetStepCascades:
             FILTER_FLOW_WIDGET_KEY_YEAR_RANGE: (1990, 2020),
         }
         monkeypatch.setattr(
-            page_helpers_module,
+            wizard_state_module,
             "cached_min_release_year_from_corpus",
             lambda: 2000,
         )
         monkeypatch.setattr(
-            page_helpers_module,
+            wizard_state_module,
             "cached_max_release_year_from_corpus",
             lambda: 2100,
         )

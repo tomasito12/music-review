@@ -11,7 +11,11 @@ from pages.filter_state import (
     WIZARD_ACCOUNT_SAVE_INTENT_KEY,
     get_selected_communities,
 )
+from pages.wizard_state import reset_taste_preferences
 
+from music_review.dashboard.streamlit_branding import (
+    ensure_plattenradar_dashboard_chrome,
+)
 from music_review.dashboard.user_db import (
     create_session_token,
     delete_session_token,
@@ -87,16 +91,14 @@ def save_current_profile_to_disk() -> None:
 
 def logout_active_profile() -> None:
     """Sign out: invalidate session token, clear cookie, clear taste keys."""
-    from pages import page_helpers as ph
-
-    ph._invalidate_current_session_token()
+    _invalidate_current_session_token()
     st.session_state.pop(ACTIVE_PROFILE_SESSION_KEY, None)
     st.session_state.pop(LOGIN_PROFILE_MERGE_PENDING_KEY, None)
     st.session_state.pop(LOGIN_GUEST_SESSION_PINNED_KEY, None)
     st.session_state.pop(FILTER_ACCOUNT_SAVE_PROMPT_ACTIVE_KEY, None)
     st.session_state.pop(WIZARD_ACCOUNT_SAVE_INTENT_KEY, None)
-    ph.clear_session_token_cookie()
-    ph.reset_taste_preferences()
+    clear_session_token_cookie()
+    reset_taste_preferences()
 
 
 def profile_cookie_manager() -> Any:
@@ -121,9 +123,7 @@ def persist_session_token_cookie(token: str) -> None:
     """Store a session token in the browser (same-site lax, 30 days)."""
     if not isinstance(token, str) or not token.strip():
         return
-    from pages import page_helpers as ph
-
-    cm = ph.profile_cookie_manager()
+    cm = profile_cookie_manager()
     cm.set(
         SESSION_TOKEN_COOKIE_NAME,
         token,
@@ -135,9 +135,7 @@ def persist_session_token_cookie(token: str) -> None:
 
 def clear_session_token_cookie() -> None:
     """Remove the session-token cookie (logout or invalid token)."""
-    from pages import page_helpers as ph
-
-    cm = ph.profile_cookie_manager()
+    cm = profile_cookie_manager()
     _safe_cookie_manager_delete(
         cm,
         SESSION_TOKEN_COOKIE_NAME,
@@ -156,29 +154,23 @@ def persist_active_profile_slug_cookie(slug: str) -> None:
         safe = normalize_profile_slug(slug)
     except ValueError:
         return
-    from pages import page_helpers as ph
-
-    conn = ph.get_db_connection()
+    conn = get_db_connection()
     token = create_session_token(conn, safe)
     persist_session_token_cookie(token)
 
 
 def clear_active_profile_slug_cookie() -> None:
     """Remove session cookie and invalidate DB session token."""
-    from pages import page_helpers as ph
-
-    ph._invalidate_current_session_token()
-    ph.clear_session_token_cookie()
+    _invalidate_current_session_token()
+    clear_session_token_cookie()
 
 
 def _invalidate_current_session_token() -> None:
     """Delete the current session token from the DB (if present in cookie)."""
-    from pages import page_helpers as ph
-
-    token = ph._read_session_token_from_cookies()
+    token = _read_session_token_from_cookies()
     if token is None:
         return
-    conn = ph.get_db_connection()
+    conn = get_db_connection()
     delete_session_token(conn, token)
 
 
@@ -212,17 +204,15 @@ def peek_active_profile_slug_from_context_cookies() -> str | None:
 
 def restore_active_profile_from_cookie_if_needed() -> None:
     """If server session lost the slug, restore login from session-token cookie."""
-    from pages import page_helpers as ph
-
     if st.session_state.get(ACTIVE_PROFILE_SESSION_KEY):
         return
-    token = ph._read_session_token_from_cookies()
+    token = _read_session_token_from_cookies()
     if not token:
         return
-    conn = ph.get_db_connection()
+    conn = get_db_connection()
     slug = validate_session_token(conn, token)
     if slug is None:
-        ph.clear_session_token_cookie()
+        clear_session_token_cookie()
         return
     data = load_user_profile(conn, slug)
     post_login_maybe_defer_profile_apply(
@@ -279,7 +269,5 @@ def render_profile_sidebar() -> None:
 
 def render_toolbar(page_key: str) -> None:
     """Reserved hook at page top; profile controls live in the entrypoint sidebar."""
-    from pages import page_helpers as ph
-
-    ph.ensure_plattenradar_dashboard_chrome()
+    ensure_plattenradar_dashboard_chrome()
     _ = page_key

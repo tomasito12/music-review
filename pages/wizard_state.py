@@ -35,6 +35,11 @@ from music_review.config import (
 from music_review.dashboard.community_weight_mapping import (
     community_weight_bias_from_stored,
 )
+from music_review.dashboard.data_cache import (
+    cached_load_broad_categories_res_10,
+    cached_max_release_year_from_corpus,
+    cached_min_release_year_from_corpus,
+)
 from music_review.dashboard.taste_setup import (
     clear_taste_wizard_reset_pending,
     data_implies_taste_setup_complete,
@@ -56,10 +61,8 @@ def refresh_taste_wizard_after_filter_save() -> None:
 
 def _seed_filter_flow_main_sliders(state: MutableMapping[str, Any]) -> None:
     """Assign Schritt-3 main filter slider keys so Streamlit shows defaults."""
-    from pages import page_helpers as ph
-
-    year_floor = ph.cached_min_release_year_from_corpus()
-    year_cap = ph.cached_max_release_year_from_corpus()
+    year_floor = cached_min_release_year_from_corpus()
+    year_cap = cached_max_release_year_from_corpus()
     y_lo, y_hi = clamp_year_filter_bounds(
         year_floor,
         year_cap,
@@ -154,9 +157,7 @@ def prune_communities_to_selected_broad_categories() -> int:
     selected_comms_raw = st.session_state.get("selected_communities")
     if not isinstance(selected_comms_raw, set) or not selected_comms_raw:
         return 0
-    from pages import page_helpers as ph
-
-    _broad_cats, mappings = ph.cached_load_broad_categories_res_10()
+    _broad_cats, mappings = cached_load_broad_categories_res_10()
     if not mappings:
         return 0
     selected_broad: set[str] = {str(c) for c in selected_broad_raw}
