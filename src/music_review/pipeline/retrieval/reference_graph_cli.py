@@ -54,7 +54,9 @@ def main(argv: list[str] | None = None) -> int:
         if rc != 0:
             return rc
 
-    export_resolutions = _run_community_export(G, args)
+    export_rc, export_resolutions = _run_community_export(G, args)
+    if export_rc != 0:
+        return export_rc
 
     if args.export_album_affinities:
         _run_album_affinities(args, export_resolutions)
@@ -111,7 +113,7 @@ def _build_parser() -> argparse.ArgumentParser:
     parser.add_argument(
         "--export-communities",
         type=str,
-        default="",
+        default=None,
         help=(
             "Optional: comma-separated Louvain resolutions to export fixed "
             "clusterings for (e.g. '10'). Writes communities_res_{res}.json "
@@ -243,10 +245,14 @@ def _run_resolution_scan(
 def _run_community_export(
     G: Any,  # nx.DiGraph
     args: argparse.Namespace,
-) -> list[float]:
-    """Export community clusterings if requested. Returns the export resolutions."""
-    if not args.export_communities:
-        return []
+) -> tuple[int, list[float]]:
+    """Export community clusterings if requested.
+
+    Returns ``(exit_code, resolutions)``. Exit code 0 with empty resolutions
+    when export was not requested; exit code 1 on invalid or empty input.
+    """
+    if args.export_communities is None:
+        return 0, []
 
     export_resolutions = _parse_float_list(args.export_communities)
     if export_resolutions is None:
@@ -254,13 +260,13 @@ def _run_community_export(
             f"Error: invalid --export-communities value {args.export_communities!r}",
             file=sys.stderr,
         )
-        return []
+        return 1, []
     if not export_resolutions:
         print(
             "No valid resolution values provided for export-communities.",
             file=sys.stderr,
         )
-        return []
+        return 1, []
 
     data_directory = data_dir()
     prev_path = (
@@ -308,7 +314,7 @@ def _run_community_export(
         )
         export_fixed_clusterings(G, export_resolutions, data_directory)
 
-    return export_resolutions
+    return 0, export_resolutions
 
 
 def _run_album_affinities(

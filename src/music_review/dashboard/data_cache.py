@@ -7,7 +7,7 @@ from typing import Any
 
 import streamlit as st
 
-from music_review.dashboard.cache_keys import FileCacheSignature, file_cache_signature
+from music_review.dashboard.cache_keys import call_file_cached, file_cache_signature
 from music_review.data_access.affinities import (
     affinities_by_review_id,
     affinities_list,
@@ -45,7 +45,7 @@ CACHE_TTL_NEWEST_SLICE = 300
 
 @st.cache_data(ttl=CACHE_TTL_CORPUS)
 def _load_communities_res_10_cached(
-    signature: FileCacheSignature,
+    signature: tuple[bool, int, int],
 ) -> list[dict[str, Any]]:
     """Cached resolution-10 communities."""
     return load_communities_res_10()
@@ -53,13 +53,12 @@ def _load_communities_res_10_cached(
 
 def cached_load_communities_res_10() -> list[dict[str, Any]]:
     """Load resolution-10 communities with top artists (cached)."""
-    path = communities_res_10_path()
-    return _load_communities_res_10_cached(file_cache_signature(path))
+    return call_file_cached(_load_communities_res_10_cached, communities_res_10_path())
 
 
 @st.cache_data(ttl=CACHE_TTL_CORPUS)
 def _load_genre_labels_res_10_cached(
-    signature: FileCacheSignature,
+    signature: tuple[bool, int, int],
 ) -> dict[str, str]:
     """Cached LLM genre labels for communities (res_10)."""
     return load_genre_labels_res_10()
@@ -67,13 +66,15 @@ def _load_genre_labels_res_10_cached(
 
 def cached_load_genre_labels_res_10() -> dict[str, str]:
     """Load LLM-assigned genre labels for communities (res_10, cached)."""
-    path = community_genre_labels_res_10_path()
-    return _load_genre_labels_res_10_cached(file_cache_signature(path))
+    return call_file_cached(
+        _load_genre_labels_res_10_cached,
+        community_genre_labels_res_10_path(),
+    )
 
 
 @st.cache_data(ttl=CACHE_TTL_CORPUS)
 def _load_broad_categories_res_10_cached(
-    signature: FileCacheSignature,
+    signature: tuple[bool, int, int],
 ) -> tuple[list[str], dict[str, list[str]]]:
     """Cached broad categories and per-community mappings."""
     return load_broad_categories_res_10()
@@ -81,13 +82,15 @@ def _load_broad_categories_res_10_cached(
 
 def cached_load_broad_categories_res_10() -> tuple[list[str], dict[str, list[str]]]:
     """Load broad categories and per-community mappings (cached)."""
-    path = community_broad_categories_res_10_path()
-    return _load_broad_categories_res_10_cached(file_cache_signature(path))
+    return call_file_cached(
+        _load_broad_categories_res_10_cached,
+        community_broad_categories_res_10_path(),
+    )
 
 
 @st.cache_data(ttl=CACHE_TTL_CORPUS)
 def _load_community_memberships_cached(
-    signature: FileCacheSignature,
+    signature: tuple[bool, int, int],
 ) -> dict[str, dict[str, str]]:
     """Cached artist -> community memberships."""
     return load_artist_communities()
@@ -95,13 +98,15 @@ def _load_community_memberships_cached(
 
 def cached_load_community_memberships() -> dict[str, dict[str, str]]:
     """Load artist community memberships (cached)."""
-    path = community_memberships_path()
-    return _load_community_memberships_cached(file_cache_signature(path))
+    return call_file_cached(
+        _load_community_memberships_cached,
+        community_memberships_path(),
+    )
 
 
 @st.cache_data(ttl=CACHE_TTL_CORPUS)
 def _max_release_year_from_corpus_cached(
-    signature: FileCacheSignature,
+    signature: tuple[bool, int, int],
 ) -> int:
     """Upper bound for year sliders: max year in corpus or current year."""
     m = max_release_year_in_jsonl(reviews_path())
@@ -112,13 +117,12 @@ def _max_release_year_from_corpus_cached(
 
 def cached_max_release_year_from_corpus() -> int:
     """Upper bound for year sliders (cached)."""
-    path = reviews_path()
-    return _max_release_year_from_corpus_cached(file_cache_signature(path))
+    return call_file_cached(_max_release_year_from_corpus_cached, reviews_path())
 
 
 @st.cache_data(ttl=CACHE_TTL_CORPUS)
 def _min_release_year_from_corpus_cached(
-    signature: FileCacheSignature,
+    signature: tuple[bool, int, int],
 ) -> int:
     """Lower bound for year sliders: min year in corpus or fallback."""
     m = min_release_year_in_jsonl(reviews_path())
@@ -129,13 +133,12 @@ def _min_release_year_from_corpus_cached(
 
 def cached_min_release_year_from_corpus() -> int:
     """Lower bound for year sliders (cached)."""
-    path = reviews_path()
-    return _min_release_year_from_corpus_cached(file_cache_signature(path))
+    return call_file_cached(_min_release_year_from_corpus_cached, reviews_path())
 
 
 @st.cache_data(ttl=CACHE_TTL_CORPUS)
 def _load_plattenlabel_filter_buckets_cached(
-    signature: FileCacheSignature,
+    signature: tuple[bool, int, int],
 ) -> tuple[list[str], list[str], int]:
     """Cached Plattenlabel buckets from reviews corpus."""
     return plattenlabel_album_count_buckets_from_reviews_jsonl(reviews_path())
@@ -143,13 +146,12 @@ def _load_plattenlabel_filter_buckets_cached(
 
 def cached_load_plattenlabel_filter_buckets() -> tuple[list[str], list[str], int]:
     """Cached head/tail Plattenlabel buckets from reviews corpus."""
-    path = reviews_path()
-    return _load_plattenlabel_filter_buckets_cached(file_cache_signature(path))
+    return call_file_cached(_load_plattenlabel_filter_buckets_cached, reviews_path())
 
 
 @st.cache_data(ttl=CACHE_TTL_CORPUS)
 def _load_sorted_unique_plattenlabels_cached(
-    signature: FileCacheSignature,
+    signature: tuple[bool, int, int],
 ) -> list[str]:
     """Cached sorted unique Plattenlabels from reviews corpus."""
     return unique_plattenlabels_from_reviews_jsonl(reviews_path())
@@ -157,14 +159,13 @@ def _load_sorted_unique_plattenlabels_cached(
 
 def cached_load_sorted_unique_plattenlabels() -> list[str]:
     """Load sorted unique Plattenlabels from reviews corpus (cached)."""
-    path = reviews_path()
-    return _load_sorted_unique_plattenlabels_cached(file_cache_signature(path))
+    return call_file_cached(_load_sorted_unique_plattenlabels_cached, reviews_path())
 
 
 @st.cache_data(ttl=CACHE_TTL_CORPUS)
 def _load_reviews_and_metadata_cached(
-    reviews_signature: FileCacheSignature,
-    metadata_signature: FileCacheSignature,
+    reviews_signature: tuple[bool, int, int],
+    metadata_signature: tuple[bool, int, int],
 ) -> tuple[list[Review], dict[int, dict[str, Any]]]:
     """Load corpus reviews plus optional imputed metadata map."""
     return load_reviews(), load_metadata_map()
@@ -185,7 +186,7 @@ def cached_load_reviews_and_metadata() -> tuple[
 
 @st.cache_data(ttl=CACHE_TTL_CORPUS)
 def _load_affinities_list_cached(
-    signature: FileCacheSignature,
+    signature: tuple[bool, int, int],
 ) -> list[dict[str, Any]]:
     """Cached album-to-community affinity records as a list."""
     return affinities_list()
@@ -193,13 +194,15 @@ def _load_affinities_list_cached(
 
 def cached_load_affinities_list() -> list[dict[str, Any]]:
     """Load album affinity records used for scoring (cached list form)."""
-    path = album_community_affinities_path()
-    return _load_affinities_list_cached(file_cache_signature(path))
+    return call_file_cached(
+        _load_affinities_list_cached,
+        album_community_affinities_path(),
+    )
 
 
 @st.cache_data(ttl=CACHE_TTL_CORPUS)
 def _load_affinities_by_review_id_cached(
-    signature: FileCacheSignature,
+    signature: tuple[bool, int, int],
 ) -> dict[int, dict[str, Any]]:
     """Cached album affinities keyed by review_id."""
     return affinities_by_review_id()
@@ -207,13 +210,15 @@ def _load_affinities_by_review_id_cached(
 
 def cached_load_affinities_by_review_id() -> dict[int, dict[str, Any]]:
     """Load album affinities keyed by review_id (cached)."""
-    path = album_community_affinities_path()
-    return _load_affinities_by_review_id_cached(file_cache_signature(path))
+    return call_file_cached(
+        _load_affinities_by_review_id_cached,
+        album_community_affinities_path(),
+    )
 
 
 @st.cache_data(ttl=CACHE_TTL_CORPUS)
 def _load_affinity_top_map_cached(
-    signature: FileCacheSignature,
+    signature: tuple[bool, int, int],
     *,
     top_k: int = 5,
 ) -> dict[int, list[tuple[str, float]]]:
@@ -226,14 +231,16 @@ def cached_load_affinity_top_map(
     top_k: int = 5,
 ) -> dict[int, list[tuple[str, float]]]:
     """Load top-k community affinities per review (cached)."""
-    path = album_community_affinities_path()
-    return _load_affinity_top_map_cached(file_cache_signature(path), top_k=top_k)
+    return call_file_cached(
+        lambda sig: _load_affinity_top_map_cached(sig, top_k=top_k),
+        album_community_affinities_path(),
+    )
 
 
 @st.cache_data(ttl=CACHE_TTL_NEWEST_SLICE)
 def _load_newest_reviews_cached(
     n: int,
-    signature: FileCacheSignature,
+    signature: tuple[bool, int, int],
 ) -> list[Review]:
     """Return the n newest reviews by id."""
     reviews = load_reviews()
@@ -243,13 +250,13 @@ def _load_newest_reviews_cached(
 
 def cached_load_newest_reviews_slice(n: int) -> list[Review]:
     """Return the n newest reviews by id (cached)."""
-    path = reviews_path()
-    return _load_newest_reviews_cached(max(1, n), file_cache_signature(path))
+    sig = file_cache_signature(reviews_path())
+    return _load_newest_reviews_cached(max(1, n), sig)
 
 
 @st.cache_data(ttl=CACHE_TTL_NEWEST_SLICE)
 def _load_all_reviews_for_breadth_norm_cached(
-    signature: FileCacheSignature,
+    signature: tuple[bool, int, int],
 ) -> list[Review]:
     """Full corpus for global coverage percentile (breadth_norm)."""
     return load_reviews()
@@ -257,5 +264,4 @@ def _load_all_reviews_for_breadth_norm_cached(
 
 def cached_load_all_reviews_for_breadth_norm() -> list[Review]:
     """Load full review corpus for breadth normalization (cached)."""
-    path = reviews_path()
-    return _load_all_reviews_for_breadth_norm_cached(file_cache_signature(path))
+    return call_file_cached(_load_all_reviews_for_breadth_norm_cached, reviews_path())
