@@ -8,7 +8,17 @@ import sys
 from pathlib import Path
 from typing import Any
 
-from music_review.config import REFERENCE_POSITION_W_MIN, resolve_data_path
+from music_review.config import REFERENCE_POSITION_W_MIN
+from music_review.data_access.paths import (
+    album_community_affinities_path,
+    artist_reference_graph_path,
+    community_memberships_path,
+    community_resolution_scan_path,
+    data_dir,
+    metadata_imputed_path,
+    metadata_path,
+    reviews_path,
+)
 from music_review.pipeline.retrieval.reference_graph import (
     attribute_purity_summary,
     build_artist_attribute_profiles,
@@ -44,7 +54,9 @@ def main(argv: list[str] | None = None) -> int:
         if rc != 0:
             return rc
 
-    export_resolutions = _run_community_export(G, args)
+    export_rc, export_resolutions = _run_community_export(G, args)
+    if export_rc != 0:
+        return export_rc
 
     if args.export_album_affinities:
         _run_album_affinities(args, export_resolutions)
@@ -62,13 +74,13 @@ def _build_parser() -> argparse.ArgumentParser:
     parser.add_argument(
         "--reviews",
         type=Path,
-        default=resolve_data_path("data/reviews.jsonl"),
+        default=reviews_path(),
         help="Path to reviews.jsonl.",
     )
     parser.add_argument(
         "--output",
         type=Path,
-        default=resolve_data_path("data/artist_reference_graph.graphml"),
+        default=artist_reference_graph_path(),
         help="Output GraphML path.",
     )
     parser.add_argument(
@@ -101,7 +113,7 @@ def _build_parser() -> argparse.ArgumentParser:
     parser.add_argument(
         "--export-communities",
         type=str,
-        default="",
+        default=None,
         help=(
             "Optional: comma-separated Louvain resolutions to export fixed "
             "clusterings for (e.g. '10'). Writes communities_res_{res}.json "
@@ -166,12 +178,12 @@ def _run_resolution_scan(
         print("No valid resolution values provided for scan.", file=sys.stderr)
         return 1
 
-    metadata_path = resolve_data_path("data/metadata_imputed.jsonl")
-    metadata_fallback_path = resolve_data_path("data/metadata.jsonl")
+    imputed_meta = metadata_imputed_path()
+    raw_meta = metadata_path()
     profiles = build_artist_attribute_profiles(
         reviews_path=args.reviews,
-        metadata_path=metadata_path,
-        metadata_fallback_path=metadata_fallback_path,
+        metadata_path=imputed_meta,
+        metadata_fallback_path=raw_meta,
     )
 
     print(f"Scanning {len(gammas)} resolution values: {gammas}")
@@ -221,7 +233,7 @@ def _run_resolution_scan(
     scan_output = (
         args.scan_output
         if args.scan_output is not None
-        else resolve_data_path("data/community_resolution_scan.json")
+        else community_resolution_scan_path()
     )
     scan_output.parent.mkdir(parents=True, exist_ok=True)
     with scan_output.open("w", encoding="utf-8") as f:
@@ -233,10 +245,14 @@ def _run_resolution_scan(
 def _run_community_export(
     G: Any,  # nx.DiGraph
     args: argparse.Namespace,
-) -> list[float]:
-    """Export community clusterings if requested. Returns the export resolutions."""
-    if not args.export_communities:
-        return []
+) -> tuple[int, list[float]]:
+    """Export community clusterings if requested.
+
+    Returns ``(exit_code, resolutions)``. Exit code 0 with empty resolutions
+    when export was not requested; exit code 1 on invalid or empty input.
+    """
+    if args.export_communities is None:
+        return 0, []
 
     export_resolutions = _parse_float_list(args.export_communities)
     if export_resolutions is None:
@@ -244,19 +260,19 @@ def _run_community_export(
             f"Error: invalid --export-communities value {args.export_communities!r}",
             file=sys.stderr,
         )
-        return []
+        return 1, []
     if not export_resolutions:
         print(
             "No valid resolution values provided for export-communities.",
             file=sys.stderr,
         )
-        return []
+        return 1, []
 
-    data_dir = resolve_data_path("data")
+    data_directory = data_dir()
     prev_path = (
         args.previous_memberships
         if args.previous_memberships is not None
-        else data_dir / "community_memberships.jsonl"
+        else community_memberships_path()
     )
     res_keys = [resolution_to_res_key(r) for r in export_resolutions]
     previous = load_artist_communities(prev_path)
@@ -283,22 +299,22 @@ def _run_community_export(
     if use_incremental:
         print(
             f"Exporting incremental clusterings for {export_resolutions} "
-            f"into {data_dir} (stable IDs from {prev_path})"
+            f"into {data_directory} (stable IDs from {prev_path})"
         )
         export_communities_incremental(
             G,
             export_resolutions,
-            data_dir,
+            data_directory,
             prev_path,
         )
     else:
         print(
             f"Exporting Louvain clusterings for resolutions {export_resolutions} "
-            f"into {data_dir}"
+            f"into {data_directory}"
         )
-        export_fixed_clusterings(G, export_resolutions, data_dir)
+        export_fixed_clusterings(G, export_resolutions, data_directory)
 
-    return export_resolutions
+    return 0, export_resolutions
 
 
 def _run_album_affinities(
@@ -306,8 +322,7 @@ def _run_album_affinities(
     export_resolutions: list[float],
 ) -> None:
     """Compute and write album-community affinities."""
-    data_dir = resolve_data_path("data")
-    memberships_path = data_dir / "community_memberships.jsonl"
+    memberships_path = community_memberships_path()
     resolutions = export_resolutions if export_resolutions else [10.0]
     print(
         "Computing album→community affinities for resolutions "
@@ -321,7 +336,7 @@ def _run_album_affinities(
         top_k_per_res=None,
         threshold=0.0,
     )
-    affinities_path = data_dir / "album_community_affinities.jsonl"
+    affinities_path = album_community_affinities_path()
     affinities_path.parent.mkdir(parents=True, exist_ok=True)
     with affinities_path.open("w", encoding="utf-8") as f:
         for row in affinities:

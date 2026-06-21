@@ -6,32 +6,29 @@ from __future__ import annotations
 import argparse
 import contextlib
 import logging
-import os
-import subprocess
 import sys
+
+# Load ``.env`` before orchestration checks ``OPENAI_API_KEY``.
+with contextlib.suppress(ImportError):
+    import music_review.config  # noqa: F401 — side effect: ``load_dotenv``
+
+from music_review.data_access.paths import (
+    DATA_ARTIST_GENRES,
+    DATA_METADATA,
+    DATA_METADATA_IMPUTED,
+    DATA_PIPELINE_HEALTH_REPORT,
+    DATA_REVIEWS,
+)
+from music_review.pipeline.orchestration import (
+    pipeline_config_from_namespace,
+    run_pipeline_update,
+)
 
 logging.basicConfig(
     level=logging.INFO,
     format="%(asctime)s [%(levelname)s] %(message)s",
 )
 logger = logging.getLogger(__name__)
-
-# Subprocess steps import ``music_review`` and get ``.env`` via ``config``; this
-# script's own ``os.environ.get("OPENAI_API_KEY")`` checks run in the parent
-# process and would otherwise miss values only set in ``.env``.
-with contextlib.suppress(ImportError):
-    import music_review.config  # noqa: F401 — side effect: ``load_dotenv``
-
-
-def run_module(module: str, args: list[str]) -> bool:
-    """Run a module with the given args. Return True on success."""
-    cmd = [sys.executable, "-m", module, *args]
-    logger.info("Running: %s", " ".join(cmd))
-    result = subprocess.run(cmd)
-    if result.returncode != 0:
-        logger.error("Command failed with exit code %d", result.returncode)
-        return False
-    return True
 
 
 def main() -> int:
@@ -56,22 +53,22 @@ def main() -> int:
     )
     parser.add_argument(
         "--reviews",
-        default="data/reviews.jsonl",
+        default=DATA_REVIEWS,
         help="Path to reviews JSONL (default: %(default)s).",
     )
     parser.add_argument(
         "--metadata",
-        default="data/metadata.jsonl",
+        default=DATA_METADATA,
         help="Path to metadata JSONL (default: %(default)s).",
     )
     parser.add_argument(
         "--artist-genres",
-        default="data/artist_genres.json",
+        default=DATA_ARTIST_GENRES,
         help="Path to artist_genres.json (default: %(default)s).",
     )
     parser.add_argument(
         "--metadata-imputed",
-        default="data/metadata_imputed.jsonl",
+        default=DATA_METADATA_IMPUTED,
         help="Path to imputed metadata JSONL (default: %(default)s).",
     )
     parser.add_argument(
@@ -131,139 +128,41 @@ def main() -> int:
     )
     parser.add_argument(
         "--dq-output",
-        default="data/pipeline_health_report.json",
+        default=DATA_PIPELINE_HEALTH_REPORT,
         help="Path for the DQ JSON report (default: %(default)s).",
     )
     args = parser.parse_args()
+    config = pipeline_config_from_namespace(args)
 
-    verbose = ["-v"] if args.verbose else []
-
-    if not args.skip_reviews:
-        scraper_args = [*verbose, "--output", args.reviews, "resume"]
-        if args.max_id is not None:
-            scraper_args.extend(["--max-id", str(args.max_id)])
-        if not run_module("music_review.pipeline.scraper.cli", scraper_args):
-            return 1
-
-    fetch_args = [
-        "--input",
-        args.reviews,
-        "--output",
-        args.metadata,
-    ]
-    if args.metadata_update:
-        fetch_args.append("--update")
-    if args.metadata_min_review_id is not None:
-        fetch_args.extend(
-            ["--min-review-id", str(args.metadata_min_review_id)],
-        )
-    if not run_module(
-        "music_review.pipeline.enrichment.fetch_metadata",
-        fetch_args,
-    ):
-        return 1
-
-    if not run_module(
-        "music_review.pipeline.enrichment.artist_genres",
-        [
-            "--metadata",
-            args.metadata,
-            "--artist-profiles-output",
-            args.artist_genres,
-            "--imputed-metadata-output",
-            args.metadata_imputed,
-        ],
-    ):
-        return 1
-
-    if not run_module(
-        "music_review.pipeline.enrichment.reference_imputation",
-        [
-            "--imputed-metadata",
-            args.metadata_imputed,
-            "--reviews",
-            args.reviews,
-            "--artist-genres",
-            args.artist_genres,
-        ],
-    ):
-        return 1
-
-    if args.skip_graph_affinities:
+    if config.skip_graph_affinities:
         logger.info(
-            "Skipping reference graph + album_community_affinities "
-            "(--skip-graph-affinities).",
+            "Graph/affinities will be skipped if reached (--skip-graph-affinities).",
         )
-    else:
-        mode = "Louvain recluster" if args.recluster_communities else "incremental"
+    elif config.recluster_communities:
         logger.info(
-            "Rebuilding artist graph, exporting communities (res 10, %s), "
-            "and album_community_affinities.jsonl …",
-            mode,
-        )
-        graph_args = [
-            "--reviews",
-            args.reviews,
-            "--export-communities",
-            "10",
-            "--export-album-affinities",
-            "--communities-mode",
-            "louvain" if args.recluster_communities else "incremental",
-        ]
-        if not run_module(
-            "music_review.pipeline.retrieval.reference_graph_cli",
-            graph_args,
-        ):
-            return 1
-
-    if not args.skip_graph_affinities and os.environ.get("OPENAI_API_KEY"):
-        logger.info("Labeling communities (genre labels + broad categories)...")
-        if not run_module(
-            "music_review.pipeline.retrieval.community_genre_labels",
-            ["--only-missing"],
-        ):
-            logger.warning("community-genre-labels failed; continuing.")
-        if not run_module(
-            "music_review.pipeline.retrieval.community_broad_categories",
-            ["--only-missing"],
-        ):
-            logger.warning("community-broad-categories failed; continuing.")
-
-    if args.skip_graph_affinities:
-        logger.info(
-            "Database update complete (reviews + metadata + imputation; "
-            "graph skipped).",
+            "Rebuilding artist graph with Louvain recluster (res 10) …",
         )
     else:
         logger.info(
-            "Database update complete (reviews + metadata + imputation + graph "
-            "+ album_community_affinities).",
+            "Rebuilding artist graph with incremental communities (res 10) …",
         )
 
-    logger.info("Full update pipeline finished.")
+    exit_code = run_pipeline_update(config, scrape_mode="cli")
 
-    if not args.skip_dq:
-        from music_review.config import resolve_data_path
-        from music_review.pipeline.data_quality.models import DataQualityConfig
-        from music_review.pipeline.data_quality.run import run_data_quality
-
-        dq_cfg = DataQualityConfig(
-            reviews_path=resolve_data_path(args.reviews),
-            metadata_imputed_path=resolve_data_path(args.metadata_imputed),
-            output_report_path=resolve_data_path(args.dq_output),
-            expect_graph_artifacts=not args.skip_graph_affinities,
-            strict=args.dq_strict,
-        )
-        dq_result = run_data_quality(dq_cfg)
-        if dq_result.exit_code != 0:
-            logger.error(
-                "Data-quality checks failed (exit %s). See %s.",
-                dq_result.exit_code,
-                dq_result.report_path,
+    if exit_code == 0:
+        if config.skip_graph_affinities:
+            logger.info(
+                "Database update complete (reviews + metadata + imputation; "
+                "graph skipped).",
             )
-            return dq_result.exit_code
+        else:
+            logger.info(
+                "Database update complete (reviews + metadata + imputation + "
+                "graph + album_community_affinities).",
+            )
+        logger.info("Full update pipeline finished.")
 
-    return 0
+    return exit_code
 
 
 if __name__ == "__main__":

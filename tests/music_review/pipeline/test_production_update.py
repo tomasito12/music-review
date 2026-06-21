@@ -4,17 +4,16 @@ from __future__ import annotations
 
 import json
 from pathlib import Path
-from typing import Any
 
 import pytest
 
-from music_review.pipeline import production_update
-from music_review.pipeline.production_update import ProductionUpdateConfig
+from music_review.pipeline import orchestration, production_update
+from music_review.pipeline.orchestration import PipelineConfig
 from music_review.pipeline.scraper.service import ScrapeResult
 
 
-def _config(tmp_path: Path, *, skip_graph: bool = True) -> ProductionUpdateConfig:
-    return ProductionUpdateConfig(
+def _config(tmp_path: Path, *, skip_graph: bool = True) -> PipelineConfig:
+    return PipelineConfig(
         reviews_path=tmp_path / "reviews.jsonl",
         metadata_path=tmp_path / "metadata.jsonl",
         artist_genres_path=tmp_path / "artist_genres.json",
@@ -26,6 +25,7 @@ def _config(tmp_path: Path, *, skip_graph: bool = True) -> ProductionUpdateConfi
         skip_graph_affinities=skip_graph,
         skip_dq=True,
         dq_strict=False,
+        exit_if_no_new_reviews=True,
         verbose=False,
     )
 
@@ -52,19 +52,20 @@ def test_starts_at_one_when_no_reviews_exist(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    calls: list[dict[str, Any]] = []
+    captured: dict[str, int | None] = {}
 
-    def fake_scrape_until_gap(*args: Any, **kwargs: Any) -> ScrapeResult:
-        calls.append({"args": args, "kwargs": kwargs})
+    def fake_scrape_in_process(config: orchestration.PipelineConfig) -> ScrapeResult:
+        _line_count, max_id = orchestration.review_line_count_and_max_id(
+            config.reviews_path,
+        )
+        captured["start_id"] = 1 if max_id is None else max_id + 1
         return _scrape_result([])
 
-    monkeypatch.setattr(production_update, "scrape_until_gap", fake_scrape_until_gap)
-    monkeypatch.setattr(production_update, "run_module", lambda *_args: False)
+    monkeypatch.setattr(orchestration, "scrape_in_process", fake_scrape_in_process)
+    monkeypatch.setattr(orchestration, "run_enrichment_steps", lambda *_a, **_k: 1)
 
     assert production_update.run_update(_config(tmp_path)) == 0
-
-    assert calls[0]["args"] == (1,)
-    assert calls[0]["kwargs"]["stop_after_n_empty"] == 3
+    assert captured["start_id"] == 1
 
 
 def test_skips_enrichment_when_no_new_reviews(
@@ -72,22 +73,21 @@ def test_skips_enrichment_when_no_new_reviews(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     _write_review(tmp_path / "reviews.jsonl", 7)
-    module_calls: list[tuple[str, list[str]]] = []
+    enrichment_calls: list[tuple[str, list[str]]] = []
 
-    def fake_scrape_until_gap(*args: Any, **kwargs: Any) -> ScrapeResult:
-        assert args == (8,)
+    def fake_scrape_in_process(_config: orchestration.PipelineConfig) -> ScrapeResult:
         return _scrape_result([])
 
-    def fake_run_module(module: str, args: list[str]) -> bool:
-        module_calls.append((module, args))
-        return True
+    def fake_run_enrichment(*_args: object, **_kwargs: object) -> int:
+        enrichment_calls.append(("called", []))
+        return 0
 
-    monkeypatch.setattr(production_update, "scrape_until_gap", fake_scrape_until_gap)
-    monkeypatch.setattr(production_update, "run_module", fake_run_module)
+    monkeypatch.setattr(orchestration, "scrape_in_process", fake_scrape_in_process)
+    monkeypatch.setattr(orchestration, "run_enrichment_steps", fake_run_enrichment)
 
     assert production_update.run_update(_config(tmp_path)) == 0
 
-    assert module_calls == []
+    assert enrichment_calls == []
 
 
 def test_new_reviews_run_enrichment_from_first_new_id(
@@ -95,29 +95,25 @@ def test_new_reviews_run_enrichment_from_first_new_id(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     _write_review(tmp_path / "reviews.jsonl", 10)
-    module_calls: list[tuple[str, list[str]]] = []
+    captured: dict[str, int | None] = {}
 
-    def fake_scrape_until_gap(*args: Any, **kwargs: Any) -> ScrapeResult:
-        assert args == (11,)
+    def fake_scrape_in_process(_config: orchestration.PipelineConfig) -> ScrapeResult:
         return _scrape_result([11, 12])
 
-    def fake_run_module(module: str, args: list[str]) -> bool:
-        module_calls.append((module, args))
-        return True
+    def fake_run_enrichment(
+        _config: orchestration.PipelineConfig,
+        *,
+        metadata_min_review_id: int | None = None,
+    ) -> int:
+        captured["min_id"] = metadata_min_review_id
+        return 0
 
-    monkeypatch.setattr(production_update, "scrape_until_gap", fake_scrape_until_gap)
-    monkeypatch.setattr(production_update, "run_module", fake_run_module)
+    monkeypatch.setattr(orchestration, "scrape_in_process", fake_scrape_in_process)
+    monkeypatch.setattr(orchestration, "run_enrichment_steps", fake_run_enrichment)
 
     assert production_update.run_update(_config(tmp_path)) == 0
 
-    assert module_calls[0][0] == "music_review.pipeline.enrichment.fetch_metadata"
-    assert "--min-review-id" in module_calls[0][1]
-    assert module_calls[0][1][-1] == "11"
-    assert [call[0] for call in module_calls] == [
-        "music_review.pipeline.enrichment.fetch_metadata",
-        "music_review.pipeline.enrichment.artist_genres",
-        "music_review.pipeline.enrichment.reference_imputation",
-    ]
+    assert captured["min_id"] == 11
 
 
 def test_active_lock_makes_cli_exit_cleanly(
@@ -125,6 +121,7 @@ def test_active_lock_makes_cli_exit_cleanly(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     config = _config(tmp_path)
+    assert config.lock_path is not None
     config.lock_path.write_text("pid=123\n", encoding="utf-8")
 
     monkeypatch.setattr(production_update, "build_config", lambda _args: config)

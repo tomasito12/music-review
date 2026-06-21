@@ -70,7 +70,7 @@ hatch run python -m music_review.pipeline.enrichment.fetch_metadata
 
 # Build artist genre profiles and impute missing genres
 hatch run python -m music_review.pipeline.enrichment.artist_genres \
-  --metadata data/metadata_1.jsonl \
+  --metadata data/metadata.jsonl \
   --artist-profiles-output data/artist_genres.json \
   --imputed-metadata-output data/metadata_imputed.jsonl
 

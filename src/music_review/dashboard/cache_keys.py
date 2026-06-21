@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from collections.abc import Callable
 from pathlib import Path
 
 FileCacheSignature = tuple[bool, int, int]
@@ -15,3 +16,11 @@ def file_cache_signature(path: str | Path) -> FileCacheSignature:
     except FileNotFoundError:
         return (False, 0, 0)
     return (True, stat.st_mtime_ns, stat.st_size)
+
+
+def call_file_cached[T](
+    cached_fn: Callable[[FileCacheSignature], T],
+    path: str | Path,
+) -> T:
+    """Invoke a ``@st.cache_data`` loader with a signature from ``path``."""
+    return cached_fn(file_cache_signature(path))

@@ -2,7 +2,8 @@
 
 from __future__ import annotations
 
-import pytest
+import json
+from pathlib import Path
 
 from music_review.pipeline.retrieval.reference_graph_cli import (
     _parse_float_list,
@@ -38,7 +39,59 @@ class TestParseFloatList:
 
 
 class TestMainReturnsErrorOnMissingFile:
-    def test_nonexistent_reviews_file(self, tmp_path: pytest.TempPathFactory) -> None:
-        fake_reviews = str(tmp_path / "nonexistent.jsonl")  # type: ignore[operator]
-        rc = main(["--reviews", fake_reviews])
+    def test_nonexistent_reviews_file(self, tmp_path: Path) -> None:
+        fake_reviews = tmp_path / "nonexistent.jsonl"
+        rc = main(["--reviews", str(fake_reviews)])
+        assert rc == 1
+
+
+def _minimal_reviews_jsonl(path: Path) -> None:
+    row = {
+        "id": 1,
+        "url": "https://example.com/1",
+        "artist": "Artist A",
+        "album": "Album One",
+        "text": "Review text",
+        "references": ["Ref B"],
+    }
+    path.write_text(json.dumps(row) + "\n", encoding="utf-8")
+
+
+class TestExportCommunitiesErrors:
+    def test_invalid_export_communities_returns_error(
+        self,
+        tmp_path: Path,
+    ) -> None:
+        reviews = tmp_path / "reviews.jsonl"
+        output = tmp_path / "graph.graphml"
+        _minimal_reviews_jsonl(reviews)
+        rc = main(
+            [
+                "--reviews",
+                str(reviews),
+                "--output",
+                str(output),
+                "--export-communities",
+                "abc",
+            ],
+        )
+        assert rc == 1
+
+    def test_empty_export_communities_returns_error(
+        self,
+        tmp_path: Path,
+    ) -> None:
+        reviews = tmp_path / "reviews.jsonl"
+        output = tmp_path / "graph.graphml"
+        _minimal_reviews_jsonl(reviews)
+        rc = main(
+            [
+                "--reviews",
+                str(reviews),
+                "--output",
+                str(output),
+                "--export-communities",
+                "",
+            ],
+        )
         assert rc == 1

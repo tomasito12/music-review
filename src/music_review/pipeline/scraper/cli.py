@@ -11,6 +11,7 @@ from enum import StrEnum
 from pathlib import Path
 
 from music_review.config import resolve_data_path
+from music_review.data_access.paths import DATA_REVIEWS
 from music_review.pipeline.scraper.service import scrape_ids, scrape_until_gap
 from music_review.pipeline.scraper.storage import load_existing_ids
 
@@ -72,7 +73,7 @@ def _build_arg_parser() -> argparse.ArgumentParser:
 
     parser.add_argument(
         "--output",
-        default="data/reviews.jsonl",
+        default=DATA_REVIEWS,
         help="Path to output JSONL file (default: %(default)s).",
     )
     parser.add_argument(

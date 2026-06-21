@@ -4,7 +4,10 @@ from __future__ import annotations
 
 from pathlib import Path
 
-from music_review.config import resolve_data_path
+from music_review.data_access.paths import (
+    album_community_affinities_path,
+    community_memberships_path,
+)
 from music_review.pipeline.data_quality.models import Finding
 
 
@@ -22,9 +25,8 @@ def _non_empty_jsonl_lines(path: Path) -> int:
 def check_graph_artifacts() -> list[Finding]:
     """Ensure community and affinity exports exist and are non-empty."""
     findings: list[Finding] = []
-    data_dir = resolve_data_path("data")
-    memberships = data_dir / "community_memberships.jsonl"
-    affinities = data_dir / "album_community_affinities.jsonl"
+    memberships = community_memberships_path()
+    affinities = album_community_affinities_path()
 
     for label, path in (
         ("community_memberships", memberships),

@@ -25,7 +25,7 @@ def test_load_newest_reviews_slice_uses_max_one(
         seen.append(k)
         return []
 
-    monkeypatch.setattr(module, "_load_newest_reviews", fake_load)
+    monkeypatch.setattr(module, "cached_load_newest_reviews_slice", fake_load)
     assert module.load_newest_reviews_slice(0) == []
     assert seen == [1]
     assert module.load_newest_reviews_slice(7) == []

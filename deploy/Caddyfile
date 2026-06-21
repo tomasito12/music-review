@@ -1,3 +1,3 @@
-:80 {
+plattenradar.de, www.plattenradar.de {
     reverse_proxy music-review:8501
 }

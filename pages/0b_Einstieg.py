@@ -5,10 +5,11 @@ from __future__ import annotations
 import streamlit as st
 from pages.page_helpers import (
     has_step1_state,
-    load_broad_categories_res_10,
     render_toolbar,
     reset_step1_cascade,
 )
+
+from music_review.dashboard.data_cache import cached_load_broad_categories_res_10
 
 
 def _einstieg_css() -> None:
@@ -107,7 +108,7 @@ def main() -> None:
         unsafe_allow_html=True,
     )
 
-    broad_categories, _ = load_broad_categories_res_10()
+    broad_categories, _ = cached_load_broad_categories_res_10()
 
     if not broad_categories:
         st.warning(

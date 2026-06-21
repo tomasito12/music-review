@@ -29,6 +29,12 @@ from pathlib import Path
 from typing import Any
 
 from music_review.config import resolve_data_path
+from music_review.data_access.communities import (
+    load_communities_res_file as load_communities,
+)
+from music_review.data_access.communities import (
+    load_existing_genre_labels,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -66,44 +72,6 @@ def _get_openai_client() -> Any:
     from openai import OpenAI
 
     return OpenAI(api_key=api_key)
-
-
-def load_communities(path: Path | str) -> tuple[list[dict[str, Any]], float]:
-    """Load communities from a communities_res_*.json file.
-
-    Returns (communities list, resolution). Raises if file invalid.
-    """
-    p = Path(path)
-    if not p.exists():
-        raise FileNotFoundError(f"Communities file not found: {p}")
-    with p.open("r", encoding="utf-8") as f:
-        data = json.load(f)
-    resolution = float(data.get("resolution", 0))
-    communities = data.get("communities")
-    if not isinstance(communities, list):
-        raise ValueError("Expected 'communities' array in JSON.")
-    return communities, resolution
-
-
-def load_existing_genre_labels(path: Path | str) -> dict[str, str]:
-    """Load ``community_id`` -> ``genre_label`` from an existing output JSON."""
-    p = Path(path)
-    if not p.exists():
-        return {}
-    with p.open("r", encoding="utf-8") as f:
-        data = json.load(f)
-    labels = data.get("labels")
-    if not isinstance(labels, list):
-        return {}
-    out: dict[str, str] = {}
-    for item in labels:
-        if not isinstance(item, dict):
-            continue
-        cid = item.get("community_id")
-        gl = item.get("genre_label")
-        if isinstance(cid, str) and isinstance(gl, str):
-            out[cid] = gl
-    return out
 
 
 def _artist_list_for_prompt(
