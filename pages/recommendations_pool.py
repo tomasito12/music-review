@@ -15,7 +15,6 @@ from __future__ import annotations
 
 import logging
 import random
-from pathlib import Path
 from typing import Any
 
 import streamlit as st
@@ -27,12 +26,6 @@ from pages.page_helpers import (
     community_display_label,
     format_record_labels_for_card,
     get_selected_communities,
-    load_communities_res_10,
-    load_community_memberships,
-    load_genre_labels_res_10,
-    load_sorted_unique_plattenlabels_from_reviews,
-    max_release_year_from_corpus,
-    min_release_year_from_corpus,
     plattenlabel_filter_passes,
 )
 
@@ -43,9 +36,17 @@ from music_review.config import (
     REFERENCE_POSITION_W_MIN,
     get_recommendation_overall_weights,
     normalize_overall_weights,
-    resolve_data_path,
 )
-from music_review.dashboard.cache_keys import FileCacheSignature, file_cache_signature
+from music_review.dashboard.data_cache import (
+    cached_load_affinities_list,
+    cached_load_communities_res_10,
+    cached_load_community_memberships,
+    cached_load_genre_labels_res_10,
+    cached_load_reviews_and_metadata,
+    cached_load_sorted_unique_plattenlabels,
+    cached_max_release_year_from_corpus,
+    cached_min_release_year_from_corpus,
+)
 from music_review.dashboard.recommendation_scoring import (
     breadth_raw_from_selected_community_masses,
     community_spectrum_norm_batch,
@@ -57,8 +58,6 @@ from music_review.dashboard.recommendation_scoring import (
     serendipity_rank_sort_key,
 )
 from music_review.domain.models import Review
-from music_review.io.jsonl import iter_jsonl_objects, load_jsonl_as_map
-from music_review.io.reviews_jsonl import load_reviews_from_jsonl
 from music_review.pipeline.retrieval.reference_graph import (
     reference_community_position_masses,
 )
@@ -76,63 +75,14 @@ SORT_MODE_MIGRATION: dict[str, str] = {
 }
 
 
-@st.cache_data(ttl=3600)
-def _load_reviews_and_metadata_cached(
-    reviews_signature: FileCacheSignature,
-    metadata_signature: FileCacheSignature,
-) -> tuple[list[Review], dict[int, dict[str, Any]]]:
-    """Load the corpus reviews plus the (optional) imputed metadata map."""
-    reviews_path = resolve_data_path("data/reviews.jsonl")
-    imputed_path = resolve_data_path("data/metadata_imputed.jsonl")
-    fallback_path = resolve_data_path("data/metadata.jsonl")
-    metadata_path = imputed_path if imputed_path.exists() else fallback_path
-
-    if not reviews_path.exists():
-        return [], {}
-
-    reviews = load_reviews_from_jsonl(reviews_path)
-    metadata: dict[int, dict[str, Any]] = {}
-    if metadata_path.exists():
-        metadata = load_jsonl_as_map(
-            metadata_path,
-            id_key="review_id",
-            log_errors=False,
-        )
-    return reviews, metadata
-
-
 def load_reviews_and_metadata() -> tuple[list[Review], dict[int, dict[str, Any]]]:
     """Load the corpus reviews plus the (optional) imputed metadata map."""
-    reviews_path = resolve_data_path("data/reviews.jsonl")
-    imputed_path = resolve_data_path("data/metadata_imputed.jsonl")
-    fallback_path = resolve_data_path("data/metadata.jsonl")
-    metadata_path = imputed_path if imputed_path.exists() else fallback_path
-    return _load_reviews_and_metadata_cached(
-        file_cache_signature(reviews_path),
-        file_cache_signature(metadata_path),
-    )
-
-
-@st.cache_data(ttl=3600)
-def _load_affinities_cached(
-    signature: FileCacheSignature,
-) -> list[dict[str, Any]]:
-    """Load the album-to-community affinity records used for scoring."""
-    path = resolve_data_path("data/album_community_affinities.jsonl")
-    p = Path(path)
-    if not p.exists():
-        return []
-    records: list[dict[str, Any]] = []
-    for obj in iter_jsonl_objects(p, log_errors=False):
-        if isinstance(obj, dict) and "review_id" in obj and "communities" in obj:
-            records.append(obj)
-    return records
+    return cached_load_reviews_and_metadata()
 
 
 def load_affinities() -> list[dict[str, Any]]:
     """Load the album-to-community affinity records used for scoring."""
-    path = resolve_data_path("data/album_community_affinities.jsonl")
-    return _load_affinities_cached(file_cache_signature(path))
+    return cached_load_affinities_list()
 
 
 def compute_recommendations() -> list[dict[str, Any]]:
@@ -151,8 +101,8 @@ def compute_recommendations() -> list[dict[str, Any]]:
     filter_settings: dict[str, Any] = st.session_state.get("filter_settings") or {}
     weights_raw: dict[str, float] = st.session_state.get("community_weights_raw") or {}
 
-    year_cap = max_release_year_from_corpus()
-    year_floor = min_release_year_from_corpus()
+    year_cap = cached_max_release_year_from_corpus()
+    year_floor = cached_min_release_year_from_corpus()
     year_min, year_max = clamp_year_filter_bounds(
         filter_settings.get("year_min", year_floor),
         filter_settings.get("year_max", year_cap),
@@ -186,14 +136,14 @@ def compute_recommendations() -> list[dict[str, Any]]:
 
     reviews, metadata = load_reviews_and_metadata()
     affinities = load_affinities()
-    memberships = load_community_memberships()
-    communities = load_communities_res_10()
-    genre_labels = load_genre_labels_res_10()
+    memberships = cached_load_community_memberships()
+    communities = cached_load_communities_res_10()
+    genre_labels = cached_load_genre_labels_res_10()
 
     if not reviews or not affinities:
         return []
 
-    platten_all = load_sorted_unique_plattenlabels_from_reviews()
+    platten_all = cached_load_sorted_unique_plattenlabels()
     plat_sel = filter_settings.get("plattenlabel_selection")
 
     review_index: dict[int, Review] = {int(r.id): r for r in reviews}

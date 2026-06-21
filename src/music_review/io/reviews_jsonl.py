@@ -99,16 +99,11 @@ def load_reviews_from_jsonl(path: str | Path) -> list[Review]:
     file_path = Path(path)
     reviews: list[Review] = []
 
-    with file_path.open("r", encoding="utf-8") as f:
-        for line in f:
-            line = line.strip()
-            if not line:
-                continue
-            raw = json.loads(line)
-            review = review_from_raw(raw)
-            if not review.text.strip():
-                continue
-            reviews.append(review)
+    for raw in iter_jsonl_objects(file_path, log_errors=False):
+        review = review_from_raw(raw)
+        if not review.text.strip():
+            continue
+        reviews.append(review)
 
     return reviews
 

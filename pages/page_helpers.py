@@ -3,11 +3,9 @@
 from __future__ import annotations
 
 import contextlib
-import json
 import math
-from collections.abc import Collection, Mapping, MutableMapping
+from collections.abc import Collection, MutableMapping
 from datetime import datetime
-from pathlib import Path
 from typing import Any
 
 import streamlit as st
@@ -18,11 +16,14 @@ from music_review.config import (
     RECOMMENDATION_OVERALL_ALPHA,
     RECOMMENDATION_OVERALL_BETA,
     RECOMMENDATION_OVERALL_GAMMA,
-    resolve_data_path,
 )
-from music_review.dashboard.cache_keys import FileCacheSignature, file_cache_signature
 from music_review.dashboard.community_weight_mapping import (
     community_weight_bias_from_stored,
+)
+from music_review.dashboard.data_cache import (
+    cached_load_broad_categories_res_10,
+    cached_max_release_year_from_corpus,
+    cached_min_release_year_from_corpus,
 )
 from music_review.dashboard.streamlit_branding import (
     ensure_plattenradar_dashboard_chrome,
@@ -55,110 +56,6 @@ from music_review.dashboard.user_profile_store import (
     post_login_maybe_defer_profile_apply,
     save_profile,
 )
-from music_review.io.jsonl import iter_jsonl_objects
-from music_review.pipeline.retrieval.reference_graph import load_artist_communities
-
-
-@st.cache_data(ttl=3600)
-def _load_communities_res_10_cached(
-    signature: FileCacheSignature,
-) -> list[dict[str, Any]]:
-    """Load resolution-10 communities with top artists."""
-    data_dir = resolve_data_path("data")
-    path = Path(data_dir) / "communities_res_10.json"
-    if not path.exists():
-        return []
-    try:
-        with path.open("r", encoding="utf-8") as f:
-            data = json.load(f)
-    except (OSError, json.JSONDecodeError):
-        return []
-    comms = data.get("communities")
-    if not isinstance(comms, list):
-        return []
-    return [c for c in comms if isinstance(c, dict) and c.get("id")]
-
-
-def load_communities_res_10() -> list[dict[str, Any]]:
-    """Load resolution-10 communities with top artists."""
-    path = resolve_data_path("data/communities_res_10.json")
-    return _load_communities_res_10_cached(file_cache_signature(path))
-
-
-@st.cache_data(ttl=3600)
-def _load_genre_labels_res_10_cached(
-    signature: FileCacheSignature,
-) -> dict[str, str]:
-    """Load LLM-assigned genre labels for communities (res_10)."""
-    data_dir = resolve_data_path("data")
-    path = Path(data_dir) / "community_genre_labels_res_10.json"
-    if not path.exists():
-        return {}
-    try:
-        with path.open("r", encoding="utf-8") as f:
-            data = json.load(f)
-    except (OSError, json.JSONDecodeError):
-        return {}
-    labels = data.get("labels")
-    if not isinstance(labels, list):
-        return {}
-    mapping: dict[str, str] = {}
-    for item in labels:
-        if not isinstance(item, dict):
-            continue
-        cid = item.get("community_id")
-        label = item.get("genre_label")
-        if cid is None or not label:
-            continue
-        mapping[str(cid)] = str(label)
-    return mapping
-
-
-def load_genre_labels_res_10() -> dict[str, str]:
-    """Load LLM-assigned genre labels for communities (res_10)."""
-    path = resolve_data_path("data/community_genre_labels_res_10.json")
-    return _load_genre_labels_res_10_cached(file_cache_signature(path))
-
-
-@st.cache_data(ttl=3600)
-def _load_broad_categories_res_10_cached(
-    signature: FileCacheSignature,
-) -> tuple[list[str], dict[str, list[str]]]:
-    """Load broad categories and per-community mappings.
-
-    Returns (category names, community_id -> [broad_category, ...]).
-    """
-    data_dir = resolve_data_path("data")
-    path = Path(data_dir) / "community_broad_categories_res_10.json"
-    if not path.exists():
-        return [], {}
-    try:
-        with path.open("r", encoding="utf-8") as f:
-            data = json.load(f)
-    except (OSError, json.JSONDecodeError):
-        return [], {}
-    cats = data.get("broad_categories")
-    if not isinstance(cats, list):
-        cats = []
-    cats = [str(c) for c in cats if isinstance(c, str)]
-    raw_mappings = data.get("mappings")
-    if not isinstance(raw_mappings, list):
-        return cats, {}
-    mapping: dict[str, list[str]] = {}
-    for item in raw_mappings:
-        if not isinstance(item, dict):
-            continue
-        cid = item.get("community_id")
-        bc = item.get("broad_categories")
-        if isinstance(cid, str) and isinstance(bc, list):
-            mapping[cid] = [str(c) for c in bc]
-    return cats, mapping
-
-
-def load_broad_categories_res_10() -> tuple[list[str], dict[str, list[str]]]:
-    """Load broad categories and per-community mappings."""
-    path = resolve_data_path("data/community_broad_categories_res_10.json")
-    return _load_broad_categories_res_10_cached(file_cache_signature(path))
 
 
 def community_display_label(
@@ -245,7 +142,7 @@ DEFAULT_PLATTENTESTS_RATING_FILTER_MIN = 7
 DEFAULT_PLATTENTESTS_RATING_FILTER_MAX = 10
 
 # Wenn reviews.jsonl fehlt oder kein Jahr enthalten: Untergrenze Jahr-Slider.
-YEAR_SLIDER_FALLBACK_FLOOR = 1990
+# Re-exported from data_access for wizard pages that import from page_helpers.
 
 # Session-State-Schlüssel für das Plattenlabel-Multiselect auf der Filterseite.
 FILTER_PLATTENLABEL_MULTISELECT_KEY = "filter_plattenlabel_multiselect"
@@ -288,7 +185,7 @@ PLATTENLABEL_SONSTIGE_UI = "Sonstige"
 
 # Plattenlabels mit mehr als so vielen Alben erscheinen einzeln in der Filter-UI;
 # alle anderen laufen über „Sonstige“ (streng: ``Anzahl Alben >`` dieser Schwelle).
-PLATTENLABEL_INDIVIDUAL_LIST_MIN_ALBUMS = 50
+# Re-exported from data_access for filter pages.
 
 
 def clamp_plattentests_rating_filter_range(
@@ -314,98 +211,6 @@ def clamp_plattentests_rating_filter_range(
     if lo > hi:
         lo, hi = hi, lo
     return lo, hi
-
-
-def review_raw_release_year(raw: Mapping[str, Any]) -> int | None:
-    """Best release year from one reviews.jsonl row (year field or ISO date)."""
-    ry = raw.get("release_year")
-    if ry is not None:
-        try:
-            y = int(ry)
-        except (TypeError, ValueError):
-            pass
-        else:
-            if 1800 <= y <= 2100:
-                return y
-    rd = raw.get("release_date")
-    if isinstance(rd, str) and len(rd) >= 4:
-        try:
-            y = int(rd[:4])
-        except ValueError:
-            return None
-        if 1800 <= y <= 2100:
-            return y
-    return None
-
-
-def max_release_year_in_jsonl(path: Path) -> int | None:
-    """Scan a reviews JSONL file for the largest release year found."""
-    if not path.exists():
-        return None
-    y_max: int | None = None
-    for obj in iter_jsonl_objects(path, log_errors=False):
-        if not isinstance(obj, dict):
-            continue
-        y = review_raw_release_year(obj)
-        if y is None:
-            continue
-        if y_max is None or y > y_max:
-            y_max = y
-    return y_max
-
-
-def min_release_year_in_jsonl(path: Path) -> int | None:
-    """Scan a reviews JSONL file for the smallest release year found."""
-    if not path.exists():
-        return None
-    y_min: int | None = None
-    for obj in iter_jsonl_objects(path, log_errors=False):
-        if not isinstance(obj, dict):
-            continue
-        y = review_raw_release_year(obj)
-        if y is None:
-            continue
-        if y_min is None or y < y_min:
-            y_min = y
-    return y_min
-
-
-@st.cache_data(ttl=3600)
-def _max_release_year_from_corpus_cached(
-    signature: FileCacheSignature,
-) -> int:
-    """Upper bound for year sliders: max year in data/reviews.jsonl or this year."""
-    data_dir = resolve_data_path("data")
-    path = Path(data_dir) / "reviews.jsonl"
-    m = max_release_year_in_jsonl(path)
-    if m is None:
-        return datetime.now().year
-    return m
-
-
-def max_release_year_from_corpus() -> int:
-    """Upper bound for year sliders: max year in data/reviews.jsonl or this year."""
-    path = resolve_data_path("data/reviews.jsonl")
-    return _max_release_year_from_corpus_cached(file_cache_signature(path))
-
-
-@st.cache_data(ttl=3600)
-def _min_release_year_from_corpus_cached(
-    signature: FileCacheSignature,
-) -> int:
-    """Lower bound for year sliders: min year in data/reviews.jsonl or fallback."""
-    data_dir = resolve_data_path("data")
-    path = Path(data_dir) / "reviews.jsonl"
-    m = min_release_year_in_jsonl(path)
-    if m is None:
-        return YEAR_SLIDER_FALLBACK_FLOOR
-    return m
-
-
-def min_release_year_from_corpus() -> int:
-    """Lower bound for year sliders: min year in data/reviews.jsonl or fallback."""
-    path = resolve_data_path("data/reviews.jsonl")
-    return _min_release_year_from_corpus_cached(file_cache_signature(path))
 
 
 def clamp_year_filter_bounds(
@@ -612,98 +417,6 @@ RECOMMENDATION_CARD_TAG_COLORS: tuple[tuple[float, str, str, str], ...] = (
 )
 
 
-def unique_plattenlabels_from_reviews_jsonl(path: Path) -> list[str]:
-    """Return sorted unique non-empty label strings from a reviews JSONL file."""
-    labels: set[str] = set()
-    for obj in iter_jsonl_objects(path, log_errors=False):
-        raw = obj.get("labels")
-        if not isinstance(raw, list):
-            continue
-        for lab in raw:
-            s = str(lab).strip()
-            if s:
-                labels.add(s)
-    return sorted(labels)
-
-
-def _plattenlabel_row_sets_and_album_index(
-    path: Path,
-) -> tuple[list[frozenset[str]], dict[str, set[int]], int]:
-    """Build per-row label sets and label -> album index sets from reviews JSONL."""
-    row_label_sets: list[frozenset[str]] = []
-    for obj in iter_jsonl_objects(path, log_errors=False):
-        if not isinstance(obj, dict):
-            continue
-        raw = obj.get("labels")
-        seen_in_row: set[str] = set()
-        if isinstance(raw, list):
-            for lab in raw:
-                s = str(lab).strip()
-                if s and s not in seen_in_row:
-                    seen_in_row.add(s)
-        row_label_sets.append(frozenset(seen_in_row))
-
-    n_reviews = len(row_label_sets)
-    label_to_album_indices: dict[str, set[int]] = {}
-    for i, labs in enumerate(row_label_sets):
-        for lab in labs:
-            label_to_album_indices.setdefault(lab, set()).add(i)
-    return row_label_sets, label_to_album_indices, n_reviews
-
-
-def plattenlabel_album_count_buckets_from_reviews_jsonl(
-    path: Path,
-    *,
-    min_albums_exclusive: int = PLATTENLABEL_INDIVIDUAL_LIST_MIN_ALBUMS,
-) -> tuple[list[str], list[str], int]:
-    """Split labels into individual list vs „Sonstige“ by album count.
-
-    Alben = Zeilen in ``reviews.jsonl``. Pro Album werden doppelte
-    Label-Strings in einer Zeile nur einmal gezählt (EU/US-Mehrfachlabels).
-
-    Ein Label ist einzeln wählbar, wenn es auf **mehr als**
-    ``min_albums_exclusive`` Alben vorkommt. Übrige Labels sind „selten“ und
-    werden alphabetisch sortiert für die UI-Logik unter „Sonstige“.
-
-    Rückgabe: ``(frequent_by_count_then_name, rare_sorted_a_z, n_reviews)``.
-    """
-    _, label_to_album_indices, n_reviews = _plattenlabel_row_sets_and_album_index(
-        path,
-    )
-    if n_reviews == 0:
-        return [], [], 0
-
-    if not label_to_album_indices:
-        return [], [], n_reviews
-
-    threshold = int(min_albums_exclusive)
-    sorted_by_freq = sorted(
-        label_to_album_indices.keys(),
-        key=lambda lab: (-len(label_to_album_indices[lab]), lab),
-    )
-    frequent = [
-        lab for lab in sorted_by_freq if len(label_to_album_indices[lab]) > threshold
-    ]
-    frequent_set = frozenset(frequent)
-    rare = sorted(lab for lab in label_to_album_indices if lab not in frequent_set)
-    return frequent, rare, n_reviews
-
-
-@st.cache_data(ttl=3600)
-def _load_plattenlabel_filter_buckets_cached(
-    signature: FileCacheSignature,
-) -> tuple[list[str], list[str], int]:
-    """Cached head/tail Plattenlabel buckets from ``data/reviews.jsonl``."""
-    p = Path(resolve_data_path("data/reviews.jsonl"))
-    return plattenlabel_album_count_buckets_from_reviews_jsonl(p)
-
-
-def load_plattenlabel_filter_buckets() -> tuple[list[str], list[str], int]:
-    """Cached head/tail Plattenlabel buckets from ``data/reviews.jsonl``."""
-    path = resolve_data_path("data/reviews.jsonl")
-    return _load_plattenlabel_filter_buckets_cached(file_cache_signature(path))
-
-
 def expand_plattenlabel_ui_selection(
     ui: list[str],
     rare: list[str],
@@ -731,23 +444,6 @@ def collapse_plattenlabel_ui_selection(
     if rare_set and rare_set <= concrete:
         ui.append(sonstige_token)
     return ui
-
-
-@st.cache_data(ttl=3600)
-def _load_sorted_unique_plattenlabels_from_reviews_cached(
-    signature: FileCacheSignature,
-) -> list[str]:
-    """Load sorted unique Plattenlabels from ``data/reviews.jsonl`` (cached)."""
-    p = Path(resolve_data_path("data/reviews.jsonl"))
-    return unique_plattenlabels_from_reviews_jsonl(p)
-
-
-def load_sorted_unique_plattenlabels_from_reviews() -> list[str]:
-    """Load sorted unique Plattenlabels from ``data/reviews.jsonl`` (cached)."""
-    path = resolve_data_path("data/reviews.jsonl")
-    return _load_sorted_unique_plattenlabels_from_reviews_cached(
-        file_cache_signature(path),
-    )
 
 
 def plattenlabel_filter_passes(
@@ -1189,21 +885,6 @@ def format_release_date(value: Any, release_year: Any) -> str:
     return ""
 
 
-@st.cache_data(ttl=3600)
-def _load_community_memberships_cached(
-    signature: FileCacheSignature,
-) -> dict[str, dict[str, str]]:
-    """Load artist key (normalized) -> resolution keys -> community id."""
-    mp = resolve_data_path("data/community_memberships.jsonl")
-    return load_artist_communities(mp)
-
-
-def load_community_memberships() -> dict[str, dict[str, str]]:
-    """Load artist key (normalized) -> resolution keys -> community id."""
-    path = resolve_data_path("data/community_memberships.jsonl")
-    return _load_community_memberships_cached(file_cache_signature(path))
-
-
 def build_session_profile_payload(*, profile_slug: str) -> dict[str, Any]:
     """Assemble profile JSON from the current Streamlit session (taste + filters)."""
     selected = get_selected_communities()
@@ -1258,8 +939,8 @@ def _seed_filter_flow_main_sliders(state: MutableMapping[str, Any]) -> None:
     positions from its widget cache. Values match the defaults used when
     ``filter_settings`` is empty (see ``pages/5_Filter_Flow.py``).
     """
-    year_floor = min_release_year_from_corpus()
-    year_cap = max_release_year_from_corpus()
+    year_floor = cached_min_release_year_from_corpus()
+    year_cap = cached_max_release_year_from_corpus()
     y_lo, y_hi = clamp_year_filter_bounds(
         year_floor,
         year_cap,
@@ -1375,7 +1056,7 @@ def prune_communities_to_selected_broad_categories() -> int:
     selected_comms_raw = st.session_state.get("selected_communities")
     if not isinstance(selected_comms_raw, set) or not selected_comms_raw:
         return 0
-    _broad_cats, mappings = load_broad_categories_res_10()
+    _broad_cats, mappings = cached_load_broad_categories_res_10()
     if not mappings:
         return 0
     selected_broad: set[str] = {str(c) for c in selected_broad_raw}

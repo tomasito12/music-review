@@ -30,11 +30,6 @@ from pages.page_helpers import (
     format_style_weight_example_artists,
     get_selected_communities,
     has_step3_state,
-    load_communities_res_10,
-    load_genre_labels_res_10,
-    load_plattenlabel_filter_buckets,
-    max_release_year_from_corpus,
-    min_release_year_from_corpus,
     normalize_filter_expander_vspace_gap,
     prune_weights_to_selected_communities,
     refresh_taste_wizard_after_filter_save,
@@ -56,6 +51,13 @@ from music_review.config import (
 from music_review.dashboard.community_weight_mapping import (
     community_weight_bias_from_stored,
     community_weight_stored_from_bias,
+)
+from music_review.dashboard.data_cache import (
+    cached_load_communities_res_10,
+    cached_load_genre_labels_res_10,
+    cached_load_plattenlabel_filter_buckets,
+    cached_max_release_year_from_corpus,
+    cached_min_release_year_from_corpus,
 )
 
 
@@ -337,8 +339,8 @@ def _render_style_weights(
         )
         return {}
 
-    communities = load_communities_res_10()
-    genre_labels = load_genre_labels_res_10()
+    communities = cached_load_communities_res_10()
+    genre_labels = cached_load_genre_labels_res_10()
     comm_by_id: dict[str, dict[str, Any]] = {
         str(c.get("id")): c for c in communities if c.get("id")
     }
@@ -517,8 +519,8 @@ def main() -> None:
             unsafe_allow_html=True,
         )
         _filter_vertical_space("sm")
-        year_floor = min_release_year_from_corpus()
-        year_cap = max_release_year_from_corpus()
+        year_floor = cached_min_release_year_from_corpus()
+        year_cap = cached_max_release_year_from_corpus()
         year_min_default, year_max_default = clamp_year_filter_bounds(
             existing_settings.get("year_min", year_floor),
             existing_settings.get("year_max", year_cap),
@@ -599,7 +601,7 @@ def main() -> None:
         _filter_vertical_space("xl")
 
         # ── Plattenlabel (Expertenfilter) ─────────────────────────
-        freq_labels, rare_labels, _n_rev = load_plattenlabel_filter_buckets()
+        freq_labels, rare_labels, _n_rev = cached_load_plattenlabel_filter_buckets()
         all_concrete = sorted(set(freq_labels) | set(rare_labels))
         ui_options = list(freq_labels)
         if rare_labels:
@@ -861,7 +863,7 @@ def main() -> None:
             "overall_weight_gamma": overall_weight_gamma,
         },
     )
-    p_freq, p_rare, _p_n = load_plattenlabel_filter_buckets()
+    p_freq, p_rare, _p_n = cached_load_plattenlabel_filter_buckets()
     p_all = sorted(set(p_freq) | set(p_rare))
     if p_all:
         p_ui = list(p_freq)

@@ -32,13 +32,10 @@ from pages.page_helpers import (
     has_step2_state,
     has_step3_state,
     logout_active_profile,
-    max_release_year_in_jsonl,
-    min_release_year_in_jsonl,
     normalize_filter_expander_vspace_gap,
     overall_weights_display_percents,
     overall_weights_tradeoff_bar_html,
     persist_active_profile_from_session,
-    plattenlabel_album_count_buckets_from_reviews_jsonl,
     plattenlabel_filter_passes,
     prune_communities_to_selected_broad_categories,
     prune_weights_to_selected_communities,
@@ -51,14 +48,12 @@ from pages.page_helpers import (
     reset_step2_cascade,
     reset_step3,
     reset_taste_preferences,
-    review_raw_release_year,
     session_taste_setup_complete,
     snap_spectrum_crossover,
     spectrum_crossover_option_label,
     spectrum_crossover_semantic_label,
     style_match_percent_tuple_for_slider,
     style_match_scores_from_percent_slider,
-    unique_plattenlabels_from_reviews_jsonl,
 )
 
 from music_review.config import (
@@ -72,6 +67,13 @@ from music_review.dashboard.community_weight_mapping import (
     community_weight_bias_from_stored,
 )
 from music_review.dashboard.taste_setup import TASTE_WIZARD_RESET_PENDING_KEY
+from music_review.data_access.reviews import (
+    max_release_year_in_jsonl,
+    min_release_year_in_jsonl,
+    plattenlabel_album_count_buckets_from_reviews_jsonl,
+    review_raw_release_year,
+    unique_plattenlabels_from_reviews_jsonl,
+)
 
 
 def test_render_toolbar_does_not_emit_markdown(
@@ -763,12 +765,12 @@ class TestTasteSetupSessionHelpers:
         }
         monkeypatch.setattr(
             page_helpers_module,
-            "min_release_year_from_corpus",
+            "cached_min_release_year_from_corpus",
             lambda: 2000,
         )
         monkeypatch.setattr(
             page_helpers_module,
-            "max_release_year_from_corpus",
+            "cached_max_release_year_from_corpus",
             lambda: 2100,
         )
         monkeypatch.setattr(page_helpers_module.st, "session_state", sess)
@@ -1023,7 +1025,7 @@ class TestPruneCommunitiesToSelectedBroadCategories:
         monkeypatch.setattr(page_helpers_module.st, "session_state", sess)
         monkeypatch.setattr(
             page_helpers_module,
-            "load_broad_categories_res_10",
+            "cached_load_broad_categories_res_10",
             lambda: (
                 ["Rock", "Pop"],
                 {
@@ -1088,12 +1090,12 @@ class TestResetStepCascades:
         }
         monkeypatch.setattr(
             page_helpers_module,
-            "min_release_year_from_corpus",
+            "cached_min_release_year_from_corpus",
             lambda: 2000,
         )
         monkeypatch.setattr(
             page_helpers_module,
-            "max_release_year_from_corpus",
+            "cached_max_release_year_from_corpus",
             lambda: 2100,
         )
         monkeypatch.setattr(page_helpers_module.st, "session_state", sess)
@@ -1149,12 +1151,12 @@ class TestResetStepCascades:
         }
         monkeypatch.setattr(
             page_helpers_module,
-            "min_release_year_from_corpus",
+            "cached_min_release_year_from_corpus",
             lambda: 2000,
         )
         monkeypatch.setattr(
             page_helpers_module,
-            "max_release_year_from_corpus",
+            "cached_max_release_year_from_corpus",
             lambda: 2100,
         )
         monkeypatch.setattr(page_helpers_module.st, "session_state", sess)

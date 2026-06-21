@@ -8,12 +8,15 @@ import streamlit as st
 from pages.page_helpers import (
     build_community_broad_category_index,
     has_step2_state,
-    load_broad_categories_res_10,
-    load_communities_res_10,
-    load_genre_labels_res_10,
     prune_communities_to_selected_broad_categories,
     render_toolbar,
     reset_step2_cascade,
+)
+
+from music_review.dashboard.data_cache import (
+    cached_load_broad_categories_res_10,
+    cached_load_communities_res_10,
+    cached_load_genre_labels_res_10,
 )
 
 
@@ -131,9 +134,9 @@ def main() -> None:
         unsafe_allow_html=True,
     )
 
-    communities = load_communities_res_10()
-    genre_labels = load_genre_labels_res_10()
-    _broad_cats, category_mappings = load_broad_categories_res_10()
+    communities = cached_load_communities_res_10()
+    genre_labels = cached_load_genre_labels_res_10()
+    _broad_cats, category_mappings = cached_load_broad_categories_res_10()
 
     if not communities:
         st.warning(

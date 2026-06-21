@@ -10,8 +10,9 @@ from typing import Any
 import networkx as nx
 
 from music_review.config import REFERENCE_POSITION_W_MIN
+from music_review.data_access.communities import load_artist_communities
 from music_review.domain.models import Review
-from music_review.io.jsonl import iter_jsonl_objects, load_jsonl_as_map
+from music_review.io.jsonl import load_jsonl_as_map
 from music_review.io.reviews_jsonl import load_reviews_from_jsonl
 
 
@@ -412,25 +413,6 @@ def resolution_to_res_key(resolution: float) -> str:
     return f"res_{resolution}"
 
 
-def load_artist_communities(path: str | Path) -> dict[str, dict[str, str]]:
-    """Load artist_id -> communities from ``community_memberships.jsonl``.
-
-    Returns an empty dict if the file is missing.
-    """
-    mp = Path(path)
-    result: dict[str, dict[str, str]] = {}
-    if not mp.exists():
-        return result
-    for obj in iter_jsonl_objects(mp, log_errors=False):
-        artist_id = obj.get("artist_id")
-        comms = obj.get("communities")
-        if isinstance(artist_id, str) and isinstance(comms, dict):
-            result[artist_id] = {
-                str(k): str(v) for k, v in comms.items() if isinstance(v, str)
-            }
-    return result
-
-
 def merge_memberships_incremental(
     G: nx.DiGraph,
     previous: dict[str, dict[str, str]],
@@ -630,18 +612,9 @@ def compute_album_affinities(
     """
     reviews = load_reviews_from_jsonl(Path(reviews_path))
 
-    # Load artist → communities mapping
-    memberships: dict[str, dict[str, str]] = {}
-    mp = Path(memberships_path)
-    if not mp.exists():
-        raise FileNotFoundError(f"Memberships file not found: {mp}")
-    for obj in iter_jsonl_objects(mp, log_errors=False):
-        artist_id = obj.get("artist_id")
-        comms = obj.get("communities")
-        if isinstance(artist_id, str) and isinstance(comms, dict):
-            memberships[artist_id] = {
-                str(k): str(v) for k, v in comms.items() if isinstance(v, str)
-            }
+    memberships = load_artist_communities(memberships_path)
+    if not Path(memberships_path).exists():
+        raise FileNotFoundError(f"Memberships file not found: {memberships_path}")
 
     rows: list[dict[str, Any]] = []
     res_keys: dict[float, str] = {}

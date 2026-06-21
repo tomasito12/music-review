@@ -60,32 +60,32 @@ class TestComputeRecommendationsEarlyReturns:
         monkeypatch.setattr(recommendations_pool, "load_affinities", lambda: [])
         monkeypatch.setattr(
             recommendations_pool,
-            "load_community_memberships",
+            "cached_load_community_memberships",
             lambda: {},
         )
         monkeypatch.setattr(
             recommendations_pool,
-            "load_communities_res_10",
+            "cached_load_communities_res_10",
             lambda: [],
         )
         monkeypatch.setattr(
             recommendations_pool,
-            "load_genre_labels_res_10",
+            "cached_load_genre_labels_res_10",
             lambda: {},
         )
         monkeypatch.setattr(
             recommendations_pool,
-            "load_sorted_unique_plattenlabels_from_reviews",
+            "cached_load_sorted_unique_plattenlabels",
             lambda: [],
         )
         monkeypatch.setattr(
             recommendations_pool,
-            "max_release_year_from_corpus",
+            "cached_max_release_year_from_corpus",
             lambda: 2026,
         )
         monkeypatch.setattr(
             recommendations_pool,
-            "min_release_year_from_corpus",
+            "cached_min_release_year_from_corpus",
             lambda: 1900,
         )
         assert recommendations_pool.compute_recommendations() == []

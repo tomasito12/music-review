@@ -8,7 +8,6 @@ from typing import Any
 import streamlit as st
 from pages.neueste_reviews_pool import (
     RECENT_DEFAULT,
-    RES_KEY,
     ensure_neueste_session_defaults,
     fetch_newest_reviews_pool,
 )
@@ -17,26 +16,24 @@ from pages.page_helpers import (
     format_record_labels_for_card,
     get_selected_communities,
     inject_recommendation_flow_shell_css,
-    load_communities_res_10,
-    load_genre_labels_res_10,
     recommendation_card_community_tags_html,
     recommendation_card_meta_parts,
     release_year_for_card_meta,
     render_toolbar,
 )
 
-from music_review.config import (
-    RECOMMENDATION_RATING_DEFAULT_WHEN_MISSING,
-    resolve_data_path,
+from music_review.config import RECOMMENDATION_RATING_DEFAULT_WHEN_MISSING
+from music_review.dashboard.data_cache import (
+    cached_load_affinity_top_map,
+    cached_load_communities_res_10,
+    cached_load_genre_labels_res_10,
 )
-from music_review.dashboard.cache_keys import FileCacheSignature, file_cache_signature
 from music_review.dashboard.neueste_batch_score_chart import (
     build_newest_batch_score_figure,
     newest_batch_score_chart_config,
     newest_batch_score_scale_explanation,
 )
 from music_review.domain.models import Review
-from music_review.io.jsonl import iter_jsonl_objects
 
 _NEWEST_EXTRA_CSS = """
         span.rec-title {
@@ -75,39 +72,8 @@ def _newest_css() -> None:
     inject_recommendation_flow_shell_css(extra_rules=_NEWEST_EXTRA_CSS)
 
 
-@st.cache_data(ttl=3600)
-def _load_affinity_top_map_cached(
-    signature: FileCacheSignature,
-    *,
-    top_k: int = 5,
-) -> dict[int, list[tuple[str, float]]]:
-    path = resolve_data_path("data/album_community_affinities.jsonl")
-    if not path.is_file():
-        return {}
-    result: dict[int, list[tuple[str, float]]] = {}
-    for obj in iter_jsonl_objects(path, log_errors=False):
-        review_id = obj.get("review_id")
-        comms = (obj.get("communities") or {}).get(RES_KEY)
-        if not isinstance(review_id, int) or not isinstance(comms, list):
-            continue
-        items: list[tuple[str, float]] = []
-        for entry in comms:
-            if not isinstance(entry, dict):
-                continue
-            cid = entry.get("id")
-            score = entry.get("score")
-            if isinstance(cid, str) and isinstance(score, (int, float)):
-                items.append((cid, float(score)))
-        if not items:
-            continue
-        items.sort(key=lambda t: t[1], reverse=True)
-        result[review_id] = items[:top_k]
-    return result
-
-
 def _load_affinity_top_map(*, top_k: int = 5) -> dict[int, list[tuple[str, float]]]:
-    path = resolve_data_path("data/album_community_affinities.jsonl")
-    return _load_affinity_top_map_cached(file_cache_signature(path), top_k=top_k)
+    return cached_load_affinity_top_map(top_k=top_k)
 
 
 def _top_communities_display(
@@ -247,8 +213,8 @@ def main() -> None:
             )
 
     aff_map = _load_affinity_top_map(top_k=5)
-    genre_labels = load_genre_labels_res_10()
-    communities = load_communities_res_10()
+    genre_labels = cached_load_genre_labels_res_10()
+    communities = cached_load_communities_res_10()
     comm_by_id: dict[str, dict[str, Any]] = {
         str(c.get("id")): c for c in communities if c.get("id")
     }
