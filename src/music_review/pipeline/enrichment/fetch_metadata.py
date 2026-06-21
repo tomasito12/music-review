@@ -8,6 +8,7 @@ from dataclasses import asdict, dataclass
 from pathlib import Path
 
 from music_review.config import resolve_data_path
+from music_review.data_access.paths import DATA_METADATA, DATA_REVIEWS
 from music_review.io.jsonl import (
     iter_jsonl_objects,
     load_ids_from_jsonl,
@@ -226,7 +227,7 @@ def iter_reviews(input_path: Path) -> Iterable[tuple[int, str, str]]:
 
 
 def load_existing_review_ids(output_path: Path) -> set[int]:
-    """Load existing metadata_1.jsonl and return set of review_ids already present."""
+    """Load existing metadata JSONL and return set of review_ids already present."""
     existing_ids = load_ids_from_jsonl(output_path, id_key="review_id")
     if existing_ids:
         logger.info(
@@ -238,7 +239,7 @@ def load_existing_review_ids(output_path: Path) -> set[int]:
 
 
 def load_existing_metadata_map(output_path: Path) -> dict[int, dict]:
-    """Load full existing metadata_1.jsonl into a dict keyed by review_id.
+    """Load full existing metadata JSONL into a dict keyed by review_id.
 
     Used for update mode where we want to rewrite the whole file.
     """
@@ -483,13 +484,13 @@ def main() -> None:
     parser.add_argument(
         "--input",
         type=Path,
-        default=Path("data/reviews.jsonl"),
+        default=Path(DATA_REVIEWS),
         help="Path to review corpus JSONL file.",
     )
     parser.add_argument(
         "--output",
         type=Path,
-        default=Path("data/metadata_1.jsonl"),
+        default=Path(DATA_METADATA),
         help="Path to output metadata JSONL file.",
     )
     parser.add_argument(

@@ -35,8 +35,10 @@ from pathlib import Path
 from typing import Any
 
 from music_review.config import resolve_data_path
-from music_review.pipeline.retrieval.community_genre_labels import (
-    load_communities,
+from music_review.data_access.communities import (
+    load_communities_res_file as load_communities,
+)
+from music_review.data_access.communities import (
     load_existing_genre_labels,
 )
 

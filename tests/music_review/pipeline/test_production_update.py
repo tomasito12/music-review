@@ -8,12 +8,12 @@ from pathlib import Path
 import pytest
 
 from music_review.pipeline import orchestration, production_update
-from music_review.pipeline.production_update import ProductionUpdateConfig
+from music_review.pipeline.orchestration import PipelineConfig
 from music_review.pipeline.scraper.service import ScrapeResult
 
 
-def _config(tmp_path: Path, *, skip_graph: bool = True) -> ProductionUpdateConfig:
-    return ProductionUpdateConfig(
+def _config(tmp_path: Path, *, skip_graph: bool = True) -> PipelineConfig:
+    return PipelineConfig(
         reviews_path=tmp_path / "reviews.jsonl",
         metadata_path=tmp_path / "metadata.jsonl",
         artist_genres_path=tmp_path / "artist_genres.json",
@@ -25,6 +25,7 @@ def _config(tmp_path: Path, *, skip_graph: bool = True) -> ProductionUpdateConfi
         skip_graph_affinities=skip_graph,
         skip_dq=True,
         dq_strict=False,
+        exit_if_no_new_reviews=True,
         verbose=False,
     )
 
@@ -120,6 +121,7 @@ def test_active_lock_makes_cli_exit_cleanly(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     config = _config(tmp_path)
+    assert config.lock_path is not None
     config.lock_path.write_text("pid=123\n", encoding="utf-8")
 
     monkeypatch.setattr(production_update, "build_config", lambda _args: config)

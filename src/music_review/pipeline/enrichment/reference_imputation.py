@@ -9,7 +9,14 @@ from collections import Counter
 from pathlib import Path
 
 from music_review.config import resolve_data_path
+from music_review.data_access.artist_genres import load_artist_genre_profiles
+from music_review.data_access.paths import (
+    DATA_ARTIST_GENRES,
+    DATA_METADATA_IMPUTED,
+    DATA_REVIEWS,
+)
 from music_review.io.jsonl import iter_jsonl_objects
+from music_review.pipeline.enrichment.genre_profiles import main_genres_from_counts
 
 logger = logging.getLogger(__name__)
 
@@ -29,18 +36,11 @@ def load_artist_profiles(
         profiles_by_key: artist_key -> profile (artist_name, genre_counts, main_genres).
         normalized_name_to_key: normalized name -> artist_key (prefers mbid key).
     """
-    if not artist_genres_path.exists():
-        return {}, {}
-
-    with artist_genres_path.open("r", encoding="utf-8") as f:
-        raw = json.load(f)
-
+    raw = load_artist_genre_profiles(artist_genres_path)
     profiles: dict[str, dict] = {}
     name_to_key: dict[str, str] = {}
 
     for artist_key, profile in raw.items():
-        if not isinstance(profile, dict):
-            continue
         profiles[artist_key] = profile
         name = profile.get("artist_name")
         if isinstance(name, str):
@@ -64,25 +64,6 @@ def load_references_by_review_id(reviews_path: Path) -> dict[int, list[str]]:
         else:
             result[review_id] = []
     return result
-
-
-def _main_genres_from_counts(
-    genre_counts: Counter[str],
-    min_genre_share: float,
-    top_k_main_genres: int,
-) -> list[str]:
-    """Main genres from aggregated counts (same rule as artist_genres)."""
-    if not genre_counts:
-        return []
-    total = sum(genre_counts.values())
-    main: list[str] = []
-    for genre, count in genre_counts.most_common():
-        if total > 0 and count / total >= min_genre_share:
-            main.append(genre)
-    if not main:
-        for genre, _ in genre_counts.most_common(top_k_main_genres):
-            main.append(genre)
-    return main
 
 
 def impute_from_references(
@@ -157,7 +138,7 @@ def impute_from_references(
         if not aggregated or not used_refs:
             continue
 
-        main_genres = _main_genres_from_counts(
+        main_genres = main_genres_from_counts(
             aggregated,
             min_genre_share=min_genre_share,
             top_k_main_genres=top_k_main_genres,
@@ -196,19 +177,19 @@ def main(argv: list[str] | None = None) -> None:
     parser.add_argument(
         "--imputed-metadata",
         type=Path,
-        default=Path("data/metadata_imputed.jsonl"),
+        default=Path(DATA_METADATA_IMPUTED),
         help="Path to imputed metadata JSONL (output of artist_genres).",
     )
     parser.add_argument(
         "--reviews",
         type=Path,
-        default=Path("data/reviews.jsonl"),
+        default=Path(DATA_REVIEWS),
         help="Path to reviews JSONL.",
     )
     parser.add_argument(
         "--artist-genres",
         type=Path,
-        default=Path("data/artist_genres.json"),
+        default=Path(DATA_ARTIST_GENRES),
         help="Path to artist_genres.json.",
     )
     parser.add_argument(

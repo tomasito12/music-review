@@ -7,7 +7,7 @@ import logging
 import os
 import subprocess
 import sys
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from enum import StrEnum
 from pathlib import Path
 
@@ -293,19 +293,7 @@ def pipeline_config_from_namespace(args: argparse.Namespace) -> PipelineConfig:
 
 def production_config_from_namespace(args: argparse.Namespace) -> PipelineConfig:
     """Production updater config: in-process scrape with early exit."""
-    cfg = pipeline_config_from_namespace(args)
-    return PipelineConfig(
-        reviews_path=cfg.reviews_path,
-        metadata_path=cfg.metadata_path,
-        artist_genres_path=cfg.artist_genres_path,
-        metadata_imputed_path=cfg.metadata_imputed_path,
-        dq_output_path=cfg.dq_output_path,
-        lock_path=cfg.lock_path,
-        max_rps=cfg.max_rps,
-        stop_after_n_empty=cfg.stop_after_n_empty,
-        skip_graph_affinities=cfg.skip_graph_affinities,
-        skip_dq=cfg.skip_dq,
-        dq_strict=cfg.dq_strict,
+    return replace(
+        pipeline_config_from_namespace(args),
         exit_if_no_new_reviews=True,
-        verbose=cfg.verbose,
     )

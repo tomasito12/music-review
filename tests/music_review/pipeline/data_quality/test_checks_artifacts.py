@@ -14,8 +14,12 @@ def test_graph_artifacts_error_when_missing(
     tmp_path: Path,
 ) -> None:
     monkeypatch.setattr(
-        "music_review.pipeline.data_quality.checks_artifacts.resolve_data_path",
-        lambda _p: tmp_path,
+        "music_review.pipeline.data_quality.checks_artifacts.community_memberships_path",
+        lambda: tmp_path / "community_memberships.jsonl",
+    )
+    monkeypatch.setattr(
+        "music_review.pipeline.data_quality.checks_artifacts.album_community_affinities_path",
+        lambda: tmp_path / "album_community_affinities.jsonl",
     )
     findings = check_graph_artifacts()
     assert len(findings) >= 2
@@ -27,8 +31,12 @@ def test_graph_artifacts_ok(
     tmp_path: Path,
 ) -> None:
     monkeypatch.setattr(
-        "music_review.pipeline.data_quality.checks_artifacts.resolve_data_path",
-        lambda _p: tmp_path,
+        "music_review.pipeline.data_quality.checks_artifacts.community_memberships_path",
+        lambda: tmp_path / "community_memberships.jsonl",
+    )
+    monkeypatch.setattr(
+        "music_review.pipeline.data_quality.checks_artifacts.album_community_affinities_path",
+        lambda: tmp_path / "album_community_affinities.jsonl",
     )
     (tmp_path / "community_memberships.jsonl").write_text('{"a":1}\n', encoding="utf-8")
     (tmp_path / "album_community_affinities.jsonl").write_text(

@@ -58,9 +58,7 @@ from music_review.dashboard.recommendation_scoring import (
     serendipity_rank_sort_key,
 )
 from music_review.domain.models import Review
-from music_review.pipeline.retrieval.reference_graph import (
-    reference_community_position_masses,
-)
+from music_review.domain.reference_masses import reference_community_position_masses
 
 LOGGER = logging.getLogger(__name__)
 

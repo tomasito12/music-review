@@ -108,3 +108,26 @@ def load_broad_categories_res_10(
         if isinstance(cid, str) and isinstance(bc, list):
             mapping[cid] = [str(c) for c in bc]
     return cats, mapping
+
+
+def load_communities_res_file(path: Path | str) -> tuple[list[dict[str, Any]], float]:
+    """Load communities from a ``communities_res_*.json`` file.
+
+    Returns ``(communities list, resolution)``. Raises if missing or invalid.
+    """
+    p = Path(path)
+    if not p.exists():
+        raise FileNotFoundError(f"Communities file not found: {p}")
+    with p.open("r", encoding="utf-8") as f:
+        data = json.load(f)
+    resolution = float(data.get("resolution", 0))
+    communities = data.get("communities")
+    if not isinstance(communities, list):
+        msg = "Expected 'communities' array in JSON."
+        raise ValueError(msg)
+    return communities, resolution
+
+
+def load_existing_genre_labels(path: Path | str) -> dict[str, str]:
+    """Load ``community_id`` -> ``genre_label`` from a genre-labels JSON file."""
+    return load_genre_labels_res_10(path)

@@ -9,7 +9,9 @@ from dataclasses import asdict, dataclass
 from pathlib import Path
 
 from music_review.config import resolve_data_path
+from music_review.data_access.paths import DATA_METADATA
 from music_review.io.jsonl import iter_jsonl_objects
+from music_review.pipeline.enrichment.genre_profiles import main_genres_from_counts
 
 logger = logging.getLogger(__name__)
 
@@ -30,12 +32,12 @@ class ArtistGenreProfile:
 
 
 # ---------------------------------------------------------------------------
-# Helpers: load metadata_1.jsonl
+# Helpers: load metadata.jsonl
 # ---------------------------------------------------------------------------
 
 
 def iter_metadata(metadata_path: Path) -> Iterable[dict]:
-    """Iterate over metadata_1.jsonl entries as dicts."""
+    """Iterate over metadata.jsonl entries as dicts."""
     yield from iter_jsonl_objects(metadata_path)
 
 
@@ -50,7 +52,7 @@ def build_artist_genre_profiles(
     min_genre_share: float = 0.15,
     top_k_main_genres: int = 3,
 ) -> dict[str, ArtistGenreProfile]:
-    """Build genre profiles per artist from metadata_1.jsonl.
+    """Build genre profiles per artist from metadata.jsonl.
 
     Strategy:
         - group entries by artist_mbid if available, otherwise by artist name
@@ -61,7 +63,7 @@ def build_artist_genre_profiles(
             * at least the top_k_main_genres if available
 
     Args:
-        metadata_path: Path to metadata_1.jsonl.
+        metadata_path: Path to metadata.jsonl.
         min_artist_albums: Minimum number of albums per artist to keep a profile.
         min_genre_share: Minimum relative share for a genre to be considered "main".
         top_k_main_genres: Fallback: ensure at least top K genres are included
@@ -122,19 +124,11 @@ def build_artist_genre_profiles(
             # No genres at all -> no profile
             continue
 
-        total_genre_assignments = sum(genre_counts.values())
-
-        # Compute main genres by relative share
-        main_genres: list[str] = []
-        for genre, count in genre_counts.most_common():
-            share = count / total_genre_assignments
-            if share >= min_genre_share:
-                main_genres.append(genre)
-
-        # Fallback: ensure at least top_k_main_genres if possible
-        if not main_genres:
-            for genre, _count in genre_counts.most_common(top_k_main_genres):
-                main_genres.append(genre)
+        main_genres = main_genres_from_counts(
+            genre_counts,
+            min_genre_share=min_genre_share,
+            top_k_main_genres=top_k_main_genres,
+        )
 
         profile = ArtistGenreProfile(
             artist_mbid=data["mbid"],
@@ -197,15 +191,15 @@ def impute_missing_review_genres(
 ) -> int:
     """Impute missing metadata['genres'] based on artist genre profiles.
 
-    Reads metadata_1.jsonl, builds artist profiles, then rewrites a new metadata
+    Reads metadata.jsonl, builds artist profiles, then rewrites a new metadata
     file in which entries with empty genres are filled from the corresponding
     artist profile if available.
 
     The imputed entries get a flag "genres_inferred_from_artist": true.
 
     Args:
-        metadata_path: Input metadata_1.jsonl.
-        output_path: Output metadata_1.jsonl with imputed genres.
+        metadata_path: Input metadata.jsonl.
+        output_path: Output metadata JSONL with imputed genres.
         min_artist_albums: Minimum album count per artist to build a profile.
         min_genre_share: Threshold for main genre share in artist profile.
         top_k_main_genres: Fallback: at least top K genres per artist.
@@ -293,7 +287,7 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     parser.add_argument(
         "--metadata",
         type=Path,
-        default=Path("data/metadata_1.jsonl"),
+        default=Path(DATA_METADATA),
         help="Path to input metadata JSONL.",
     )
     parser.add_argument(

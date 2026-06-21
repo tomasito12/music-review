@@ -8,8 +8,6 @@ import logging
 import os
 import sys
 from collections.abc import Iterator
-from dataclasses import dataclass
-from pathlib import Path
 
 from music_review.data_access.paths import (
     DATA_ARTIST_GENRES,
@@ -32,50 +30,17 @@ class UpdateAlreadyRunningError(RuntimeError):
     """Raised when another production update owns the lock file."""
 
 
-@dataclass(frozen=True)
-class ProductionUpdateConfig:
-    """Runtime settings for the production update job."""
-
-    reviews_path: Path
-    metadata_path: Path
-    artist_genres_path: Path
-    metadata_imputed_path: Path
-    dq_output_path: Path
-    lock_path: Path
-    max_rps: float
-    stop_after_n_empty: int
-    skip_graph_affinities: bool
-    skip_dq: bool
-    dq_strict: bool
-    verbose: bool
-
-
-def _to_pipeline_config(config: ProductionUpdateConfig) -> PipelineConfig:
-    return PipelineConfig(
-        reviews_path=config.reviews_path,
-        metadata_path=config.metadata_path,
-        artist_genres_path=config.artist_genres_path,
-        metadata_imputed_path=config.metadata_imputed_path,
-        dq_output_path=config.dq_output_path,
-        lock_path=config.lock_path,
-        max_rps=config.max_rps,
-        stop_after_n_empty=config.stop_after_n_empty,
-        skip_graph_affinities=config.skip_graph_affinities,
-        skip_dq=config.skip_dq,
-        dq_strict=config.dq_strict,
-        exit_if_no_new_reviews=True,
-        verbose=config.verbose,
-    )
-
-
 @contextlib.contextmanager
-def acquire_lock(lock_path: Path) -> Iterator[None]:
+def acquire_lock(lock_path: os.PathLike[str] | str) -> Iterator[None]:
     """Create a lock file for one running update, then remove it on exit."""
-    lock_path.parent.mkdir(parents=True, exist_ok=True)
+    lock = os.fspath(lock_path)
+    lock_dir = os.path.dirname(lock)
+    if lock_dir:
+        os.makedirs(lock_dir, exist_ok=True)
     try:
-        fd = os.open(lock_path, os.O_CREAT | os.O_EXCL | os.O_WRONLY)
+        fd = os.open(lock, os.O_CREAT | os.O_EXCL | os.O_WRONLY)
     except FileExistsError as exc:
-        raise UpdateAlreadyRunningError(str(lock_path)) from exc
+        raise UpdateAlreadyRunningError(lock) from exc
 
     try:
         with os.fdopen(fd, "w", encoding="utf-8") as f:
@@ -83,35 +48,21 @@ def acquire_lock(lock_path: Path) -> Iterator[None]:
         yield
     finally:
         with contextlib.suppress(FileNotFoundError):
-            lock_path.unlink()
+            os.unlink(lock)
 
 
-def run_update(config: ProductionUpdateConfig) -> int:
+def run_update(config: PipelineConfig) -> int:
     """Run the hourly production update and skip costly work if nothing changed."""
+    if config.lock_path is None:
+        msg = "Production update requires lock_path on PipelineConfig."
+        raise ValueError(msg)
     with acquire_lock(config.lock_path):
-        return run_pipeline_update(
-            _to_pipeline_config(config),
-            scrape_mode="in_process",
-        )
+        return run_pipeline_update(config, scrape_mode="in_process")
 
 
-def build_config(args: argparse.Namespace) -> ProductionUpdateConfig:
-    """Translate CLI arguments into resolved production update paths."""
-    pipeline_cfg = production_config_from_namespace(args)
-    return ProductionUpdateConfig(
-        reviews_path=pipeline_cfg.reviews_path,
-        metadata_path=pipeline_cfg.metadata_path,
-        artist_genres_path=pipeline_cfg.artist_genres_path,
-        metadata_imputed_path=pipeline_cfg.metadata_imputed_path,
-        dq_output_path=pipeline_cfg.dq_output_path,
-        lock_path=pipeline_cfg.lock_path or Path(DATA_PRODUCTION_UPDATE_LOCK),
-        max_rps=pipeline_cfg.max_rps,
-        stop_after_n_empty=pipeline_cfg.stop_after_n_empty,
-        skip_graph_affinities=pipeline_cfg.skip_graph_affinities,
-        skip_dq=pipeline_cfg.skip_dq,
-        dq_strict=pipeline_cfg.dq_strict,
-        verbose=pipeline_cfg.verbose,
-    )
+def build_config(args: argparse.Namespace) -> PipelineConfig:
+    """Translate CLI arguments into a resolved production pipeline config."""
+    return production_config_from_namespace(args)
 
 
 def _build_arg_parser() -> argparse.ArgumentParser:

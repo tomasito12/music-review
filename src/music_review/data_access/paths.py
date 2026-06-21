@@ -17,6 +17,14 @@ DATA_COMMUNITY_GENRE_LABELS_RES_10 = "data/community_genre_labels_res_10.json"
 DATA_COMMUNITY_BROAD_CATEGORIES_RES_10 = "data/community_broad_categories_res_10.json"
 DATA_PIPELINE_HEALTH_REPORT = "data/pipeline_health_report.json"
 DATA_PRODUCTION_UPDATE_LOCK = "data/.production_update.lock"
+DATA_ARTIST_REFERENCE_GRAPH = "data/artist_reference_graph.graphml"
+DATA_COMMUNITY_RESOLUTION_SCAN = "data/community_resolution_scan.json"
+DATA_DIR = "data"
+
+
+def data_dir() -> Path:
+    """Resolved path to the project data directory."""
+    return resolve_data_path(DATA_DIR)
 
 
 def reviews_path() -> Path:
@@ -72,3 +80,13 @@ def pipeline_health_report_path() -> Path:
 def production_update_lock_path() -> Path:
     """Resolved path to the production update lock file."""
     return resolve_data_path(DATA_PRODUCTION_UPDATE_LOCK)
+
+
+def artist_reference_graph_path() -> Path:
+    """Resolved path to the artist reference graph GraphML export."""
+    return resolve_data_path(DATA_ARTIST_REFERENCE_GRAPH)
+
+
+def community_resolution_scan_path() -> Path:
+    """Resolved path to the Louvain resolution scan JSON."""
+    return resolve_data_path(DATA_COMMUNITY_RESOLUTION_SCAN)

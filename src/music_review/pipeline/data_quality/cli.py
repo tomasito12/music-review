@@ -8,6 +8,11 @@ import sys
 from pathlib import Path
 
 from music_review.config import resolve_data_path
+from music_review.data_access.paths import (
+    DATA_METADATA_IMPUTED,
+    DATA_PIPELINE_HEALTH_REPORT,
+    DATA_REVIEWS,
+)
 from music_review.pipeline.data_quality.models import DataQualityConfig
 from music_review.pipeline.data_quality.run import run_data_quality
 
@@ -24,19 +29,19 @@ def _build_parser() -> argparse.ArgumentParser:
     parser.add_argument(
         "--reviews",
         type=Path,
-        default=Path("data/reviews.jsonl"),
+        default=Path(DATA_REVIEWS),
         help="Path to reviews JSONL (default: %(default)s).",
     )
     parser.add_argument(
         "--metadata-imputed",
         type=Path,
-        default=Path("data/metadata_imputed.jsonl"),
+        default=Path(DATA_METADATA_IMPUTED),
         help="Path to imputed metadata JSONL (default: %(default)s).",
     )
     parser.add_argument(
         "--output",
         type=Path,
-        default=Path("data/pipeline_health_report.json"),
+        default=Path(DATA_PIPELINE_HEALTH_REPORT),
         help="Output JSON report path (default: %(default)s).",
     )
     parser.add_argument(
