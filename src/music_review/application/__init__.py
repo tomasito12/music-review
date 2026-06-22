@@ -15,6 +15,11 @@ from music_review.application.presets import (
     get_preset,
     list_presets,
 )
+from music_review.application.recommendation_service import (
+    RecommendationInputs,
+    RecommendationService,
+    selected_communities_from_profile,
+)
 
 __all__ = [
     "DEFAULT_PRESET_ID",
@@ -22,10 +27,13 @@ __all__ = [
     "PlaylistExport",
     "PlaylistExportItem",
     "Recommendation",
+    "RecommendationInputs",
+    "RecommendationService",
     "RecommendationSet",
     "TasteFilterSettings",
     "TastePreset",
     "TasteProfile",
     "get_preset",
     "list_presets",
+    "selected_communities_from_profile",
 ]

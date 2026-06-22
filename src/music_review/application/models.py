@@ -78,14 +78,16 @@ class TasteFilterSettings(ApiModel):
     overall_weight_alpha: float = 0.5
     overall_weight_beta: float = 0.25
     overall_weight_gamma: float = 0.25
-    plattenlabel_selection: tuple[str, ...] = ()
+    plattenlabel_selection: tuple[str, ...] | None = None
     sort_mode: SortMode = "deterministic"
     serendipity: float = Field(default=0.0, ge=0.0, le=1.0)
 
     @field_validator("plattenlabel_selection", mode="before")
     @classmethod
-    def _normalize_plattenlabels(cls, value: Any) -> tuple[str, ...]:
+    def _normalize_plattenlabels(cls, value: Any) -> tuple[str, ...] | None:
         """Normalize label lists from stored profiles or API payloads."""
+        if value is None:
+            return None
         return _str_tuple(value)
 
     @field_validator("sort_mode", mode="before")
