@@ -26,6 +26,7 @@ dependencies = [
   "networkx>=3.2",
   "openai",
   "plotly>=5.18",
+  "pydantic>=2.0",
   "python-dotenv",
   "musicbrainzngs",
     "requests",
