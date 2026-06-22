@@ -9,16 +9,17 @@ from typing import Any
 import streamlit as st
 from pages.page_helpers import get_selected_communities
 
+from music_review.application.models import TasteProfile
+from music_review.application.newest_reviews_service import (
+    NewestReviewsInputs,
+    NewestReviewsService,
+)
 from music_review.dashboard.cache_keys import file_cache_signature
 from music_review.dashboard.data_cache import (
     cached_load_affinities_by_review_id,
     cached_load_all_reviews_for_breadth_norm,
     cached_load_community_memberships,
     cached_load_newest_reviews_slice,
-)
-from music_review.dashboard.preference_ranking import (
-    global_breadth_norm_by_review_id,
-    preference_ranked_rows,
 )
 from music_review.dashboard.user_profile_store import (
     profile_taste_from_account_applied_to_session,
@@ -97,12 +98,19 @@ def _cached_global_breadth_norm_map(
     if not all_rev:
         return {}
     memberships = cached_load_community_memberships()
-    weights = {k: float(v) for k, v in weights_key}
-    return global_breadth_norm_by_review_id(
-        all_rev,
+    profile = TasteProfile(
+        selected_communities=selected_key,
+        community_weights_raw=dict(weights_key),
+    )
+    inputs = NewestReviewsInputs(
+        newest_reviews=(),
+        affinity_by_review_id={},
         memberships=memberships,
-        selected_comms=set(selected_key),
-        weights_raw=weights,
+        all_reviews_for_breadth_norm=all_rev,
+    )
+    return NewestReviewsService(inputs).compute_global_breadth_norm(
+        set(selected_key),
+        profile,
     )
 
 
@@ -141,29 +149,22 @@ def preference_rank_rows_for_reviews(
         reviews_sig,
         memberships_sig,
     )
-    ranked_rows = preference_ranked_rows(
-        reviews,
+    profile = TasteProfile(
+        selected_communities=tuple(sorted(selected_comms)),
+        community_weights_raw=weights_raw,
+        filter_settings=filter_settings,
+    )
+    inputs = NewestReviewsInputs(
+        newest_reviews=reviews,
         affinity_by_review_id=aff_map_full,
         memberships=cached_load_community_memberships(),
-        selected_comms=selected_comms,
-        weights_raw=weights_raw,
-        filter_settings=filter_settings,
+        all_reviews_for_breadth_norm=(),
+    )
+    service = NewestReviewsService(inputs, logger=_LOGGER)
+    ranked_rows = service.compute_ranked_rows(
+        profile,
         apply_serendipity=False,
-        global_breadth_norm_by_review_id=breadth_norm_global or None,
-    )
-    _LOGGER.info(
-        "preference_rank_rows_for_reviews: applied n_reviews=%s n_ranked_rows=%s "
-        "n_selected_communities=%s",
-        len(reviews),
-        len(ranked_rows),
-        len(selected_comms),
-    )
-    _LOGGER.debug(
-        "preference_rank_rows_for_reviews: selected_community_ids=%s "
-        "filter_settings_keys=%s n_community_weights=%s",
-        sorted(selected_comms),
-        sorted((st.session_state.get("filter_settings") or {}).keys()),
-        len(st.session_state.get("community_weights_raw") or {}),
+        global_breadth_norm=breadth_norm_global or None,
     )
     return ranked_rows
 

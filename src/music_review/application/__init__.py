@@ -9,6 +9,15 @@ from music_review.application.models import (
     TasteFilterSettings,
     TasteProfile,
 )
+from music_review.application.newest_reviews_service import (
+    NewestReviewsInputs,
+    NewestReviewsService,
+)
+from music_review.application.playlist_service import (
+    PlaylistRequest,
+    PlaylistResult,
+    PlaylistService,
+)
 from music_review.application.presets import (
     DEFAULT_PRESET_ID,
     TastePreset,
@@ -24,8 +33,13 @@ from music_review.application.recommendation_service import (
 __all__ = [
     "DEFAULT_PRESET_ID",
     "ExplanationSignals",
+    "NewestReviewsInputs",
+    "NewestReviewsService",
     "PlaylistExport",
     "PlaylistExportItem",
+    "PlaylistRequest",
+    "PlaylistResult",
+    "PlaylistService",
     "Recommendation",
     "RecommendationInputs",
     "RecommendationService",
