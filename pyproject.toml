@@ -30,11 +30,11 @@ dependencies = [
   "pydantic>=2.0",
   "python-dotenv",
   "musicbrainzngs",
-    "requests",
-    "pillow>=10.0",
-    "extra-streamlit-components>=0.1.70",
-    "streamlit>=1.50",
-    "uvicorn>=0.30",
+  "requests",
+  "pillow>=10.0",
+  "extra-streamlit-components>=0.1.70",
+  "streamlit>=1.50",
+  "uvicorn>=0.30",
 ]
 
 [project.optional-dependencies]

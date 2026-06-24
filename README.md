@@ -78,6 +78,16 @@ hatch run python -m music_review.pipeline.enrichment.artist_genres \
 hatch run dashboard
 ```
 
+## Working From Codex Cloud
+
+The repository is prepared for GitHub-based Codex work. That means you can
+continue coding from mobile through Codex Cloud without keeping the local Mac
+running, as long as the task can work from the GitHub repository and does not
+need private local `data/` files.
+
+See [docs/codex-cloud-workflow.md](docs/codex-cloud-workflow.md) for the
+recommended mobile workflow, what works in the cloud, and which checks to run.
+
 ## Dashboard
 
 A Streamlit dashboard lets you browse reviews and metadata by artist and album:
