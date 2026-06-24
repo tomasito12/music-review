@@ -14,17 +14,14 @@ import streamlit as st
 from pages.neueste_reviews_pool import preference_rank_rows_for_reviews
 from pages.recommendations_pool import archive_playlist_candidates
 
+from music_review.application.models import RecommendationSource
+from music_review.application.playlist_service import (
+    PlaylistRequest,
+    PlaylistService,
+)
 from music_review.dashboard.playlist_builder import (
     PlaylistSuggestion,
     SelectionStrategy,
-    amplify_preference_weights,
-    build_album_weights,
-    build_playlist_suggestions,
-)
-from music_review.dashboard.playlist_export import (
-    format_tune_my_music_csv,
-    format_tune_my_music_txt,
-    suggested_export_filename,
 )
 from music_review.domain.models import Review
 
@@ -90,12 +87,24 @@ def _render_export_section(
     suggestions: list[PlaylistSuggestion],
     playlist_name: str,
     *,
+    source: RecommendationSource,
     key_prefix: str,
 ) -> None:
     """Offer TXT/CSV download and copy-paste export for TuneMyMusic."""
     display_name = playlist_name.strip() or _default_playlist_name()
-    txt_body = format_tune_my_music_txt(suggestions)
-    csv_body = format_tune_my_music_csv(suggestions, display_name)
+    service = PlaylistService(logger=_LOGGER)
+    txt_export = service.build_export(
+        suggestions=suggestions,
+        source=source,
+        playlist_name=display_name,
+        export_format="txt",
+    )
+    csv_export = service.build_export(
+        suggestions=suggestions,
+        source=source,
+        playlist_name=display_name,
+        export_format="csv",
+    )
 
     st.markdown("#### In Deezer importieren (TuneMyMusic)")
     st.markdown(
@@ -110,25 +119,25 @@ def _render_export_section(
     with col_txt:
         st.download_button(
             "Als Textdatei herunterladen",
-            data=txt_body.encode("utf-8"),
-            file_name=suggested_export_filename(display_name, extension=".txt"),
-            mime="text/plain",
+            data=txt_export.content.encode("utf-8"),
+            file_name=txt_export.filename,
+            mime=txt_export.content_type,
             key=f"{key_prefix}-export-txt",
             width="stretch",
         )
     with col_csv:
         st.download_button(
             "Als CSV herunterladen",
-            data=csv_body.encode("utf-8"),
-            file_name=suggested_export_filename(display_name, extension=".csv"),
-            mime="text/csv",
+            data=csv_export.content.encode("utf-8"),
+            file_name=csv_export.filename,
+            mime=csv_export.content_type,
             key=f"{key_prefix}-export-csv",
             width="stretch",
         )
 
     st.text_area(
         "Für TuneMyMusic (Freitext)",
-        value=txt_body,
+        value=txt_export.content,
         height=160,
         key=f"{key_prefix}-export-free-text",
     )
@@ -138,30 +147,34 @@ def _generate_suggestions(
     *,
     reviews: list[Review],
     ranked_rows: list[dict[str, Any]] | None,
+    source: RecommendationSource,
+    playlist_name: str,
     target_count: int,
     taste_exponent: float,
     selection_strategy: SelectionStrategy,
 ) -> list[PlaylistSuggestion]:
     """Run the suggestion pipeline synchronously."""
-    chosen_reviews, weights, raw_scores = build_album_weights(reviews, ranked_rows)
-    if not chosen_reviews:
-        return []
     rng = random.Random(secrets.randbits(64))
-    alloc_weights = amplify_preference_weights(weights, exponent=taste_exponent)
-    return build_playlist_suggestions(
-        reviews=chosen_reviews,
-        weights=alloc_weights,
-        raw_scores=raw_scores,
-        target_count=target_count,
+    result = PlaylistService(logger=_LOGGER).generate(
+        reviews=reviews,
+        ranked_rows=ranked_rows,
+        request=PlaylistRequest(
+            source=source,
+            playlist_name=playlist_name,
+            target_count=target_count,
+            taste_exponent=taste_exponent,
+            selection_strategy=selection_strategy,
+        ),
         rng=rng,
-        selection_strategy=selection_strategy,
     )
+    return list(result.suggestions)
 
 
 def render_playlist_section(
     *,
     reviews: list[Review],
     resolve_ranked_rows: Callable[[str], list[dict[str, Any]] | None],
+    source: RecommendationSource,
     key_prefix: str,
     default_song_count: int,
     selection_strategy: SelectionStrategy,
@@ -207,6 +220,8 @@ def render_playlist_section(
         suggestions = _generate_suggestions(
             reviews=reviews,
             ranked_rows=ranked_rows,
+            source=source,
+            playlist_name=playlist_name,
             target_count=target_count,
             taste_exponent=taste_exponent,
             selection_strategy=selection_strategy,
@@ -241,6 +256,7 @@ def render_playlist_section(
         _render_export_section(
             stored,
             name_for_display,
+            source=source,
             key_prefix=key_prefix,
         )
 
@@ -259,6 +275,7 @@ def render_neueste_playlist_section(*, reviews: list[Review]) -> None:
     render_playlist_section(
         reviews=reviews,
         resolve_ranked_rows=_resolve_ranked_rows,
+        source="new_reviews",
         key_prefix="newest",
         default_song_count=min(30, max(5, len(reviews))),
         selection_strategy="stratified",
@@ -282,6 +299,7 @@ def render_archive_playlist_section() -> None:
     render_playlist_section(
         reviews=reviews,
         resolve_ranked_rows=_resolve_ranked_rows,
+        source="archive",
         key_prefix="archive",
         default_song_count=min(30, max(5, len(reviews))),
         selection_strategy="weighted_sample",

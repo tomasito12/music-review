@@ -28,6 +28,17 @@ Music Review is a Python 3.12+ CLI-based data pipeline that scrapes album review
 - **Testing**: pytest + pytest-cov, orchestrated through hatch environments
 - **Pre-commit**: ruff and mypy hooks via `.pre-commit-config.yaml`
 
+### Codex Cloud / mobile workflow
+
+- The GitHub repository is the handoff point for work from mobile or Codex Cloud.
+- Cloud work must not assume that private local files under `data/` exist.
+- Prefer mocked data, small fixtures, and API/service tests for cloud tasks.
+- Run `hatch run lint:all` and `hatch run test:run` before handing back code.
+- For changes that need the full review corpus, MusicBrainz calls, Streamlit
+  visual checks, or production data updates, leave a clear note that local or
+  production verification is still required.
+- See `docs/codex-cloud-workflow.md` for the detailed workflow.
+
 ### Key commands
 
 | Task | Command |

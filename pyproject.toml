@@ -20,18 +20,21 @@ authors = [
 
 dependencies = [
   "bcrypt>=4.0",
+  "fastapi>=0.115",
   "httpx>=0.27",
   "beautifulsoup4>=4.12",
   "lxml>=5.2",
   "networkx>=3.2",
   "openai",
   "plotly>=5.18",
+  "pydantic>=2.0",
   "python-dotenv",
   "musicbrainzngs",
-    "requests",
-    "pillow>=10.0",
-    "extra-streamlit-components>=0.1.70",
-    "streamlit>=1.50",
+  "requests",
+  "pillow>=10.0",
+  "extra-streamlit-components>=0.1.70",
+  "streamlit>=1.50",
+  "uvicorn>=0.30",
 ]
 
 [project.optional-dependencies]
@@ -66,6 +69,8 @@ update-db = "python scripts/update_database.py {args:}"
 full-data-update = "python scripts/full_data_update.py {args:}"
 # Default bind/browser host: see .streamlit/config.toml (127.0.0.1 for Spotify OAuth).
 dashboard = "streamlit run streamlit_app.py {args:}"
+api = "uvicorn music_review.api.app:create_app --factory {args:--reload}"
+api-smoke = "python scripts/api_smoke_test.py {args:}"
 prod-update = "python -m music_review.pipeline.production_update {args:}"
 graph-build = "python -m music_review.pipeline.retrieval.reference_graph_cli {args:}"
 community-genre-labels = "python -m music_review.pipeline.retrieval.community_genre_labels {args:}"
