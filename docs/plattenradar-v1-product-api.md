@@ -237,46 +237,450 @@ Spätere Ressourcen:
 - `UserAlbumState`,
 - `RecommendationFeedback`.
 
-### API-Endpunkte v0
+### Aktueller API-Schnitt v1
+
+Der aktuelle FastAPI-Schnitt ist ein privater HTTP-Vertrag für ein zukünftiges Frontend. Er ist nicht als öffentliche Entwickler-API gedacht. Streamlit funktioniert weiterhin ohne HTTP und ruft die Python-Services direkt auf.
+
+Lokaler Start:
+
+```bash
+hatch run api --host 127.0.0.1 --port 8000
+```
+
+Interaktive Doku:
+
+- `http://127.0.0.1:8000/docs`
 
 Health:
 
-- `GET /api/health`
+- `GET /health`
 
-Account:
+Auth und aktueller Nutzer:
 
-- `GET /api/me`
+- `POST /v1/auth/register`
+- `POST /v1/auth/login`
+- `GET /v1/me`
+- `GET /v1/me/taste-profile`
+- `PUT /v1/me/taste-profile`
 
-Geschmacksprofile:
+Presets:
 
-- `POST /api/taste-profiles/preview`
-- `GET /api/taste-profiles`
-- `POST /api/taste-profiles`
-- `GET /api/taste-profiles/{profile_id}`
-- `PUT /api/taste-profiles/{profile_id}`
-- `POST /api/taste-profiles/{profile_id}/make-default`
-- optional: `GET /api/taste-profile/default`
+- `GET /v1/presets`
+- `GET /v1/taste-filter-ui`
 
 Empfehlungen:
 
-- `POST /api/recommendations/archive`
-- `POST /api/recommendations/new-reviews`
+- `POST /v1/recommendations/archive`
+- `POST /v1/recommendations/new-reviews`
 
 Playlist:
 
-- `POST /api/playlists/exports`
+- `POST /v1/playlists/export`
 
-Reviews:
+#### `GET /health`
 
-- `GET /api/reviews/{review_id}`
-- später optional: `GET /api/reviews?query=&artist=&year_min=&year_max=`
+Zweck: einfacher lokaler Check, ob der API-Server läuft.
 
-Profilregeln für Empfehlungen und Playlist-Export:
+Beispiel-Response:
+
+```json
+{
+  "status": "ok",
+  "service": "plattenradar-api"
+}
+```
+
+#### `GET /v1/presets`
+
+Zweck: liefert die konfigurierten Grundmodi für Filter und Gewichtungen.
+
+Response: Liste von Presets mit `id`, `label`, `subtitle`, `description`, `icon` und `filter_settings`.
+
+Beispiel-Ausschnitt:
+
+```json
+[
+  {
+    "id": "balanced",
+    "label": "Ausgewogen",
+    "subtitle": "Der beste Startpunkt",
+    "description": "Gute Mischung aus Stilpassung, Wertung und Vielschichtigkeit.",
+    "icon": "sliders-horizontal",
+    "filter_settings": {
+      "rating_min": 6.0,
+      "rating_max": 10.0,
+      "score_min": 0.4,
+      "score_max": 1.0,
+      "community_spectrum_crossover": 0.5,
+      "overall_weight_alpha": 0.5,
+      "overall_weight_beta": 0.25,
+      "overall_weight_gamma": 0.25,
+      "sort_mode": "deterministic",
+      "serendipity": 0.0
+    }
+  }
+]
+```
+
+#### `GET /v1/taste-filter-ui`
+
+Zweck: liefert die semantische UI-Konfiguration für die Filterseite. Dieser Endpunkt ist der Vertrag für das spätere Frontend: Es muss technische Felder wie `overall_weight_alpha` nicht selbst benennen, sondern bekommt Gruppen, Labels, kurze Hilfetexte und die Expertenfilter-Markierung aus der API.
+
+Response: Objekt mit `default_preset_id`, `preset_display`, `preset_display_hint` und `groups`.
+
+Beispiel-Ausschnitt:
+
+```json
+{
+  "default_preset_id": "balanced",
+  "preset_display": "selection_cards",
+  "preset_display_hint": "Presets erscheinen als mittelgroße Auswahlkarten mit Icon, Titel und kurzem Erklärungssatz. Sie setzen die darunterliegenden Regler einmalig.",
+  "groups": [
+    {
+      "id": "core_fit",
+      "label": "Passung",
+      "description": "Grenzt ein, wie nah Alben an deinem Musikprofil liegen.",
+      "controls": [
+        {
+          "id": "style_fit",
+          "label": "Stilpassung",
+          "description": "Legt fest, wie stark ein Album zu deinen gewählten Stilrichtungen passen muss.",
+          "kind": "range",
+          "fields": ["score_min", "score_max"],
+          "expert": false
+        }
+      ]
+    }
+  ]
+}
+```
+
+#### `POST /v1/auth/register`
+
+Zweck: registriert einen Nutzer per E-Mail und Passwort. Optional kann direkt ein temporäres Geschmacksprofil gespeichert werden.
+
+Beispiel-Request:
+
+```json
+{
+  "email": "alice@example.com",
+  "password": "secret123",
+  "profile": {
+    "selected_communities": ["C001"],
+    "community_weights_raw": {
+      "C001": 1.0
+    },
+    "filter_settings": {
+      "rating_min": 6.0,
+      "score_min": 0.4
+    }
+  }
+}
+```
+
+Beispiel-Response:
+
+```json
+{
+  "access_token": "session-token",
+  "token_type": "bearer",
+  "user": {
+    "slug": "alice",
+    "email": "alice@example.com"
+  }
+}
+```
+
+#### `POST /v1/auth/login`
+
+Zweck: meldet einen Nutzer per E-Mail und Passwort an und gibt einen Bearer-Token zurück.
+
+Beispiel-Request:
+
+```json
+{
+  "email": "alice@example.com",
+  "password": "secret123"
+}
+```
+
+Response-Struktur: wie Registrierung.
+
+#### `GET /v1/me`
+
+Zweck: liefert den aktuell authentifizierten Nutzer.
+
+Header:
+
+```http
+Authorization: Bearer <access_token>
+```
+
+Beispiel-Response:
+
+```json
+{
+  "slug": "alice",
+  "email": "alice@example.com"
+}
+```
+
+#### `GET /v1/me/taste-profile`
+
+Zweck: lädt das gespeicherte Geschmacksprofil des aktuellen Nutzers.
+
+Beispiel-Response:
+
+```json
+{
+  "profile": {
+    "schema_version": 1,
+    "name": "Standardprofil",
+    "selected_communities": ["C001"],
+    "community_weights_raw": {
+      "C001": 1.0
+    },
+    "filter_settings": {
+      "rating_min": 6.0,
+      "rating_max": 10.0,
+      "score_min": 0.4,
+      "score_max": 1.0
+    }
+  }
+}
+```
+
+Wenn noch kein Profil gespeichert ist:
+
+```json
+{
+  "profile": null
+}
+```
+
+#### `PUT /v1/me/taste-profile`
+
+Zweck: ersetzt das gespeicherte Geschmacksprofil des aktuellen Nutzers.
+
+Request-Body: ein `TasteProfile`.
+
+Response-Struktur: wie `GET /v1/me/taste-profile`.
+
+#### Gemeinsames `TasteProfile`
+
+Empfehlungs- und Playlist-Endpunkte akzeptieren weiterhin ein temporäres `profile` im Request. Gespeicherte Profile können über die Auth-Endpunkte geladen und vom Frontend als `profile` in Empfehlungs-Requests weitergereicht werden.
+
+Minimalbeispiel:
+
+```json
+{
+  "selected_communities": ["C001"],
+  "community_weights_raw": {
+    "C001": 1.0
+  },
+  "filter_settings": {
+    "rating_min": 6.0,
+    "rating_max": 10.0,
+    "score_min": 0.4,
+    "score_max": 1.0,
+    "sort_mode": "deterministic",
+    "serendipity": 0.0
+  }
+}
+```
+
+#### `POST /v1/recommendations/archive`
+
+Zweck: berechnet persönliche Archivempfehlungen aus dem gesamten lokalen Review-Bestand.
+
+Profilregel:
+
+- Gast-Requests müssen `profile` im Body senden.
+- Eingeloggte Requests dürfen `profile` weglassen; dann nutzt die API das gespeicherte Geschmacksprofil des aktuellen Nutzers.
+- Wenn `profile` trotz Login im Body steht, gewinnt dieses temporäre Profil nur für diese Anfrage und überschreibt nichts.
+
+Beispiel-Request:
+
+```json
+{
+  "profile": {
+    "selected_communities": ["C001"],
+    "community_weights_raw": {
+      "C001": 1.0
+    },
+    "filter_settings": {
+      "rating_min": 6.0,
+      "score_min": 0.4
+    }
+  },
+  "limit": 20,
+  "offset": 0
+}
+```
+
+Beispiel-Response-Struktur:
+
+```json
+{
+  "source": "archive",
+  "total": 123,
+  "limit": 20,
+  "offset": 0,
+  "generated_at": "2026-06-24T15:30:00+00:00",
+  "items": [
+    {
+      "rank": 1,
+      "review_id": 12345,
+      "artist": "Artist",
+      "album": "Album",
+      "overall_score": 0.87,
+      "source": "archive",
+      "url": "https://www.plattentests.de/...",
+      "year": 2024,
+      "release_date": "2024-01-19",
+      "rating": 8.0,
+      "rating_effective": 8.0,
+      "labels": "Label",
+      "text_excerpt": "Kurzer Rezensionstext...",
+      "score_display": "87% Fit",
+      "playlist_available": true,
+      "has_tracks": true,
+      "matched_tags": [
+        {
+          "id": "C001",
+          "label": "Indie Rock",
+          "affinity": 0.91,
+          "matched": true
+        }
+      ],
+      "explanation_signals": {
+        "matched_community_count": 2,
+        "primary_matched_labels": ["Indie Rock", "Post-Punk"],
+        "fit_level": "high"
+      }
+    }
+  ]
+}
+```
+
+#### `POST /v1/recommendations/new-reviews`
+
+Zweck: berechnet persönliche Empfehlungen aus den neuesten Rezensionen. Kurzfristig bedeutet "neueste" die höchsten Review-IDs bzw. die letzten `newest_count` Einträge.
+
+Profilregel: wie bei Archivempfehlungen. Die API berechnet immer gegen genau ein Profil: entweder temporär im Body oder gespeichert über den Bearer Token.
+
+Beispiel-Request:
+
+```json
+{
+  "profile": {
+    "selected_communities": ["C001"],
+    "community_weights_raw": {
+      "C001": 1.0
+    },
+    "filter_settings": {
+      "rating_min": 6.0,
+      "score_min": 0.0
+    }
+  },
+  "newest_count": 30,
+  "limit": 20,
+  "offset": 0
+}
+```
+
+Response-Struktur: wie Archivempfehlungen, aber mit `"source": "new_reviews"`.
+
+#### `POST /v1/playlists/export`
+
+Zweck: erzeugt synchron eine transient nutzbare Playlist als TuneMyMusic-TXT oder CSV. Der Export wird nicht gespeichert.
+
+Profilregel: wie bei Empfehlungen. Playlist-Exports speichern kein Profil und keine Playlist; sie verwenden nur das für diese Anfrage aufgelöste Geschmacksprofil.
+
+Beispiel-Request:
+
+```json
+{
+  "source": "new_reviews",
+  "profile": {
+    "selected_communities": ["C001"],
+    "community_weights_raw": {
+      "C001": 1.0
+    },
+    "filter_settings": {
+      "rating_min": 6.0,
+      "score_min": 0.0
+    }
+  },
+  "playlist_name": "Plattenradar 2026-06-24",
+  "target_count": 30,
+  "taste_exponent": 1.0,
+  "selection_strategy": "stratified",
+  "format": "txt",
+  "newest_count": 30,
+  "archive_limit": 200
+}
+```
+
+Beispiel-Response-Struktur:
+
+```json
+{
+  "source": "new_reviews",
+  "name": "Plattenradar 2026-06-24",
+  "format": "txt",
+  "filename": "Plattenradar-2026-06-24.txt",
+  "content_type": "text/plain",
+  "content": "Artist - Song\nOther Artist - Other Song",
+  "items": [
+    {
+      "review_id": 12345,
+      "artist": "Artist",
+      "album": "Album",
+      "track_title": "Song",
+      "source_kind": "highlight",
+      "score_weight": 0.12,
+      "raw_score": 0.87
+    }
+  ]
+}
+```
+
+#### Spätere API-Bereiche
+
+Noch nicht gebaut:
+
+- `GET /v1/taste-profiles`
+- `POST /v1/taste-profiles`
+- `GET /v1/taste-profiles/{profile_id}`
+- `PUT /v1/taste-profiles/{profile_id}`
+- `POST /v1/taste-profiles/{profile_id}/make-default`
+- `GET /v1/reviews/{review_id}`
+- optional: `GET /v1/reviews?query=&artist=&year_min=&year_max=`
+
+Spätere Profilregeln:
 
 - Request kann ein temporäres `profile` enthalten.
 - Request kann ein `profile_id` enthalten.
 - Ohne beides nutzt die API bei eingeloggten Nutzern das Default-Profil.
 - Bei Gästen ist ein `profile` im Request erforderlich.
+
+### API-Smoke-Test
+
+Der lokale API-Schnitt kann gegen echte lokale Daten geprüft werden:
+
+```bash
+hatch run api --host 127.0.0.1 --port 8000
+hatch run api-smoke
+```
+
+Der Smoke-Test prüft:
+
+- `GET /health`,
+- `GET /v1/presets`,
+- `POST /v1/recommendations/archive`,
+- `POST /v1/recommendations/new-reviews`,
+- `POST /v1/playlists/export`.
 
 ### Service-Schicht
 
@@ -2346,8 +2750,7 @@ Vorschlag:
    - Ausgewogen,
    - Entdeckerisch,
    - Kritikerlieblinge,
-   - vielschichtige Alben,
-   - Fokussiert.
+   - Vielschichtig.
 
 2. **Zusammenfassung der gesetzten Werte**
    - kurzer Satz, was der Modus bewirkt.
@@ -2363,6 +2766,8 @@ Vorschlag:
    - Liste variieren.
 
 4. **Speichern / Empfehlungen anzeigen**
+
+Diese Struktur ist inzwischen als API-Konfiguration über `GET /v1/taste-filter-ui` modelliert. Das Frontend kann damit die Filterseite aufbauen, ohne technische Feldnamen als sichtbare Sprache verwenden zu müssen.
 
 ### Darstellung der Grundmodi
 

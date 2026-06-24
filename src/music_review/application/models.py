@@ -264,6 +264,15 @@ class ExplanationSignals(ApiModel):
         return value if value in {"low", "medium", "high"} else "medium"
 
 
+class CommunityMatch(ApiModel):
+    """One music-style tag shown on a recommendation card."""
+
+    id: str
+    label: str
+    affinity: float = Field(default=0.0, ge=0.0)
+    matched: bool = True
+
+
 class Recommendation(ApiModel):
     """One ranked album recommendation for a taste profile."""
 
@@ -275,10 +284,15 @@ class Recommendation(ApiModel):
     source: RecommendationSource = "archive"
     url: str | None = None
     year: int | None = None
+    release_date: str | None = None
     rating: float | None = None
     rating_effective: float | None = None
     labels: str = ""
     text_excerpt: str = ""
+    score_display: str = ""
+    playlist_available: bool = False
+    has_tracks: bool = False
+    matched_tags: tuple[CommunityMatch, ...] = ()
     explanation_signals: ExplanationSignals = Field(default_factory=ExplanationSignals)
 
 

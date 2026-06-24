@@ -1,6 +1,7 @@
 """Application-level models for the future API and frontend boundary."""
 
 from music_review.application.models import (
+    CommunityMatch,
     ExplanationSignals,
     PlaylistExport,
     PlaylistExportItem,
@@ -20,7 +21,11 @@ from music_review.application.playlist_service import (
 )
 from music_review.application.presets import (
     DEFAULT_PRESET_ID,
+    FilterControl,
+    FilterGroup,
+    TasteFilterUiConfig,
     TastePreset,
+    get_filter_ui_config,
     get_preset,
     list_presets,
 )
@@ -32,7 +37,10 @@ from music_review.application.recommendation_service import (
 
 __all__ = [
     "DEFAULT_PRESET_ID",
+    "CommunityMatch",
     "ExplanationSignals",
+    "FilterControl",
+    "FilterGroup",
     "NewestReviewsInputs",
     "NewestReviewsService",
     "PlaylistExport",
@@ -45,8 +53,10 @@ __all__ = [
     "RecommendationService",
     "RecommendationSet",
     "TasteFilterSettings",
+    "TasteFilterUiConfig",
     "TastePreset",
     "TasteProfile",
+    "get_filter_ui_config",
     "get_preset",
     "list_presets",
     "selected_communities_from_profile",

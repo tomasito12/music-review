@@ -31,6 +31,7 @@ _SCHEMA_SQL = """\
 CREATE TABLE IF NOT EXISTS users (
     id                       INTEGER PRIMARY KEY AUTOINCREMENT,
     slug                     TEXT    UNIQUE NOT NULL,
+    email                    TEXT    UNIQUE,
     password_hash            TEXT    NOT NULL,
     profile_data             TEXT,
     spotify_last_preview_at  TEXT,
@@ -53,7 +54,14 @@ CREATE TABLE IF NOT EXISTS sessions (
 );
 """
 
+_CREATE_EMAIL_INDEX_SQL = """\
+CREATE UNIQUE INDEX IF NOT EXISTS idx_users_email
+ON users(email)
+WHERE email IS NOT NULL;
+"""
+
 _MIGRATE_STREAMING_COLS_SQL = (
+    "ALTER TABLE users ADD COLUMN email TEXT",
     "ALTER TABLE users ADD COLUMN spotify_client_id TEXT",
     "ALTER TABLE users ADD COLUMN spotify_client_secret TEXT",
     "ALTER TABLE users ADD COLUMN spotify_oauth_token_json TEXT",
@@ -87,6 +95,7 @@ def get_connection(db_path: Path | None = None) -> sqlite3.Connection:
     conn.execute("PRAGMA foreign_keys=ON")
     conn.executescript(_SCHEMA_SQL)
     _run_migrations(conn)
+    conn.execute(_CREATE_EMAIL_INDEX_SQL)
     return conn
 
 
@@ -106,6 +115,34 @@ def _hash_password(password: str) -> str:
 
 def _verify_password(password: str, hashed: str) -> bool:
     return bcrypt.checkpw(password.encode("utf-8"), hashed.encode("ascii"))
+
+
+def normalize_email(raw: str) -> str:
+    """Normalize an email address for login and lookup."""
+    email = raw.strip().casefold()
+    if not email or "@" not in email:
+        raise ValueError("Bitte gib eine gültige E-Mail-Adresse ein.")
+    local, domain = email.rsplit("@", 1)
+    if not local or "." not in domain:
+        raise ValueError("Bitte gib eine gültige E-Mail-Adresse ein.")
+    return email
+
+
+def _slug_base_from_email(email: str) -> str:
+    base = email.split("@", 1)[0].strip().casefold()
+    cleaned = "".join(ch if ch.isalnum() else "-" for ch in base)
+    cleaned = "-".join(part for part in cleaned.split("-") if part)
+    return cleaned[:32] or "user"
+
+
+def _unique_slug_for_email(conn: sqlite3.Connection, email: str) -> str:
+    base = _slug_base_from_email(email)
+    candidate = base
+    suffix = 2
+    while user_exists(conn, candidate):
+        candidate = f"{base}-{suffix}"
+        suffix += 1
+    return candidate
 
 
 # ---- User CRUD -------------------------------------------------------------
@@ -129,6 +166,61 @@ def create_user(
     except sqlite3.IntegrityError:
         return False
     return True
+
+
+def create_user_with_email(
+    conn: sqlite3.Connection,
+    email: str,
+    password: str,
+) -> str | None:
+    """Register a new email user. Return slug, or None if email is taken."""
+    safe_email = normalize_email(email)
+    slug = _unique_slug_for_email(conn, safe_email)
+    now = _utc_now_iso()
+    pw_hash = _hash_password(password)
+    try:
+        conn.execute(
+            "INSERT INTO users (slug, email, password_hash, created_at, updated_at) "
+            "VALUES (?, ?, ?, ?, ?)",
+            (slug, safe_email, pw_hash, now, now),
+        )
+        conn.commit()
+    except sqlite3.IntegrityError:
+        return None
+    return slug
+
+
+def authenticate_user_by_email(
+    conn: sqlite3.Connection,
+    email: str,
+    password: str,
+) -> str | None:
+    """Verify email credentials. Return user slug on success."""
+    try:
+        safe_email = normalize_email(email)
+    except ValueError:
+        return None
+    row = conn.execute(
+        "SELECT slug, password_hash FROM users WHERE email = ?",
+        (safe_email,),
+    ).fetchone()
+    if row is None:
+        return None
+    if not _verify_password(password, row["password_hash"]):
+        return None
+    return str(row["slug"])
+
+
+def load_user_email(conn: sqlite3.Connection, slug: str) -> str | None:
+    """Return the email address for a user slug, if known."""
+    row = conn.execute(
+        "SELECT email FROM users WHERE slug = ?",
+        (slug,),
+    ).fetchone()
+    if row is None:
+        return None
+    val: str | None = row["email"]
+    return val
 
 
 def authenticate_user(

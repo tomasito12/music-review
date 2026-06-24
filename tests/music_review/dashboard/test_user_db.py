@@ -11,6 +11,7 @@ import pytest
 
 from music_review.dashboard.user_db import (
     authenticate_user,
+    authenticate_user_by_email,
     change_password,
     clear_deezer_credentials,
     clear_deezer_oauth_token,
@@ -18,6 +19,7 @@ from music_review.dashboard.user_db import (
     clear_spotify_oauth_token,
     create_session_token,
     create_user,
+    create_user_with_email,
     delete_all_sessions_for_user,
     delete_session_token,
     get_connection,
@@ -28,6 +30,7 @@ from music_review.dashboard.user_db import (
     load_spotify_credentials,
     load_spotify_last_preview_at,
     load_spotify_oauth_token_json,
+    load_user_email,
     load_user_profile,
     purge_expired_sessions,
     save_deezer_credentials,
@@ -112,6 +115,25 @@ class TestUserCRUD:
 
     def test_list_user_slugs_empty(self, db):
         assert list_user_slugs(db) == []
+
+    def test_create_user_with_email_and_authenticate(self, db):
+        slug = create_user_with_email(db, "Alice@Example.COM", "secret123")
+        assert slug == "alice"
+        assert authenticate_user_by_email(db, "alice@example.com", "secret123") == slug
+        assert load_user_email(db, slug) == "alice@example.com"
+
+    def test_create_user_with_duplicate_email_returns_none(self, db):
+        assert create_user_with_email(db, "alice@example.com", "pw12345")
+        assert create_user_with_email(db, "ALICE@example.com", "pw12345") is None
+
+    def test_email_slug_collision_gets_suffix(self, db):
+        assert create_user(db, "alice", "pw")
+        slug = create_user_with_email(db, "alice@example.com", "pw12345")
+        assert slug == "alice-2"
+
+    def test_authenticate_email_wrong_password(self, db):
+        create_user_with_email(db, "alice@example.com", "correct")
+        assert authenticate_user_by_email(db, "alice@example.com", "wrong") is None
 
 
 class TestProfileData:
