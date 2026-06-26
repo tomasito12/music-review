@@ -17,10 +17,10 @@ export function ProfileSetupShell({
       <div className="setup-grid">
         <div className="setup-panel">
           <p className="eyebrow">Musikprofil</p>
-          <h1>Welche groben Richtungen sollen ins Radar?</h1>
+          <h1>Welche Musikrichtungen hörst du gern?</h1>
           <p>
-            Wähle zuerst die großen Stilrichtungen. Danach schärfst du dein
-            Profil mit feineren Stilen und Filtermodi.
+            Wähle zuerst die großen Stilrichtungen. Danach kannst du dein
+            Profil mit feineren Stilen und passenden Filtern verfeinern.
           </p>
           <div className="choice-grid">
             {["Indie", "Rock", "Pop", "Elektronik", "Hip-Hop", "Folk"].map((item) => (

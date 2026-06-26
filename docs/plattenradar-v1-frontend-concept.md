@@ -1286,6 +1286,246 @@ Offene Fragen:
   Empfehlungskarte?
 - Wie genau soll der Score benannt und skaliert werden?
 
+## Feedbackrunde 2: Typografische Ruhe Und Funktionsschärfung
+
+Datum: 2026-06-26
+
+Kontext:
+
+- Die überarbeitete Shell wurde erneut lokal geprüft.
+- Dieses Feedback betrifft vor allem die typografische Hierarchie, die
+  Konsistenz der UI-Texte und die noch zu konkretisierenden Ergebnis- und
+  Playlist-Flows.
+
+### Gesamteindruck
+
+User-Feedback:
+
+- Die Startseite mit ihrer Einstiegsfrage wirkt grundsätzlich gut und
+  sympathisch.
+- Die allgemeine Richtung der Shell stimmt; die Oberfläche soll jetzt ruhiger,
+  eleganter und weniger aufdringlich werden.
+- Das Feedback ist bewusst detailliert und ist für die weitere Gestaltung
+  hilfreich, nicht zu kleinteilig.
+
+### Typografische Leitentscheidung
+
+Problem:
+
+- Zu viele unterschiedliche Schriftgrößen, Schriften, Schriftschnitte und
+  Farben lassen Startseite, Ergebnislisten, Musikprofil und Login unruhig
+  wirken.
+- Lange Überschriften werden aktuell zu groß dargestellt und brechen dadurch
+  über zu viele Zeilen.
+- Sehr fette Buttons wirken klobig.
+
+Entscheidung:
+
+- Eine ruhige UI-Schrift ist der Standard für Navigation, Texte, Formulare,
+  Buttons und Metadaten.
+- Eine editoriale Display-Schrift bleibt ausschließlich für ausgewählte
+  Seitentitel und wird deutlich kleiner und zurückhaltender eingesetzt.
+- Es gibt wenige, stabile Hierarchiestufen: Orientierungstext, Seitentitel,
+  Fließtext, Metadaten. Zusätzliche Schriftwechsel und Farbakzente werden
+  vermieden.
+- Rot bleibt eine gezielte Akzentfarbe für Aktionen und aktive Zustände, nicht
+  für jeden Orientierungstext.
+- Buttons erhalten eine ruhigere Gewichtung und keine unnötig schwere
+  Typografie.
+
+### Startseite
+
+User-Feedback:
+
+- Die Einstiegsfrage funktioniert, ist in ihrer jetzigen Größe aber zu lang
+  und zu dominant.
+- `Willkommen bei Plattenradar`, die große Frage, Fließtext, hervorgehobener
+  Brückensatz und Buttons wirken derzeit wie verschiedene visuelle Systeme.
+
+Anforderung:
+
+- Startseite als ruhige, redaktionelle Einleitung gestalten.
+- Die Frage bleibt erhalten, wird aber als moderater Seitentitel statt als
+  Hero-Headline behandelt.
+- Der Brückensatz zum Musikprofil wird normaler Teil des Leseflusses; keine
+  zusätzliche starke Farb- oder Font-Hierarchie.
+
+### Aktuell Und Entdecken
+
+User-Feedback:
+
+- Die Vielfalt der Schriftstile stört auch auf Ergebnislisten.
+- Die vorhandene Genre-Zuordnung ist ein guter Anfang, muss später aber noch
+  verständlich erklärt werden.
+- `Aktuell` braucht künftig einen kleinen, klar begründeten
+  Hervorhebungsbereich vor der vollständigen Rangliste. Die Rangliste bleibt
+  der Kern.
+
+Anforderung:
+
+- Ergebnisüberschriften und Metadaten typografisch beruhigen.
+- Eine dezente Legende oder kontextnahe Erklärung für hervorgehobene
+  Genre-Tags später als eigener Detail-Schritt konzipieren.
+- Highlight-Bereich für neue Rezensionen vor der vollständigen API-Anbindung
+  spezifizieren und erst dann mit echten Daten bauen.
+
+### Playlist-Generator
+
+User-Feedback:
+
+- Die Grundstruktur passt, aber `Quelle`, `Aktuell` und `Entdecken` sind keine
+  guten Nutzerbegriffe.
+- Für neue Rezensionen soll ein Zeitraum wählbar sein.
+- Variation gilt nur für Archiv-Playlists; bei aktuellen Rezensionen soll sie
+  nicht erscheinen.
+
+Anforderung:
+
+- Quellen künftig als `Aus den letzten Updates` und `Aus dem
+  Plattentests-Archiv` beschreiben.
+- Zeitraum nur bei der Update-Quelle anbieten.
+- Variation nur bei der Archiv-Quelle anbieten.
+
+### Musikprofil Und Login
+
+User-Feedback:
+
+- `Welche groben Richtungen sollen ins Radar?` ist sprachlich und visuell noch
+  nicht überzeugend.
+- Musikprofil und Login profitieren ebenfalls von der ruhigeren Typografie.
+
+Anforderung:
+
+- Musikprofil-Setup als klare, persönliche Auswahl formulieren, ohne
+  Radar-Metapher zu überdehnen.
+- Login-Dialog beibehalten, aber typografisch an die restliche Oberfläche
+  angleichen.
+
+### Nächste Design-Aufgaben Aus Feedbackrunde 2
+
+Priorität hoch:
+
+1. Typografisches System in der Shell konsolidieren.
+2. Startseite, Ergebnislisten, Playlist-Generator, Musikprofil und Login an
+   dieses System anpassen.
+3. Playlist-Quelle und kontextabhängige Controls verständlich machen.
+
+Priorität danach:
+
+1. Highlight-Konzept für `Aktuell` spezifizieren und mit echten Daten
+   umsetzen.
+2. Subtile, verständliche Erklärung für Genre-Hervorhebungen entwerfen.
+3. Profil-Setup inhaltlich gegen die bestehende Schritt-1-bis-3-Logik prüfen.
+
+### Prototyp: Highlight-Bereich Für Aktuell
+
+Umgesetzt als bewusst vorläufiger UI-Vorschlag:
+
+- Vor der vollständigen Rangliste stehen drei kleine, gleichwertige
+  Redaktionsempfehlungen aus dem gewählten Update-Zeitraum.
+- Die drei Blickwinkel sind `Beste Passung`, `Kritikerfavorit` und
+  `Etwas außerhalb`.
+- Jede Empfehlung enthält Albumlink, einen sehr kurzen Grund sowie
+  Plattentests-Wertung und Score.
+- Der Bereich ist keine alternative Rangliste und keine große
+  Marketingbühne; darunter folgt klar abgegrenzt die vollständige Liste.
+- Die Shell erhält Highlights als eigene Datenstruktur. Später soll der
+  Backend-Endpunkt Auswahlgrund und Empfehlung gemeinsam liefern.
+
+Offenes Feedback für die nächste Runde:
+
+- Sind drei Highlights die richtige Anzahl oder reichen zwei?
+- Fühlen sich die Auswahlgründe sinnvoll und musiknah an?
+- Soll der Bereich stärker oder noch zurückhaltender gegenüber der Rangliste
+  sein?
+- Erst nach dieser inhaltlichen Entscheidung werden Farben, Abstände und
+  eventuelle Icons final verfeinert.
+
+### Feedback Zum Highlight-Bereich
+
+User-Entscheidungen:
+
+- Der Bereich erscheint bei jedem Update. Die beste Passung ist immer ein
+  sinnvoller Anker.
+- Es gibt zwei oder drei Highlights, aber keine leeren Kategorien: Nur
+  Auswahlgründe mit einem tatsächlich interessanten Album erscheinen.
+- `Beste Passung` und `Kritikerfavorit` sind verständlich.
+- `Etwas außerhalb` ist inhaltlich sinnvoll, muss aber klarer machen, dass es
+  sich etwa um ein hoch bewertetes Album außerhalb des aktuellen Musikprofils
+  handeln kann. Der Begriff wird deshalb zu `Außerhalb deines Profils`
+  präzisiert.
+- Die beste Passung darf visuell etwas stärker erscheinen als ergänzende
+  Fundstücke. Das Layout soll dadurch lebendiger werden, aber einer ruhigen,
+  nachvollziehbaren Ordnung folgen.
+- Zusätzlich erhält `Aktuell` eine dynamische Update-Zusammenfassung: Wie
+  ergiebig war der gewählte Zeitraum für dieses Musikprofil und was ist daran
+  bemerkenswert?
+
+Technische Konsequenz:
+
+- Der spätere API-Endpunkt für aktuelle Empfehlungen liefert neben der
+  Rangliste eine optionale Liste von zwei bis drei Highlights sowie einen
+  persönlichen Update-Überblick.
+
+### Feedback Zur Zweiten Highlight-Variante
+
+User-Feedback:
+
+- Die große Karte für die beste Passung erzeugt zu viel leeren Raum und wirkt
+  nicht überzeugend.
+- Der individuelle Update-Überblick ist nicht klar genug als persönlicher
+  Text erkennbar; er wirkt in die anderen Bedienelemente eingewurschtelt.
+- Der Auftakt nimmt auf großen Bildschirmen so viel Höhe ein, dass die
+  Rangliste im ersten sichtbaren Bereich nicht mehr erkennbar ist. Das darf
+  nicht passieren, weil die Rangliste der Kern der Seite bleibt.
+
+Codex-Einschätzung Nach Screenshot-Prüfung:
+
+- Die Kritik trifft zu: Der aktuelle Ablauf hat zu viele vertikale Ebenen vor
+  der Rangliste.
+- Die Hauptkarte wächst durch das zweizeilige Grid stärker als durch ihren
+  Inhalt; das ist keine sinnvolle Betonung.
+- Nächster Entwurf: ein kompakter, deutlich abgegrenzter persönlicher
+  Update-Hinweis und eine einzeilige Highlight-Reihe. Die beste Passung darf
+  etwas breiter und farblich zurückhaltend akzentuiert sein, aber nicht höher
+  als die anderen Highlights. Dadurch bleibt der Beginn der Rangliste im
+  ersten Desktop-Ausschnitt sichtbar.
+
+Umsetzung der verdichteten Variante:
+
+- Der Update-Hinweis ist als kompakte, farblich zurückhaltende Zweispaltenbox
+  aufgebaut: links die persönliche Einschätzung, rechts ihre kurze
+  Begründung.
+- Die Highlights stehen auf Desktop in einer einzelnen Reihe; die beste
+  Passung ist etwas breiter statt höher.
+- Die zusätzliche große Highlight-Überschrift wurde zu `Aus dem neuen
+  Schwung` verdichtet.
+- Der obere Seitenabstand und die Abstände zwischen Abschnitten wurden
+  reduziert, damit Highlights und der Beginn der Rangliste gleichzeitig
+  sichtbar sind.
+- Nach der ersten Umsetzung wurde die Reihenfolge weiter verdichtet: Der
+  Überblick ist strukturell eine echte Zeile statt versehentlich zweier Zeilen,
+  und die sichtbare Highlight-Überschrift entfällt zugunsten der Karten selbst.
+- Zeitraum und aktuelle Filter erscheinen in einer gemeinsamen,
+  nutzerorientierten Ergebnisleiste. Ein technischer Shell-Hinweis über
+  zukünftige Update-Daten wird nicht in der Oberfläche gezeigt.
+
+Weiteres Feedback und Anpassung:
+
+- Der persönliche Überblick und die Highlights sollen als zusammenhängender
+  Empfehlungsbereich wahrnehmbar sein, nicht als mehrere gestapelte Boxen.
+- Die neue Umsetzung verwendet deshalb eine äußere, zurückhaltende Fläche mit
+  einer persönlichen Einordnung oben und drei durch feine Linien getrennten
+  redaktionellen Empfehlungen darunter.
+- Zwischen Steuerleiste, persönlicher Auswahl und Rangliste wird bewusst mehr
+  Weißraum gelassen.
+
+Letzte Verfeinerung:
+
+- Der vertikale Abstand zwischen Ergebnissteuerung, persönlicher Auswahl und
+  Rangliste wird deutlich erhöht. Die drei Ebenen sollen separat atmen können,
+  ohne den zusammenhängenden Charakter der persönlichen Auswahl aufzulösen.
+
 ## Streamlit-Audit Nach Feedbackrunde 1
 
 Datum: 2026-06-25

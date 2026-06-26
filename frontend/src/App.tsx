@@ -8,7 +8,9 @@ import { ProfileSetupShell } from "./components/ProfileSetupShell";
 import { RecommendationList } from "./components/RecommendationList";
 import { WelcomeScreen } from "./components/WelcomeScreen";
 import {
+  aktuellHighlights,
   aktuellRecommendations,
+  aktuellSummary,
   entdeckenRecommendations,
 } from "./data/mockRecommendations";
 import { routeFromPath } from "./lib/routes";
@@ -82,9 +84,11 @@ export function App(): ReactElement {
         <RecommendationList
           message="Wähle, wie viele der letzten Update-Runden du einbeziehen möchtest. Plattenradar sortiert den aktuellen Schwung danach, was am besten zu deinem Musikprofil passt."
           onCreatePlaylist={createPlaylist}
+          highlights={aktuellHighlights}
           recommendations={aktuellRecommendations}
           source="aktuell"
           title="Neue Rezensionen für dich"
+          updateSummary={aktuellSummary}
         />
       )}
       {route === "entdecken" && (

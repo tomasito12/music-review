@@ -37,6 +37,17 @@ export interface Recommendation {
   source: RecommendationSource;
 }
 
+export interface RecommendationHighlight {
+  description: string;
+  label: string;
+  recommendation: Recommendation;
+}
+
+export interface UpdateSummary {
+  description: string;
+  title: string;
+}
+
 export interface PlaylistSettings {
   source: RecommendationSource;
   trackCount: number;

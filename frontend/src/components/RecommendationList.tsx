@@ -1,14 +1,22 @@
 import type { ReactElement } from "react";
 
-import type { Recommendation, RecommendationSource } from "../types";
+import type {
+  Recommendation,
+  RecommendationHighlight,
+  RecommendationSource,
+  UpdateSummary,
+} from "../types";
 
 import { RecommendationCard } from "./RecommendationCard";
+import { RecommendationHighlights } from "./RecommendationHighlights";
 
 interface RecommendationListProps {
   title: string;
   message: string;
   source: RecommendationSource;
   recommendations: Recommendation[];
+  highlights?: RecommendationHighlight[];
+  updateSummary?: UpdateSummary;
   onCreatePlaylist: (source: RecommendationSource) => void;
 }
 
@@ -17,6 +25,8 @@ export function RecommendationList({
   message,
   source,
   recommendations,
+  highlights,
+  updateSummary,
   onCreatePlaylist,
 }: RecommendationListProps): ReactElement {
   return (
@@ -36,9 +46,9 @@ export function RecommendationList({
         </button>
       </div>
 
-      {source === "aktuell" && (
-        <div className="range-control" aria-label="Update-Zeitraum">
-          <label>
+      <div className="results-toolbar">
+        {source === "aktuell" && (
+          <label className="range-control">
             Zeitraum
             <select defaultValue="4">
               <option value="1">Letzte Update-Runde</option>
@@ -46,25 +56,46 @@ export function RecommendationList({
               <option value="8">Letzte 8 Update-Runden</option>
             </select>
           </label>
-          <p>
-            Später basiert diese Auswahl auf gespeicherten Update-Daten. In der
-            Shell zeigt sie den geplanten Bedienfluss.
-          </p>
+        )}
+        <div className="filter-summary" aria-label="Aktuelle Filter">
+          <span>Ausgewogen</span>
+          <span>Stilpassung sichtbar</span>
+          <span>Temporär anpassbar</span>
+          <button type="button">Filter anpassen</button>
         </div>
+      </div>
+
+      {(updateSummary !== undefined || (highlights !== undefined && highlights.length > 0)) && (
+        <section
+          aria-label="Deine persönliche Auswahl"
+          className="personal-recommendations"
+        >
+          {updateSummary !== undefined && (
+            <div className="update-summary">
+              <div className="update-summary-lead">
+                <p className="eyebrow">Deine persönliche Auswahl</p>
+                <h2>{updateSummary.title}</h2>
+              </div>
+              <p>{updateSummary.description}</p>
+            </div>
+          )}
+          {highlights !== undefined && highlights.length > 0 && (
+            <RecommendationHighlights highlights={highlights} />
+          )}
+        </section>
       )}
 
-      <div className="filter-summary" aria-label="Aktuelle Filter">
-        <span>Ausgewogen</span>
-        <span>Stilpassung sichtbar</span>
-        <span>Temporär anpassbar</span>
-        <button type="button">Filter anpassen</button>
-      </div>
-
-      <div className="recommendation-list">
-        {recommendations.map((item) => (
-          <RecommendationCard key={`${item.source}-${item.rank}`} recommendation={item} />
-        ))}
-      </div>
+      <section aria-labelledby="ranking-heading" className="ranking-section">
+        <div className="ranking-heading">
+          <h2 id="ranking-heading">Alle Empfehlungen</h2>
+          <p>Sortiert nach der Passung zu deinem Musikprofil.</p>
+        </div>
+        <div className="recommendation-list">
+          {recommendations.map((item) => (
+            <RecommendationCard key={`${item.source}-${item.rank}`} recommendation={item} />
+          ))}
+        </div>
+      </section>
     </section>
   );
 }

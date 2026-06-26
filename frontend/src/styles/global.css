@@ -2,7 +2,7 @@
   color: #172033;
   background: #f7f5f1;
   font-family:
-    "Avenir Next", "Trebuchet MS", ui-sans-serif, system-ui, -apple-system,
+    "Avenir Next", "Helvetica Neue", Arial, ui-sans-serif, system-ui, -apple-system,
     BlinkMacSystemFont, "Segoe UI", sans-serif;
   font-synthesis: none;
   text-rendering: optimizeLegibility;
@@ -81,8 +81,9 @@ a {
 }
 
 .brand strong {
-  font-size: 1rem;
-  line-height: 1.1;
+  font-size: 0.98rem;
+  font-weight: 650;
+  line-height: 1.2;
 }
 
 .brand small {
@@ -108,9 +109,8 @@ a {
   display: flex;
   align-items: center;
   justify-content: center;
-  gap: 0.2rem;
-  padding: 0.15rem;
-  border-bottom: 1px solid rgba(222, 216, 206, 0.95);
+  gap: 0.1rem;
+  padding: 0;
 }
 
 .nav-link,
@@ -119,14 +119,17 @@ a {
 .secondary-button {
   border: 1px solid transparent;
   border-radius: 999px;
-  padding: 0.5rem 0.72rem;
+  padding: 0.45rem 0.72rem;
   color: var(--ink);
   background: transparent;
+  font-size: 0.88rem;
+  font-weight: 550;
 }
 
 .nav-link[aria-current="page"] {
   color: var(--accent);
-  background: var(--accent-soft);
+  background: transparent;
+  box-shadow: inset 0 -2px 0 var(--accent);
 }
 
 .account-slot {
@@ -143,16 +146,15 @@ a {
 .app-main {
   width: min(1120px, calc(100% - 2rem));
   margin: 0 auto;
-  padding: clamp(1.5rem, 5vw, 4rem) 0;
+  padding: clamp(1.5rem, 3vw, 3rem) 0;
 }
 
 .eyebrow {
-  margin: 0 0 0.55rem;
-  color: var(--accent);
-  font-size: 0.72rem;
-  font-weight: 800;
-  letter-spacing: 0.08em;
-  text-transform: uppercase;
+  margin: 0 0 0.6rem;
+  color: var(--muted);
+  font-size: 0.78rem;
+  font-weight: 600;
+  letter-spacing: 0.03em;
 }
 
 h1,
@@ -162,17 +164,19 @@ p {
 }
 
 h1 {
-  margin-bottom: 0.8rem;
+  max-width: 43rem;
+  margin-bottom: 0.85rem;
   font-family: var(--font-display);
-  font-size: clamp(2rem, 4vw, 3.6rem);
-  font-weight: 700;
-  line-height: 1.08;
+  font-size: 2.25rem;
+  font-weight: 600;
+  line-height: 1.18;
   letter-spacing: 0;
 }
 
 h2 {
-  font-size: 1.08rem;
-  line-height: 1.28;
+  font-size: 1.02rem;
+  font-weight: 650;
+  line-height: 1.35;
   letter-spacing: 0;
 }
 
@@ -184,10 +188,11 @@ p {
 .primary-button {
   border: 1px solid var(--accent);
   border-radius: 999px;
-  padding: 0.75rem 1.05rem;
+  padding: 0.68rem 1rem;
   color: #fffdfa;
   background: var(--accent);
-  font-weight: 750;
+  font-size: 0.9rem;
+  font-weight: 600;
 }
 
 .ghost-button:hover,
@@ -204,16 +209,18 @@ p {
 }
 
 .welcome-copy {
-  max-width: 54rem;
+  max-width: 47rem;
 }
 
 .welcome-copy p {
-  max-width: 45rem;
-  font-size: 1.05rem;
+  max-width: 43rem;
+  font-size: 1rem;
 }
 
 .welcome-bridge {
-  color: #3d4658;
+  margin-top: 1rem;
+  color: var(--ink);
+  font-weight: 500;
 }
 
 .welcome-actions {
@@ -234,40 +241,36 @@ p {
 .results-header h1 {
   max-width: 44rem;
   margin-bottom: 0.5rem;
-  font-size: clamp(1.85rem, 3vw, 2.75rem);
+  font-size: 2rem;
 }
 
 .results-header p {
   max-width: 46rem;
 }
 
-.filter-summary {
+.results-toolbar {
   display: flex;
   flex-wrap: wrap;
   align-items: center;
-  gap: 0.55rem;
-  margin-bottom: 1rem;
-  padding: 0.72rem;
+  gap: 0.65rem 1rem;
+  margin-bottom: 2.25rem;
+  padding: 0.55rem 0.72rem;
   border: 1px solid var(--line);
   border-radius: 8px;
   background: rgba(255, 253, 250, 0.78);
 }
 
 .range-control {
-  display: grid;
-  grid-template-columns: minmax(13rem, 18rem) minmax(0, 1fr);
-  gap: 1rem;
-  align-items: end;
-  margin-bottom: 1rem;
-  padding: 0.9rem;
-  border: 1px solid var(--line);
-  border-radius: 8px;
-  background: rgba(255, 253, 250, 0.78);
+  display: flex;
+  align-items: center;
+  gap: 0.55rem;
+  white-space: nowrap;
 }
 
-.range-control p {
-  margin: 0;
-  font-size: 0.86rem;
+.range-control select {
+  width: auto;
+  min-width: 12.5rem;
+  padding: 0.5rem 0.6rem;
 }
 
 .filter-summary span,
@@ -277,7 +280,15 @@ p {
   color: #552127;
   background: var(--accent-soft);
   font-size: 0.78rem;
-  font-weight: 650;
+  font-weight: 550;
+}
+
+.filter-summary {
+  display: flex;
+  flex: 1 1 auto;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.45rem;
 }
 
 .filter-summary button {
@@ -285,7 +296,131 @@ p {
   border: 0;
   color: var(--accent);
   background: transparent;
-  font-weight: 750;
+  font-weight: 600;
+}
+
+.personal-recommendations {
+  margin: 0 0 2.6rem;
+  padding: 1.15rem;
+  border: 1px solid rgba(181, 29, 41, 0.24);
+  border-radius: 8px;
+  background: rgba(246, 227, 225, 0.34);
+}
+
+.update-summary {
+  display: grid;
+  grid-template-columns: minmax(14rem, 0.85fr) minmax(0, 1.7fr);
+  gap: 0.9rem 1.3rem;
+  align-items: center;
+  padding: 0 0 0.9rem;
+  border-bottom: 1px solid rgba(181, 29, 41, 0.22);
+}
+
+.update-summary .eyebrow {
+  margin-bottom: 0.2rem;
+}
+
+.update-summary h2 {
+  margin: 0;
+  font-size: 0.96rem;
+  font-weight: 650;
+}
+
+.update-summary p:not(.eyebrow) {
+  max-width: 48rem;
+  margin: 0;
+  font-size: 0.86rem;
+  line-height: 1.45;
+}
+
+.recommendation-highlights {
+  margin-top: 0.9rem;
+}
+
+.highlights-heading {
+  margin-bottom: 0.85rem;
+}
+
+.ranking-heading h2 {
+  margin-bottom: 0;
+  font-family: var(--font-display);
+  font-size: 1.15rem;
+  font-weight: 600;
+}
+
+.highlight-grid {
+  display: grid;
+  grid-template-columns: minmax(0, 1.16fr) repeat(2, minmax(0, 0.92fr));
+  gap: 0;
+}
+
+.highlight-card {
+  min-height: 6.9rem;
+  padding: 0.15rem 1rem 0;
+}
+
+.highlight-card + .highlight-card {
+  border-left: 1px solid rgba(181, 29, 41, 0.2);
+}
+
+.highlight-card-primary {
+  padding-left: 0;
+}
+
+.highlight-card-primary h3 {
+  font-size: 1.08rem;
+}
+
+.highlight-label {
+  margin-bottom: 0.5rem;
+  color: var(--accent);
+  font-size: 0.78rem;
+  font-weight: 600;
+}
+
+.highlight-card h3 {
+  margin: 0 0 0.55rem;
+  font-size: 1rem;
+  font-weight: 650;
+  line-height: 1.35;
+}
+
+.highlight-card h3 a {
+  text-decoration-thickness: 1px;
+  text-underline-offset: 0.18em;
+}
+
+.highlight-card > p:not(.highlight-label) {
+  margin-bottom: 0.9rem;
+  font-size: 0.86rem;
+  line-height: 1.5;
+}
+
+.highlight-meta {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.35rem 0.6rem;
+  color: var(--muted);
+  font-size: 0.76rem;
+}
+
+.ranking-section {
+  padding-top: 0.95rem;
+  border-top: 1px solid var(--line);
+}
+
+.ranking-heading {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 0.35rem 1rem;
+  margin-bottom: 0.85rem;
+}
+
+.ranking-heading p {
+  margin: 0;
+  font-size: 0.86rem;
 }
 
 .recommendation-list {
@@ -317,12 +452,12 @@ p {
   gap: 0.45rem 0.75rem;
   margin-bottom: 0.35rem;
   color: var(--muted);
-  font-size: 0.8rem;
+  font-size: 0.78rem;
 }
 
 .fit-label {
   color: var(--accent);
-  font-weight: 800;
+  font-weight: 600;
 }
 
 .card-main h2 {
@@ -373,7 +508,7 @@ p {
 .setup-panel h1,
 .playlist-page h1,
 .account-page h1 {
-  font-size: clamp(1.75rem, 3vw, 2.6rem);
+  font-size: 2rem;
 }
 
 .setup-progress {
@@ -389,7 +524,7 @@ p {
   padding: 0.45rem 0.72rem;
   background: var(--paper);
   color: var(--muted);
-  font-size: 0.82rem;
+  font-size: 0.8rem;
 }
 
 .setup-progress .active {
@@ -427,7 +562,8 @@ p {
   padding: 0.85rem;
   background: var(--paper);
   text-align: left;
-  font-weight: 720;
+  font-size: 0.92rem;
+  font-weight: 600;
 }
 
 .setup-summary ul {
@@ -462,8 +598,8 @@ label {
   display: grid;
   gap: 0.35rem;
   color: var(--ink);
-  font-size: 0.88rem;
-  font-weight: 700;
+  font-size: 0.86rem;
+  font-weight: 600;
 }
 
 input,
@@ -474,6 +610,13 @@ select {
   padding: 0.68rem 0.72rem;
   color: var(--ink);
   background: #fff;
+}
+
+.field-hint {
+  color: var(--muted);
+  font-size: 0.8rem;
+  font-weight: 400;
+  line-height: 1.45;
 }
 
 .dialog-backdrop {
@@ -498,11 +641,11 @@ select {
 
 .auth-dialog h1 {
   max-width: 23rem;
-  font-size: clamp(1.45rem, 4vw, 2rem);
+  font-size: 1.6rem;
 }
 
 .auth-dialog p {
-  font-size: 0.94rem;
+  font-size: 0.92rem;
 }
 
 .auth-dialog label {
@@ -545,8 +688,30 @@ select {
   .setup-grid,
   .playlist-page,
   .results-header,
-  .range-control {
+  .highlight-grid {
     grid-template-columns: 1fr;
+  }
+
+  .results-toolbar,
+  .range-control {
+    align-items: stretch;
+  }
+
+  .range-control {
+    display: grid;
+  }
+
+  .range-control select {
+    width: 100%;
+  }
+
+  .update-summary {
+    grid-template-columns: 1fr;
+    gap: 0.35rem;
+  }
+
+  .highlight-grid {
+    grid-template-rows: none;
   }
 
   .choice-grid {
@@ -574,6 +739,14 @@ select {
     min-width: 0;
     padding: 0.48rem 0.25rem;
     font-size: 0.92rem;
+  }
+
+  h1,
+  .results-header h1,
+  .setup-panel h1,
+  .playlist-page h1,
+  .account-page h1 {
+    font-size: 1.75rem;
   }
 
   .recommendation-card {

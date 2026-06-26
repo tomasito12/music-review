@@ -1,4 +1,8 @@
-import type { Recommendation } from "../types";
+import type {
+  Recommendation,
+  RecommendationHighlight,
+  UpdateSummary,
+} from "../types";
 
 export const aktuellRecommendations: Recommendation[] = [
   {
@@ -125,3 +129,28 @@ export const entdeckenRecommendations: Recommendation[] = [
     source: "entdecken",
   },
 ];
+
+export const aktuellHighlights: RecommendationHighlight[] = [
+  {
+    label: "Beste Passung",
+    description: "Die stärkste Verbindung zu deinem aktuellen Musikprofil.",
+    recommendation: aktuellRecommendations[0],
+  },
+  {
+    label: "Kritikerfavorit",
+    description: "Besonders hoch bewertet und ein guter Einstieg in diesen Update-Schwung.",
+    recommendation: aktuellRecommendations[1],
+  },
+  {
+    label: "Außerhalb deines Profils",
+    description:
+      "Hoch bewertet, auch wenn es deinen aktuellen Vorlieben weniger nahe ist.",
+    recommendation: aktuellRecommendations[2],
+  },
+];
+
+export const aktuellSummary: UpdateSummary = {
+  title: "Ein kleiner, aber lohnender Update-Schwung.",
+  description:
+    "Drei der neuen Rezensionen passen besonders gut zu deinem Musikprofil. Eine davon liegt etwas außerhalb und könnte gerade deshalb spannend sein.",
+};
