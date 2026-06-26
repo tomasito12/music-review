@@ -409,6 +409,12 @@ p {
   border-top: 1px solid var(--line);
 }
 
+.results-load-more {
+  display: flex;
+  justify-content: center;
+  margin-top: 0.5rem;
+}
+
 .ranking-heading {
   display: flex;
   flex-wrap: wrap;
@@ -519,18 +525,38 @@ p {
   margin-bottom: 1rem;
 }
 
-.setup-progress span {
+.setup-progress-step {
   border: 1px solid var(--line);
   border-radius: 999px;
   padding: 0.45rem 0.72rem;
   background: var(--paper);
   color: var(--muted);
   font-size: 0.8rem;
+  cursor: default;
 }
 
-.setup-progress .active {
+.setup-progress-step.completed:not(:disabled) {
+  cursor: pointer;
+}
+
+.setup-progress-step.completed:not(:disabled):hover {
   border-color: var(--ink);
   color: var(--ink);
+}
+
+.setup-progress-step:disabled:not(.active) {
+  opacity: 0.72;
+}
+
+.setup-progress-step.active {
+  border-color: var(--ink);
+  color: var(--ink);
+}
+
+.setup-selection-count {
+  margin: 0.35rem 0 0;
+  color: var(--muted);
+  font-size: 0.84rem;
 }
 
 .setup-grid {
@@ -563,7 +589,15 @@ p {
   margin: 1rem 0;
 }
 
+.choice-grid-broad {
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+
 .choice-card {
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  min-height: 3.6rem;
   border: 1px solid var(--line);
   border-radius: 8px;
   padding: 0.85rem;
@@ -571,6 +605,12 @@ p {
   text-align: left;
   font-size: 0.92rem;
   font-weight: 600;
+  line-height: 1.25;
+}
+
+.choice-grid-broad .choice-card {
+  min-height: 4.1rem;
+  font-size: 0.88rem;
 }
 
 .choice-card small {
@@ -580,6 +620,14 @@ p {
   font-size: 0.72rem;
   font-weight: 400;
   line-height: 1.35;
+  max-width: 100%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.choice-grid-details .choice-card {
+  min-height: 4.5rem;
 }
 
 .choice-card.selected {
@@ -592,9 +640,58 @@ p {
   grid-template-columns: repeat(2, minmax(0, 1fr));
 }
 
+.preset-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 0.65rem;
+  margin: 1rem 0;
+}
+
+.preset-card {
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  padding: 0.9rem;
+  background: var(--paper);
+  text-align: left;
+}
+
+.preset-card strong {
+  display: block;
+  color: var(--ink);
+  font-size: 0.95rem;
+}
+
+.preset-card span {
+  display: block;
+  margin-top: 0.2rem;
+  color: var(--muted);
+  font-size: 0.78rem;
+}
+
+.preset-card p {
+  margin: 0.45rem 0 0;
+  color: var(--muted);
+  font-size: 0.82rem;
+  line-height: 1.45;
+}
+
+.preset-card.selected {
+  border-color: var(--accent);
+  background: var(--accent-soft);
+}
+
+.preset-card.selected strong {
+  color: var(--accent);
+}
+
 .form-error {
   color: #9b1c26;
   font-size: 0.9rem;
+}
+
+.archive-inline-error {
+  max-width: 960px;
+  margin: 0 0 0.75rem;
 }
 
 .setup-summary-section {

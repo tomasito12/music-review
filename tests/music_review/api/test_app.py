@@ -10,7 +10,7 @@ from typing import Any
 import pytest
 from fastapi.testclient import TestClient
 
-from music_review.api.app import create_app
+from music_review.api.app import _community_example_artists, create_app
 from music_review.api.dependencies import (
     get_corpus_provider,
     get_optional_user_db,
@@ -59,7 +59,13 @@ class FakeCorpusProvider:
 
     def communities(self) -> Sequence[Mapping[str, Any]]:
         """Return fake community metadata."""
-        return [{"id": "C001", "centroid": "Indie Rock"}]
+        return [
+            {
+                "id": "C001",
+                "centroid": "Indie Rock",
+                "top_artists": ["Radiohead", "The National", "Arcade Fire"],
+            },
+        ]
 
     def broad_categories(self) -> tuple[list[str], dict[str, list[str]]]:
         """Return fake broad category mappings."""
@@ -221,8 +227,32 @@ def test_taste_communities_endpoint_exposes_readable_profile_options() -> None:
             "id": "C001",
             "label": "Indie Rock",
             "broad_categories": ["Rock & Alternative"],
+            "example_artists": ["Radiohead", "The National", "Arcade Fire"],
         },
     ]
+
+
+def test_community_example_artists_returns_up_to_three_names() -> None:
+    """Example artists are trimmed and capped like the Streamlit profile cards."""
+    assert _community_example_artists(
+        {"top_artists": [" Radiohead ", "The National", "Arcade Fire", "Ignored"]},
+        limit=3,
+    ) == ("Radiohead", "The National", "Arcade Fire")
+    assert _community_example_artists(
+        {
+            "top_artists": [
+                "One",
+                "Two",
+                "Three",
+                "Four",
+                "Five",
+                "Six",
+                "Seven",
+            ],
+        },
+    ) == ("One", "Two", "Three", "Four", "Five", "Six")
+    assert _community_example_artists({}) == ()
+    assert _community_example_artists({"top_artists": [" ", ""]}) == ()
 
 
 def test_archive_recommendations_endpoint_ranks_profile_matches() -> None:

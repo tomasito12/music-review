@@ -279,11 +279,12 @@ class TasteCommunity(ApiModel):
     id: str
     label: str
     broad_categories: tuple[str, ...] = ()
+    example_artists: tuple[str, ...] = ()
 
-    @field_validator("broad_categories", mode="before")
+    @field_validator("broad_categories", "example_artists", mode="before")
     @classmethod
-    def _normalize_broad_categories(cls, value: Any) -> tuple[str, ...]:
-        """Normalize broad category labels."""
+    def _normalize_string_tuples(cls, value: Any) -> tuple[str, ...]:
+        """Normalize string tuple fields."""
         return _str_tuple(value)
 
 

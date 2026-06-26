@@ -62,7 +62,7 @@ This is a shell MVP, not a full Streamlit replacement yet. It includes:
 - mocked `Aktuell` result screen,
 - API-backed `Entdecken` result screen for temporary taste profiles,
 - editorial recommendation cards,
-- music profile setup shell with broad-category and detail-style selection,
+- music profile setup shell with broad-category, detail-style, and preset selection,
 - playlist generator shell,
 - auth dialog shell,
 - typed API client foundation.

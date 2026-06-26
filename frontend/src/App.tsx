@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import type { ReactElement } from "react";
 
 import { AuthDialog } from "./components/AuthDialog";
@@ -13,7 +13,17 @@ import {
   aktuellSummary,
 } from "./data/mockRecommendations";
 import { ApiClient } from "./lib/apiClient";
-import { loadArchiveRecommendations } from "./lib/plattenradarApi";
+import {
+  ARCHIVE_PAGE_SIZE,
+  loadArchiveRecommendations,
+} from "./lib/plattenradarApi";
+import type { ProfileSetupResult } from "./lib/profileSessionStorage";
+import {
+  buildFilterSummaryChips,
+  readProfileSession,
+  writeProfileSession,
+} from "./lib/profileSessionStorage";
+import type { SetupStep } from "./lib/profileWizard";
 import { routeFromPath } from "./lib/routes";
 import type { TemporaryTasteProfile } from "./lib/plattenradarApi";
 import type {
@@ -32,14 +42,19 @@ export function App(): ReactElement {
   const [authMode, setAuthMode] = useState<"login" | "save-profile">("login");
   const [playlistSource, setPlaylistSource] =
     useState<RecommendationSource>("aktuell");
-  const [temporaryProfile, setTemporaryProfile] =
-    useState<TemporaryTasteProfile | null>(null);
+  const [profileSession, setProfileSession] = useState<ProfileSetupResult | null>(
+    () => readProfileSession(),
+  );
+  const [profileEditStep, setProfileEditStep] = useState<SetupStep | undefined>();
   const [archiveRecommendations, setArchiveRecommendations] = useState<
     Recommendation[] | null
   >(null);
   const [archiveTotal, setArchiveTotal] = useState(0);
   const [archiveLoading, setArchiveLoading] = useState(false);
+  const [archiveLoadingMore, setArchiveLoadingMore] = useState(false);
   const [archiveError, setArchiveError] = useState<string | null>(null);
+
+  const temporaryProfile = profileSession?.profile ?? null;
 
   const pageTitle = useMemo(() => {
     switch (route) {
@@ -62,6 +77,71 @@ export function App(): ReactElement {
     document.title = `Plattenradar - ${pageTitle}`;
   }, [pageTitle]);
 
+  useEffect(() => {
+    if (profileSession !== null) {
+      setUserState("anonymous_temporary_profile");
+    }
+  }, [profileSession]);
+
+  const loadArchivePage = useCallback(
+    async (
+      profile: TemporaryTasteProfile,
+      offset: number,
+      mode: "replace" | "append",
+    ): Promise<void> => {
+      const client = new ApiClient();
+      const result = await loadArchiveRecommendations(client, profile, {
+        offset,
+        limit: ARCHIVE_PAGE_SIZE,
+      });
+      setArchiveTotal(result.total);
+      setArchiveRecommendations((current) =>
+        mode === "append" && current !== null
+          ? [...current, ...result.recommendations]
+          : result.recommendations,
+      );
+    },
+    [],
+  );
+
+  useEffect(() => {
+    if (route !== "entdecken" || temporaryProfile === null) {
+      return;
+    }
+    if (archiveRecommendations !== null || archiveLoading) {
+      return;
+    }
+
+    let active = true;
+    setArchiveLoading(true);
+    setArchiveError(null);
+
+    void loadArchivePage(temporaryProfile, 0, "replace")
+      .catch(() => {
+        if (active) {
+          setArchiveRecommendations(null);
+          setArchiveError(
+            "Die Archivempfehlungen konnten gerade nicht geladen werden. Bitte versuche es noch einmal.",
+          );
+        }
+      })
+      .finally(() => {
+        if (active) {
+          setArchiveLoading(false);
+        }
+      });
+
+    return () => {
+      active = false;
+    };
+  }, [
+    archiveLoading,
+    archiveRecommendations,
+    loadArchivePage,
+    route,
+    temporaryProfile,
+  ]);
+
   function navigate(nextRoute: AppRoute): void {
     setRoute(nextRoute);
     window.history.pushState({}, "", nextRoute === "willkommen" ? "/" : `/${nextRoute}`);
@@ -77,16 +157,18 @@ export function App(): ReactElement {
     setAuthOpen(true);
   }
 
-  async function finishSetup(profile: TemporaryTasteProfile): Promise<void> {
+  async function finishSetup(result: ProfileSetupResult): Promise<void> {
+    writeProfileSession(result);
+    setProfileSession(result);
+    setProfileEditStep(undefined);
     setUserState("anonymous_temporary_profile");
-    setTemporaryProfile(profile);
+    setArchiveRecommendations(null);
+    setArchiveTotal(0);
     setArchiveLoading(true);
     setArchiveError(null);
     navigate("entdecken");
     try {
-      const result = await loadArchiveRecommendations(new ApiClient(), profile);
-      setArchiveRecommendations(result.recommendations);
-      setArchiveTotal(result.total);
+      await loadArchivePage(result.profile, 0, "replace");
     } catch {
       setArchiveRecommendations(null);
       setArchiveError(
@@ -96,6 +178,45 @@ export function App(): ReactElement {
       setArchiveLoading(false);
     }
   }
+
+  async function loadMoreArchiveRecommendations(): Promise<void> {
+    if (temporaryProfile === null || archiveRecommendations === null) {
+      return;
+    }
+    if (archiveRecommendations.length >= archiveTotal) {
+      return;
+    }
+    setArchiveLoadingMore(true);
+    setArchiveError(null);
+    try {
+      await loadArchivePage(
+        temporaryProfile,
+        archiveRecommendations.length,
+        "append",
+      );
+    } catch {
+      setArchiveError(
+        "Weitere Alben konnten gerade nicht geladen werden. Bitte versuche es noch einmal.",
+      );
+    } finally {
+      setArchiveLoadingMore(false);
+    }
+  }
+
+  function adjustFilters(): void {
+    setProfileEditStep("filters");
+    navigate("musikprofil");
+  }
+
+  function editProfile(): void {
+    setProfileEditStep(undefined);
+    navigate("musikprofil");
+  }
+
+  const archiveFilterSummary =
+    profileSession !== null ? buildFilterSummaryChips(profileSession) : undefined;
+  const canLoadMoreArchive =
+    archiveRecommendations !== null && archiveRecommendations.length < archiveTotal;
 
   return (
     <AppShell
@@ -123,10 +244,15 @@ export function App(): ReactElement {
       )}
       {route === "entdecken" && (
         <ArchiveDiscoverPage
+          canLoadMore={canLoadMoreArchive}
           error={archiveError}
+          filterSummary={archiveFilterSummary}
           isLoading={archiveLoading}
+          isLoadingMore={archiveLoadingMore}
+          onAdjustFilters={adjustFilters}
           onCreatePlaylist={createPlaylist}
-          onEditProfile={() => navigate("musikprofil")}
+          onEditProfile={editProfile}
+          onLoadMore={loadMoreArchiveRecommendations}
           profileExists={temporaryProfile !== null}
           recommendations={archiveRecommendations}
           total={archiveTotal}
@@ -136,7 +262,13 @@ export function App(): ReactElement {
         <PlaylistGenerator initialSource={playlistSource} />
       )}
       {route === "musikprofil" && (
-        <ProfileSetupShell isSubmitting={archiveLoading} onFinish={finishSetup} />
+        <ProfileSetupShell
+          initialPresetId={profileSession?.presetId}
+          initialProfile={temporaryProfile}
+          initialStep={profileEditStep}
+          isSubmitting={archiveLoading}
+          onFinish={finishSetup}
+        />
       )}
       {route === "konto" && (
         <section className="account-page">
@@ -159,20 +291,30 @@ export function App(): ReactElement {
 }
 
 interface ArchiveDiscoverPageProps {
+  canLoadMore: boolean;
   error: string | null;
+  filterSummary?: string[];
   isLoading: boolean;
+  isLoadingMore: boolean;
+  onAdjustFilters: () => void;
   onCreatePlaylist: (source: RecommendationSource) => void;
   onEditProfile: () => void;
+  onLoadMore: () => void;
   profileExists: boolean;
   recommendations: Recommendation[] | null;
   total: number;
 }
 
 function ArchiveDiscoverPage({
+  canLoadMore,
   error,
+  filterSummary,
   isLoading,
+  isLoadingMore,
+  onAdjustFilters,
   onCreatePlaylist,
   onEditProfile,
+  onLoadMore,
   profileExists,
   recommendations,
   total,
@@ -199,7 +341,7 @@ function ArchiveDiscoverPage({
     );
   }
 
-  if (error !== null) {
+  if (error !== null && recommendations === null) {
     return (
       <section className="empty-results">
         <p className="eyebrow">Entdecken</p>
@@ -212,13 +354,25 @@ function ArchiveDiscoverPage({
     );
   }
 
+  const loadedCount = recommendations?.length ?? 0;
+
   return (
-    <RecommendationList
-      message={`${total} Alben aus dem Plattentests-Archiv passen zu deinen aktuellen Einstellungen.`}
-      onCreatePlaylist={onCreatePlaylist}
-      recommendations={recommendations ?? []}
-      source="entdecken"
-      title="Im Archiv entdecken"
-    />
+    <>
+      {error !== null && recommendations !== null && (
+        <p className="form-error archive-inline-error">{error}</p>
+      )}
+      <RecommendationList
+        canLoadMore={canLoadMore}
+        filterSummary={filterSummary}
+        loadingMore={isLoadingMore}
+        message={`${total} Alben passen zu deinen Einstellungen. ${loadedCount} werden gerade angezeigt.`}
+        onAdjustFilters={onAdjustFilters}
+        onCreatePlaylist={onCreatePlaylist}
+        onLoadMore={onLoadMore}
+        recommendations={recommendations ?? []}
+        source="entdecken"
+        title="Im Archiv entdecken"
+      />
+    </>
   );
 }

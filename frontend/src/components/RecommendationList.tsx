@@ -17,7 +17,12 @@ interface RecommendationListProps {
   recommendations: Recommendation[];
   highlights?: RecommendationHighlight[];
   updateSummary?: UpdateSummary;
+  filterSummary?: string[];
+  canLoadMore?: boolean;
+  loadingMore?: boolean;
+  onAdjustFilters?: () => void;
   onCreatePlaylist: (source: RecommendationSource) => void;
+  onLoadMore?: () => void;
 }
 
 export function RecommendationList({
@@ -27,7 +32,12 @@ export function RecommendationList({
   recommendations,
   highlights,
   updateSummary,
+  filterSummary,
+  canLoadMore = false,
+  loadingMore = false,
+  onAdjustFilters,
   onCreatePlaylist,
+  onLoadMore,
 }: RecommendationListProps): ReactElement {
   return (
     <section className="results-page">
@@ -58,10 +68,14 @@ export function RecommendationList({
           </label>
         )}
         <div className="filter-summary" aria-label="Aktuelle Filter">
-          <span>Ausgewogen</span>
-          <span>Stilpassung sichtbar</span>
-          <span>Temporär anpassbar</span>
-          <button type="button">Filter anpassen</button>
+          {(filterSummary ?? ["Ausgewogen", "Stilpassung sichtbar"]).map((chip) => (
+            <span key={chip}>{chip}</span>
+          ))}
+          {onAdjustFilters !== undefined && (
+            <button onClick={onAdjustFilters} type="button">
+              Filter anpassen
+            </button>
+          )}
         </div>
       </div>
 
@@ -95,6 +109,18 @@ export function RecommendationList({
             <RecommendationCard key={`${item.source}-${item.rank}`} recommendation={item} />
           ))}
         </div>
+        {canLoadMore && onLoadMore !== undefined && (
+          <div className="results-load-more">
+            <button
+              className="secondary-button"
+              disabled={loadingMore}
+              onClick={onLoadMore}
+              type="button"
+            >
+              {loadingMore ? "Weitere Alben werden geladen ..." : "Weitere Alben laden"}
+            </button>
+          </div>
+        )}
       </section>
     </section>
   );

@@ -3,9 +3,24 @@ import { describe, expect, it, vi } from "vitest";
 import { ApiClient } from "./apiClient";
 import {
   createTemporaryTasteProfile,
+  DEFAULT_BALANCED_FILTER_SETTINGS,
+  filterSettingsFromPreset,
   loadArchiveRecommendations,
   loadTasteCommunities,
+  loadTastePresets,
 } from "./plattenradarApi";
+
+const exploratoryPreset = {
+  id: "exploratory",
+  label: "Entdeckerisch",
+  subtitle: "Mehr angrenzende Stile",
+  description: "Öffnet die Auswahl.",
+  icon: "compass",
+  filter_settings: {
+    ...DEFAULT_BALANCED_FILTER_SETTINGS,
+    score_min: 0.25,
+  },
+};
 
 describe("createTemporaryTasteProfile", () => {
   it("creates the balanced profile used for temporary recommendations", () => {
@@ -13,6 +28,15 @@ describe("createTemporaryTasteProfile", () => {
 
     expect(profile.community_weights_raw).toEqual({ C001: 1, C002: 1 });
     expect(profile.filter_settings.score_min).toBe(0.4);
+  });
+
+  it("applies custom filter settings from a preset", () => {
+    const profile = createTemporaryTasteProfile(
+      ["C001"],
+      filterSettingsFromPreset(exploratoryPreset),
+    );
+
+    expect(profile.filter_settings.score_min).toBe(0.25);
   });
 });
 
@@ -25,6 +49,7 @@ describe("loadTasteCommunities", () => {
             id: "C001",
             label: "Indie Rock",
             broad_categories: ["Rock & Alternative"],
+            example_artists: ["Radiohead", "The National", "Arcade Fire"],
           },
         ]),
         { status: 200 },
@@ -41,10 +66,30 @@ describe("loadTasteCommunities", () => {
         id: "C001",
         label: "Indie Rock",
         broad_categories: ["Rock & Alternative"],
+        example_artists: ["Radiohead", "The National", "Arcade Fire"],
       },
     ]);
     expect(fetchMock).toHaveBeenCalledWith(
       "https://api.example.test/v1/taste-communities",
+      expect.objectContaining({ method: "GET" }),
+    );
+  });
+});
+
+describe("loadTastePresets", () => {
+  it("loads preset definitions from the API", async () => {
+    const fetchMock = vi.fn().mockResolvedValue(
+      new Response(JSON.stringify([exploratoryPreset]), { status: 200 }),
+    );
+    vi.stubGlobal("fetch", fetchMock);
+
+    const presets = await loadTastePresets(
+      new ApiClient({ baseUrl: "https://api.example.test" }),
+    );
+
+    expect(presets[0]?.id).toBe("exploratory");
+    expect(fetchMock).toHaveBeenCalledWith(
+      "https://api.example.test/v1/presets",
       expect.objectContaining({ method: "GET" }),
     );
   });
@@ -92,9 +137,30 @@ describe("loadArchiveRecommendations", () => {
       source: "entdecken",
       tags: [{ label: "Indie Rock", matchesProfile: true, strength: "high" }],
     });
+  });
+
+  it("requests a specific archive page via limit and offset", async () => {
+    const fetchMock = vi.fn().mockResolvedValue(
+      new Response(JSON.stringify({ total: 100, items: [] }), { status: 200 }),
+    );
+    vi.stubGlobal("fetch", fetchMock);
+
+    await loadArchiveRecommendations(
+      new ApiClient({ baseUrl: "https://api.example.test" }),
+      createTemporaryTasteProfile(["C001"]),
+      { limit: 20, offset: 40 },
+    );
+
     expect(fetchMock).toHaveBeenCalledWith(
       "https://api.example.test/v1/recommendations/archive",
-      expect.objectContaining({ method: "POST" }),
+      expect.objectContaining({
+        method: "POST",
+        body: JSON.stringify({
+          profile: createTemporaryTasteProfile(["C001"]),
+          limit: 20,
+          offset: 40,
+        }),
+      }),
     );
   });
 });

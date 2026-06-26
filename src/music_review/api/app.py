@@ -117,6 +117,7 @@ def create_app() -> FastAPI:
                     community=item,
                 ),
                 broad_categories=tuple(category_map.get(str(item["id"]), ())),
+                example_artists=_community_example_artists(item),
             )
             for item in provider.communities()
             if item.get("id")
@@ -628,6 +629,26 @@ def _community_label(
     if community is not None and community.get("centroid"):
         return str(community["centroid"])
     return "Stil-Cluster"
+
+
+def _community_example_artists(
+    community: Mapping[str, Any],
+    *,
+    limit: int = 6,
+) -> tuple[str, ...]:
+    """Return up to six example artists for compact profile detail captions."""
+    top = community.get("top_artists")
+    if not isinstance(top, list):
+        return ()
+    names: list[str] = []
+    for raw in top:
+        text = str(raw).strip()
+        if not text:
+            continue
+        names.append(text)
+        if len(names) >= limit:
+            break
+    return tuple(names)
 
 
 def _reviews_from_archive_rows(

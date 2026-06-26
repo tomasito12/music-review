@@ -1134,13 +1134,46 @@ User-Feedback:
 - Die rechte Infobox `Dein Profil noch nicht gespeichert ...` ist an dieser
   Stelle unklar und vermutlich nicht nötig.
 
+User-Feedback (Wizard-Schritte 1–3, manueller Durchlauf):
+
+- Schritt 1: Lange Richtungslabels (z. B. `Experimental & Avant-Garde`)
+  umbrechen und machen Kacheln unterschiedlich hoch.
+- Fortschrittsanzeige oben (`1 Richtungen`, `2 Details`, `3 Filter`) soll
+  anklickbar sein und zu früheren Schritten zurückführen (nicht nur der
+  `Zurück`-Button unten).
+- `Beispielprofil verwenden` war unklar: Nutzer wusste nicht, dass der gesamte
+  Wizard übersprungen wird und sofort Empfehlungen kommen.
+- Schritt 2: Viele Detail-Kacheln sind anstrengend; Nutzer verliert nach
+  einigen Minuten die Konzentration. Es braucht Entlastung (Hinweis, dass nicht
+  alles ausgewählt werden muss) und sichtbaren Fortschritt (Anzahl gewählt).
+- Schritt 2: Label und Beispiel-Künstler konkurrieren visuell; Künstlerzeile
+  darf nicht umbrechen (sonst unterschiedliche Kachelhöhen). Wenn drei Namen
+  zu lang sind, kürzere Kombination aus dem Künstler-Pool wählen statt nur die
+  ersten zwei zu zeigen.
+- Schritt 3 (`Treffsicher` etc.) und der Sprung zu den Empfehlungen wirken
+  stimmig; Archivgröße (z. B. 3711 Alben) ist hilfreiche Rückmeldung.
+
 Anforderung:
 
 - Musikprofil-Setup ruhiger und weniger hero-artig gestalten.
 - Kontextbox überarbeiten oder entfernen.
-- Beispielprofil als schneller Demo-Pfad erhalten.
+- Beispielprofil als schneller Demo-Pfad erhalten, aber klar als Schnelltest
+  benennen und vor dem Sprung bestätigen.
+- Fortschrittsleiste: Rücksprung zu abgeschlossenen Schritten per Klick.
+- Schritt 1: Breitere Kacheln (z. B. zwei Spalten) und einheitliche
+  Mindesthöhe.
+- Schritt 2: Beruhigende Copy (`5–15 Stile reichen`), Zähler
+  `X von Y ausgewählt`, einzeilige Künstlerbeispiele.
 - Setup soll verständlich sein, aber nicht mit erklärenden Hinweisen
   überladen.
+
+Offen / später prüfen:
+
+- Detailauswahl weiter entlasten (Gruppierung nach Richtung, Suche, „Top
+  Vorschläge“, Quick-Picks).
+- Beispiel-Künstler ganz entfernen, wenn Label + Künstler weiterhin
+  konkurrieren.
+- Rechte Zusammenfassungsbox schlanker oder nur ab Schritt 2 sichtbar.
 
 ### Aktuell
 
