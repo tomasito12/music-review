@@ -98,6 +98,19 @@ hatch run dashboard
 
 Then open the URL shown in the terminal (default: http://localhost:8501). Select an **artist**, then an **album**, to view the full review text plus metadata (rating, labels, release, tracklist, highlights, references) and MusicBrainz data (genres, artist MBID, etc.) when available. Data paths are resolved from the project root, so run from any directory.
 
+## Frontend Shell
+
+The first React/Vite frontend shell lives in `frontend/`.
+
+```bash
+cd frontend
+pnpm install
+pnpm dev
+```
+
+Then open http://127.0.0.1:5173. The shell currently uses mocked recommendation
+data while the new frontend structure is being shaped.
+
 ## Updating data
 
 ### One command (full update)
