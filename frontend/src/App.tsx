@@ -43,7 +43,11 @@ import {
   writeProfileSession,
 } from "./lib/profileSessionStorage";
 import type { SetupStep } from "./lib/profileWizard";
-import { routeFromPath } from "./lib/routes";
+import {
+  resolveInitialRoute,
+  shouldLandOnAktuell,
+  syncBrowserPath,
+} from "./lib/initialRoute";
 import type { TemporaryTasteProfile } from "./lib/plattenradarApi";
 import type {
   AppRoute,
@@ -53,9 +57,11 @@ import type {
 } from "./types";
 
 export function App(): ReactElement {
-  const [route, setRoute] = useState<AppRoute>(() =>
-    routeFromPath(window.location.pathname),
-  );
+  const [route, setRoute] = useState<AppRoute>(() => {
+    const initialRoute = resolveInitialRoute(window.location.pathname);
+    syncBrowserPath(initialRoute);
+    return initialRoute;
+  });
   const [userState, setUserState] = useState<UserState>("anonymous_no_profile");
   const [authSession, setAuthSession] = useState<AuthSession | null>(() =>
     readAuthSession(),
@@ -199,6 +205,18 @@ export function App(): ReactElement {
     }
     setUserState("authenticated_no_profile");
   }, [authSession, hasUnsavedProfileChanges, lastSavedProfile]);
+
+  useEffect(() => {
+    if (
+      shouldLandOnAktuell(
+        route,
+        authSession !== null,
+        lastSavedProfile !== null,
+      )
+    ) {
+      navigate("aktuell");
+    }
+  }, [authSession, lastSavedProfile, route]);
 
   useEffect(() => {
     if (profileChangesSavedMessage === null) {
@@ -354,6 +372,9 @@ export function App(): ReactElement {
       .then((savedProfile) => {
         if (savedProfile === null) {
           setLastSavedProfile(null);
+          if (temporaryProfile !== null) {
+            navigate("aktuell");
+          }
           return;
         }
         const restoredSession: ProfileSetupResult = {
@@ -364,6 +385,7 @@ export function App(): ReactElement {
         writeProfileSession(restoredSession);
         setProfileSession(restoredSession);
         setLastSavedProfile(cloneTasteProfile(savedProfile));
+        navigate("aktuell");
       })
       .catch(() => {
         setLastSavedProfile(null);

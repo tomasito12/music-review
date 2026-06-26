@@ -323,9 +323,11 @@ def _playlist_candidates(
 ) -> tuple[list[Review], list[dict[str, object]] | None]:
     """Return reviews and optional ranking rows for playlist generation."""
     if request.source == "new_reviews":
+        # Recommendation request ``limit`` is only for pagination; the playlist
+        # pool size comes from ``newest_count``. Keep ``limit`` within schema bounds.
         new_request = NewReviewsRecommendationRequest(
             profile=profile,
-            limit=request.newest_count,
+            limit=min(request.newest_count, 100),
             offset=0,
             newest_count=request.newest_count,
         )
@@ -334,7 +336,7 @@ def _playlist_candidates(
 
     archive_request = RecommendationRequest(
         profile=profile,
-        limit=request.archive_limit,
+        limit=min(request.archive_limit, 100),
         offset=0,
     )
     rows = _archive_rows(provider, archive_request, profile)[: request.archive_limit]

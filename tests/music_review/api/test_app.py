@@ -376,6 +376,48 @@ def test_playlist_export_endpoint_returns_tunemymusic_text() -> None:
     assert payload["items"]
 
 
+def test_playlist_export_accepts_large_newest_count() -> None:
+    """Playlist export must not fail when newest_count exceeds pagination limit."""
+    response = _client().post(
+        "/v1/playlists/export",
+        json={
+            "source": "new_reviews",
+            "profile": _profile_payload(),
+            "playlist_name": "Large Pool",
+            "target_count": 2,
+            "format": "txt",
+            "newest_count": 200,
+            "taste_exponent": 3.0,
+            "selection_strategy": "weighted_sample",
+        },
+    )
+
+    assert response.status_code == 200
+    payload = response.json()
+    assert payload["source"] == "new_reviews"
+    assert payload["items"]
+
+
+def test_playlist_export_accepts_large_archive_limit() -> None:
+    """Playlist export must not fail when archive_limit exceeds pagination limit."""
+    response = _client().post(
+        "/v1/playlists/export",
+        json={
+            "source": "archive",
+            "profile": _profile_payload(),
+            "playlist_name": "Archive Pool",
+            "target_count": 2,
+            "format": "txt",
+            "archive_limit": 200,
+        },
+    )
+
+    assert response.status_code == 200
+    payload = response.json()
+    assert payload["source"] == "archive"
+    assert payload["items"]
+
+
 def test_register_login_and_profile_roundtrip(user_db: sqlite3.Connection) -> None:
     """Auth endpoints store and reload one user's taste profile."""
     client = _client(user_db)

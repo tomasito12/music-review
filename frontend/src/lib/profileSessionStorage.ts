@@ -1,3 +1,7 @@
+import {
+  migrateLegacyCommunityWeights,
+  normalizeCommunityWeights,
+} from "./communityWeightMapping";
 import type { TemporaryTasteProfile } from "./plattenradarApi";
 
 export const PROFILE_SESSION_STORAGE_KEY = "plattenradar.profile-session.v1";
@@ -84,7 +88,15 @@ function normalizeStoredProfileSession(value: unknown): StoredProfileSession | n
   return {
     presetId,
     presetLabel,
-    profile,
+    profile: {
+      ...profile,
+      community_weights_raw: migrateLegacyCommunityWeights(
+        normalizeCommunityWeights(
+          profile.selected_communities,
+          profile.community_weights_raw,
+        ),
+      ),
+    },
     savedAt,
   };
 }

@@ -2,6 +2,9 @@ import { useEffect, useState } from "react";
 import type { ReactElement } from "react";
 
 import { ApiClient } from "../lib/apiClient";
+import {
+  normalizeCommunityWeights,
+} from "../lib/communityWeightMapping";
 import { formatCommunityExampleArtists } from "../lib/profileFormatting";
 import {
   SETUP_STEPS,
@@ -23,6 +26,7 @@ import type {
   TemporaryTasteProfile,
 } from "../lib/plattenradarApi";
 import type { ProfileSetupResult } from "../lib/profileSessionStorage";
+import { TasteFilterControls } from "./TasteFilterControls";
 
 interface ProfileSetupShellProps {
   initialPresetId?: string;
@@ -50,6 +54,9 @@ export function ProfileSetupShell({
   const [filterSettings, setFilterSettings] = useState<TasteFilterSettings | null>(
     null,
   );
+  const [communityWeightsRaw, setCommunityWeightsRaw] = useState<
+    Record<string, number>
+  >({});
   const [step, setStep] = useState<SetupStep>(initialStep ?? "broad");
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -134,6 +141,12 @@ export function ProfileSetupShell({
     setSelectedCommunityIds(initialProfile.selected_communities);
     setSelectedBroadCategories(broadCategoriesForProfile);
     setFilterSettings(initialProfile.filter_settings);
+    setCommunityWeightsRaw(
+      normalizeCommunityWeights(
+        initialProfile.selected_communities,
+        initialProfile.community_weights_raw,
+      ),
+    );
     if (initialPresetId !== undefined) {
       setSelectedPresetId(initialPresetId);
     }
@@ -148,6 +161,25 @@ export function ProfileSetupShell({
     initialProfile,
     initialStep,
   ]);
+
+  useEffect(() => {
+    setCommunityWeightsRaw((current) =>
+      normalizeCommunityWeights(selectedCommunityIds, current),
+    );
+  }, [selectedCommunityIds]);
+
+  function buildProfile(
+    settings: TasteFilterSettings | undefined,
+  ): TemporaryTasteProfile {
+    const resolvedSettings =
+      settings ??
+      (selectedPreset !== null ? filterSettingsFromPreset(selectedPreset) : undefined);
+    return createTemporaryTasteProfile(
+      selectedCommunityIds,
+      resolvedSettings,
+      communityWeightsRaw,
+    );
+  }
 
   function buildSetupResult(profile: TemporaryTasteProfile): ProfileSetupResult {
     return {
@@ -208,7 +240,11 @@ export function ProfileSetupShell({
       (selectedPreset !== null
         ? filterSettingsFromPreset(selectedPreset)
         : undefined);
-    onFinish(buildSetupResult(createTemporaryTasteProfile(exampleIds, settings)));
+    onFinish(
+      buildSetupResult(
+        createTemporaryTasteProfile(exampleIds, settings, communityWeightsRaw),
+      ),
+    );
   }
 
   function continueWithSelection(): void {
@@ -223,9 +259,7 @@ export function ProfileSetupShell({
     const settings =
       filterSettings ??
       (selectedPreset !== null ? filterSettingsFromPreset(selectedPreset) : undefined);
-    onFinish(
-      buildSetupResult(createTemporaryTasteProfile(selectedCommunityIds, settings)),
-    );
+    onFinish(buildSetupResult(buildProfile(settings)));
   }
 
   function goBack(): void {
@@ -255,7 +289,7 @@ export function ProfileSetupShell({
       ? selectedBroadCategories.length > 0
       : step === "details"
         ? selectedCommunityIds.length > 0
-        : selectedPreset !== null;
+        : filterSettings !== null && selectedPreset !== null;
 
   const primaryLabel =
     step === "broad"
@@ -377,6 +411,16 @@ export function ProfileSetupShell({
                   </button>
                 ))}
               </div>
+              {filterSettings !== null && (
+                <TasteFilterControls
+                  communities={communities}
+                  communityWeights={communityWeightsRaw}
+                  filterSettings={filterSettings}
+                  onChange={setFilterSettings}
+                  onCommunityWeightsChange={setCommunityWeightsRaw}
+                  selectedCommunityIds={selectedCommunityIds}
+                />
+              )}
             </>
           )}
           {loading && <p className="field-hint">Stilrichtungen werden geladen ...</p>}

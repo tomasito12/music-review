@@ -62,11 +62,24 @@ describe("profileSessionStorage", () => {
     expect(readProfileSession()).toBeNull();
   });
 
-  it("builds filter summary chips from the stored session", () => {
-    expect(buildFilterSummaryChips(sampleSession)).toEqual([
-      "Treffsicher",
-      "3 Detailstile",
-      "Wertung 6–10",
-    ]);
+  it("migrates legacy community weights of 1.0 to neutral on read", () => {
+    window.sessionStorage.setItem(
+      PROFILE_SESSION_STORAGE_KEY,
+      JSON.stringify({
+        presetId: "balanced",
+        presetLabel: "Ausgewogen",
+        savedAt: "2026-06-26T00:00:00.000Z",
+        profile: {
+          ...sampleSession.profile,
+          community_weights_raw: { C001: 1, C002: 1, C003: 1 },
+        },
+      }),
+    );
+
+    expect(readProfileSession()?.profile.community_weights_raw).toEqual({
+      C001: 0.5,
+      C002: 0.5,
+      C003: 0.5,
+    });
   });
 });

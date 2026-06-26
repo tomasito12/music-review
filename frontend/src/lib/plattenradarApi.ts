@@ -1,4 +1,9 @@
 import { ApiClient } from "./apiClient";
+import {
+  DEFAULT_COMMUNITY_WEIGHT_RAW,
+  migrateLegacyCommunityWeights,
+  normalizeCommunityWeights,
+} from "./communityWeightMapping";
 import type {
   PlaylistExportRequestOptions,
   PlaylistExportResult,
@@ -183,7 +188,12 @@ export function apiProfileToTemporary(
   return {
     name: profile.name,
     selected_communities: [...profile.selected_communities],
-    community_weights_raw: { ...profile.community_weights_raw },
+    community_weights_raw: migrateLegacyCommunityWeights(
+      normalizeCommunityWeights(
+        [...profile.selected_communities],
+        profile.community_weights_raw,
+      ),
+    ),
     filter_settings: normalizeFilterSettings(profile.filter_settings),
   };
 }
@@ -322,12 +332,18 @@ export function filterSettingsFromPreset(preset: TastePreset): TasteFilterSettin
 export function createTemporaryTasteProfile(
   selectedCommunities: string[],
   filterSettings: TasteFilterSettings = DEFAULT_BALANCED_FILTER_SETTINGS,
+  communityWeightsRaw: Record<string, number> = {},
 ): TemporaryTasteProfile {
   return {
     name: "Temporäres Musikprofil",
     selected_communities: selectedCommunities,
-    community_weights_raw: Object.fromEntries(
-      selectedCommunities.map((communityId) => [communityId, 1]),
+    community_weights_raw: migrateLegacyCommunityWeights(
+      Object.fromEntries(
+        selectedCommunities.map((communityId) => [
+          communityId,
+          communityWeightsRaw[communityId] ?? DEFAULT_COMMUNITY_WEIGHT_RAW,
+        ]),
+      ),
     ),
     filter_settings: normalizeFilterSettings(filterSettings),
   };

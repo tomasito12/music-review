@@ -55,7 +55,16 @@ export class ApiClient {
       headers,
     });
     if (!response.ok) {
-      throw new ApiError(response.statusText, response.status);
+      let message = response.statusText;
+      try {
+        const errorBody = (await response.json()) as { detail?: string };
+        if (typeof errorBody.detail === "string" && errorBody.detail.length > 0) {
+          message = errorBody.detail;
+        }
+      } catch {
+        // Keep the status text when the error body is not JSON.
+      }
+      throw new ApiError(message, response.status);
     }
     return (await response.json()) as T;
   }

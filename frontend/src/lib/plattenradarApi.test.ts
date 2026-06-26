@@ -31,7 +31,7 @@ describe("createTemporaryTasteProfile", () => {
   it("creates the balanced profile used for temporary recommendations", () => {
     const profile = createTemporaryTasteProfile(["C001", "C002"]);
 
-    expect(profile.community_weights_raw).toEqual({ C001: 1, C002: 1 });
+    expect(profile.community_weights_raw).toEqual({ C001: 0.5, C002: 0.5 });
     expect(profile.filter_settings.score_min).toBe(0.4);
   });
 
@@ -49,7 +49,7 @@ describe("createTemporaryTasteProfile", () => {
     expect(temporaryProfileToApi(profile)).toEqual({
       name: "Temporäres Musikprofil",
       selected_communities: ["C001", "C002"],
-      community_weights_raw: { C001: 1, C002: 1 },
+      community_weights_raw: { C001: 0.5, C002: 0.5 },
       filter_settings: profile.filter_settings,
     });
   });
