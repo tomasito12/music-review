@@ -30,7 +30,12 @@ import {
   fetchSavedTasteProfile,
   loadArchiveRecommendations,
   loadNewReviewRecommendations,
+  saveTasteProfile,
 } from "./lib/plattenradarApi";
+import {
+  cloneTasteProfile,
+  tasteProfilesMatch,
+} from "./lib/profileComparison";
 import type { ProfileSetupResult } from "./lib/profileSessionStorage";
 import {
   buildFilterSummaryChips,
@@ -82,9 +87,22 @@ export function App(): ReactElement {
   const [aktuellLoading, setAktuellLoading] = useState(false);
   const [aktuellLoadingMore, setAktuellLoadingMore] = useState(false);
   const [aktuellError, setAktuellError] = useState<string | null>(null);
+  const [lastSavedProfile, setLastSavedProfile] = useState<TemporaryTasteProfile | null>(
+    null,
+  );
+  const [isSavingProfileChanges, setIsSavingProfileChanges] = useState(false);
+  const [profileChangesSavedMessage, setProfileChangesSavedMessage] = useState<
+    string | null
+  >(null);
+  const [profileChangesError, setProfileChangesError] = useState<string | null>(null);
 
   const temporaryProfile = profileSession?.profile ?? null;
   const isAuthenticated = authSession !== null;
+  const hasUnsavedProfileChanges =
+    isAuthenticated &&
+    temporaryProfile !== null &&
+    lastSavedProfile !== null &&
+    !tasteProfilesMatch(temporaryProfile, lastSavedProfile);
 
   const apiClient = useCallback(
     () => new ApiClient({ token: authSession?.accessToken }),
@@ -141,9 +159,9 @@ export function App(): ReactElement {
           };
           writeProfileSession(restoredSession);
           setProfileSession(restoredSession);
-          setUserState("authenticated_saved_profile");
+          setLastSavedProfile(cloneTasteProfile(savedProfile));
         } else {
-          setUserState("authenticated_no_profile");
+          setLastSavedProfile(null);
         }
       })
       .catch(() => {
@@ -166,6 +184,33 @@ export function App(): ReactElement {
       profileSession !== null ? "anonymous_temporary_profile" : "anonymous_no_profile",
     );
   }, [authSession, profileSession]);
+
+  useEffect(() => {
+    if (authSession === null) {
+      return;
+    }
+    if (hasUnsavedProfileChanges) {
+      setUserState("authenticated_unsaved_changes");
+      return;
+    }
+    if (lastSavedProfile !== null) {
+      setUserState("authenticated_saved_profile");
+      return;
+    }
+    setUserState("authenticated_no_profile");
+  }, [authSession, hasUnsavedProfileChanges, lastSavedProfile]);
+
+  useEffect(() => {
+    if (profileChangesSavedMessage === null) {
+      return;
+    }
+    const timeoutId = window.setTimeout(() => {
+      setProfileChangesSavedMessage(null);
+    }, 4000);
+    return () => {
+      window.clearTimeout(timeoutId);
+    };
+  }, [profileChangesSavedMessage]);
 
   const loadArchivePage = useCallback(
     async (
@@ -213,7 +258,7 @@ export function App(): ReactElement {
     if (route !== "entdecken" || temporaryProfile === null) {
       return;
     }
-    if (archiveRecommendations !== null || archiveLoading) {
+    if (archiveRecommendations !== null) {
       return;
     }
 
@@ -223,35 +268,28 @@ export function App(): ReactElement {
 
     void loadArchivePage(temporaryProfile, 0, "replace")
       .catch(() => {
-        if (active) {
-          setArchiveRecommendations(null);
-          setArchiveError(
-            "Die Archivempfehlungen konnten gerade nicht geladen werden. Bitte versuche es noch einmal.",
-          );
+        if (!active) {
+          return;
         }
+        setArchiveRecommendations(null);
+        setArchiveError(
+          "Die Archivempfehlungen konnten gerade nicht geladen werden. Bitte versuche es noch einmal.",
+        );
       })
       .finally(() => {
-        if (active) {
-          setArchiveLoading(false);
-        }
+        setArchiveLoading(false);
       });
 
     return () => {
       active = false;
     };
-  }, [
-    archiveLoading,
-    archiveRecommendations,
-    loadArchivePage,
-    route,
-    temporaryProfile,
-  ]);
+  }, [archiveRecommendations, loadArchivePage, route, temporaryProfile]);
 
   useEffect(() => {
     if (route !== "aktuell" || temporaryProfile === null) {
       return;
     }
-    if (aktuellRecommendations !== null || aktuellLoading) {
+    if (aktuellRecommendations !== null) {
       return;
     }
 
@@ -261,29 +299,22 @@ export function App(): ReactElement {
 
     void loadAktuellPage(0, "replace")
       .catch(() => {
-        if (active) {
-          setAktuellRecommendations(null);
-          setAktuellError(
-            "Die neuen Rezensionen konnten gerade nicht geladen werden. Bitte versuche es noch einmal.",
-          );
+        if (!active) {
+          return;
         }
+        setAktuellRecommendations(null);
+        setAktuellError(
+          "Die neuen Rezensionen konnten gerade nicht geladen werden. Bitte versuche es noch einmal.",
+        );
       })
       .finally(() => {
-        if (active) {
-          setAktuellLoading(false);
-        }
+        setAktuellLoading(false);
       });
 
     return () => {
       active = false;
     };
-  }, [
-    aktuellLoading,
-    aktuellRecommendations,
-    loadAktuellPage,
-    route,
-    temporaryProfile,
-  ]);
+  }, [aktuellRecommendations, loadAktuellPage, route, temporaryProfile]);
 
   function navigate(nextRoute: AppRoute): void {
     setRoute(nextRoute);
@@ -311,8 +342,10 @@ export function App(): ReactElement {
     setAuthOpen(false);
     setSavePromptHidden(true);
     if (authMode === "save-profile") {
+      if (temporaryProfile !== null) {
+        setLastSavedProfile(cloneTasteProfile(temporaryProfile));
+      }
       setProfileSavedNotice(true);
-      setUserState("authenticated_saved_profile");
       return;
     }
 
@@ -320,7 +353,7 @@ export function App(): ReactElement {
     void fetchSavedTasteProfile(client)
       .then((savedProfile) => {
         if (savedProfile === null) {
-          setUserState("authenticated_no_profile");
+          setLastSavedProfile(null);
           return;
         }
         const restoredSession: ProfileSetupResult = {
@@ -330,11 +363,38 @@ export function App(): ReactElement {
         };
         writeProfileSession(restoredSession);
         setProfileSession(restoredSession);
-        setUserState("authenticated_saved_profile");
+        setLastSavedProfile(cloneTasteProfile(savedProfile));
       })
       .catch(() => {
-        setUserState("authenticated_no_profile");
+        setLastSavedProfile(null);
       });
+  }
+
+  async function saveProfileChanges(): Promise<void> {
+    if (authSession === null || temporaryProfile === null) {
+      return;
+    }
+    setIsSavingProfileChanges(true);
+    setProfileChangesError(null);
+    setProfileChangesSavedMessage(null);
+    try {
+      const savedProfile = await saveTasteProfile(apiClient(), temporaryProfile);
+      setLastSavedProfile(cloneTasteProfile(savedProfile));
+      const updatedSession: ProfileSetupResult = {
+        presetId: profileSession?.presetId ?? "saved",
+        presetLabel: profileSession?.presetLabel ?? "Gespeichertes Profil",
+        profile: savedProfile,
+      };
+      writeProfileSession(updatedSession);
+      setProfileSession(updatedSession);
+      setProfileChangesSavedMessage("Änderungen gespeichert.");
+    } catch {
+      setProfileChangesError(
+        "Deine Änderungen konnten gerade nicht gespeichert werden. Bitte versuche es noch einmal.",
+      );
+    } finally {
+      setIsSavingProfileChanges(false);
+    }
   }
 
   function handleDismissSavePrompt(): void {
@@ -345,7 +405,10 @@ export function App(): ReactElement {
   function logout(): void {
     clearAuthSession();
     setAuthSession(null);
+    setLastSavedProfile(null);
     setProfileSavedNotice(false);
+    setProfileChangesSavedMessage(null);
+    setProfileChangesError(null);
     setUserState(
       profileSession !== null ? "anonymous_temporary_profile" : "anonymous_no_profile",
     );
@@ -364,19 +427,8 @@ export function App(): ReactElement {
     setArchiveTotal(0);
     setAktuellRecommendations(null);
     setAktuellTotal(0);
-    setArchiveLoading(true);
     setArchiveError(null);
     navigate("entdecken");
-    try {
-      await loadArchivePage(result.profile, 0, "replace");
-    } catch {
-      setArchiveRecommendations(null);
-      setArchiveError(
-        "Die Archivempfehlungen konnten gerade nicht geladen werden. Bitte versuche es noch einmal.",
-      );
-    } finally {
-      setArchiveLoading(false);
-    }
   }
 
   async function loadMoreArchiveRecommendations(): Promise<void> {
@@ -440,6 +492,18 @@ export function App(): ReactElement {
     navigate("musikprofil");
   }
 
+  function retryArchiveLoad(): void {
+    setArchiveError(null);
+    setArchiveRecommendations(null);
+    setArchiveLoading(false);
+  }
+
+  function retryAktuellLoad(): void {
+    setAktuellError(null);
+    setAktuellRecommendations(null);
+    setAktuellLoading(false);
+  }
+
   const archiveFilterSummary =
     profileSession !== null ? buildFilterSummaryChips(profileSession) : undefined;
   const aktuellFilterSummary =
@@ -492,6 +556,7 @@ export function App(): ReactElement {
           canLoadMore={canLoadMoreAktuell}
           error={aktuellError}
           filterSummary={aktuellFilterSummary}
+          hasUnsavedProfileChanges={hasUnsavedProfileChanges}
           highlights={
             aktuellRecommendations !== null
               ? buildAktuellHighlights(aktuellRecommendations)
@@ -499,11 +564,16 @@ export function App(): ReactElement {
           }
           isLoading={aktuellLoading}
           isLoadingMore={aktuellLoadingMore}
+          isSavingProfileChanges={isSavingProfileChanges}
           onAdjustFilters={adjustFilters}
           onCreatePlaylist={createPlaylist}
           onEditProfile={editProfile}
           onLoadMore={loadMoreAktuellRecommendations}
+          onRetry={retryAktuellLoad}
+          onSaveProfileChanges={saveProfileChanges}
           onUpdateRoundsChange={handleUpdateRoundsChange}
+          profileChangesError={profileChangesError}
+          profileChangesSavedMessage={profileChangesSavedMessage}
           profileExists={temporaryProfile !== null}
           recommendations={aktuellRecommendations}
           total={aktuellTotal}
@@ -516,12 +586,18 @@ export function App(): ReactElement {
           canLoadMore={canLoadMoreArchive}
           error={archiveError}
           filterSummary={archiveFilterSummary}
+          hasUnsavedProfileChanges={hasUnsavedProfileChanges}
           isLoading={archiveLoading}
           isLoadingMore={archiveLoadingMore}
+          isSavingProfileChanges={isSavingProfileChanges}
           onAdjustFilters={adjustFilters}
           onCreatePlaylist={createPlaylist}
           onEditProfile={editProfile}
           onLoadMore={loadMoreArchiveRecommendations}
+          onRetry={retryArchiveLoad}
+          onSaveProfileChanges={saveProfileChanges}
+          profileChangesError={profileChangesError}
+          profileChangesSavedMessage={profileChangesSavedMessage}
           profileExists={temporaryProfile !== null}
           recommendations={archiveRecommendations}
           savePrompt={savePromptSlot}
@@ -536,7 +612,7 @@ export function App(): ReactElement {
           initialPresetId={profileSession?.presetId}
           initialProfile={temporaryProfile}
           initialStep={profileEditStep}
-          isSubmitting={archiveLoading}
+          isSubmitting={false}
           onFinish={finishSetup}
         />
       )}
@@ -581,14 +657,20 @@ interface AktuellDiscoverPageProps {
   canLoadMore: boolean;
   error: string | null;
   filterSummary?: string[];
+  hasUnsavedProfileChanges: boolean;
   highlights: ReturnType<typeof buildAktuellHighlights>;
   isLoading: boolean;
   isLoadingMore: boolean;
+  isSavingProfileChanges: boolean;
   onAdjustFilters: () => void;
   onCreatePlaylist: (source: RecommendationSource) => void;
   onEditProfile: () => void;
   onLoadMore: () => void;
+  onRetry: () => void;
+  onSaveProfileChanges: () => void;
   onUpdateRoundsChange: (value: string) => void;
+  profileChangesError: string | null;
+  profileChangesSavedMessage: string | null;
   profileExists: boolean;
   recommendations: Recommendation[] | null;
   total: number;
@@ -600,14 +682,20 @@ function AktuellDiscoverPage({
   canLoadMore,
   error,
   filterSummary,
+  hasUnsavedProfileChanges,
   highlights,
   isLoading,
   isLoadingMore,
+  isSavingProfileChanges,
   onAdjustFilters,
   onCreatePlaylist,
   onEditProfile,
   onLoadMore,
+  onRetry,
+  onSaveProfileChanges,
   onUpdateRoundsChange,
+  profileChangesError,
+  profileChangesSavedMessage,
   profileExists,
   recommendations,
   total,
@@ -645,6 +733,9 @@ function AktuellDiscoverPage({
         <p className="eyebrow">Aktuell</p>
         <h1>Neue Rezensionen sind gerade nicht erreichbar</h1>
         <p>{error}</p>
+        <button className="primary-button" onClick={onRetry} type="button">
+          Erneut versuchen
+        </button>
         <button className="secondary-button" onClick={onEditProfile} type="button">
           Musikprofil anpassen
         </button>
@@ -659,16 +750,23 @@ function AktuellDiscoverPage({
       {error !== null && recommendations !== null && (
         <p className="form-error archive-inline-error">{error}</p>
       )}
+      {profileChangesError !== null && (
+        <p className="form-error archive-inline-error">{profileChangesError}</p>
+      )}
       <RecommendationList
         canLoadMore={canLoadMore}
         filterSummary={filterSummary}
+        hasUnsavedProfileChanges={hasUnsavedProfileChanges}
         highlights={highlights}
+        isSavingProfileChanges={isSavingProfileChanges}
         loadingMore={isLoadingMore}
         message={`${total} neue Rezensionen im gewählten Zeitraum. ${loadedCount} werden gerade angezeigt.`}
         onAdjustFilters={onAdjustFilters}
         onCreatePlaylist={onCreatePlaylist}
         onLoadMore={onLoadMore}
+        onSaveProfileChanges={onSaveProfileChanges}
         onUpdateRoundsChange={onUpdateRoundsChange}
+        profileChangesSavedMessage={profileChangesSavedMessage}
         recommendations={recommendations ?? []}
         source="aktuell"
         title="Neue Rezensionen für dich"
@@ -684,12 +782,18 @@ interface ArchiveDiscoverPageProps {
   canLoadMore: boolean;
   error: string | null;
   filterSummary?: string[];
+  hasUnsavedProfileChanges: boolean;
   isLoading: boolean;
   isLoadingMore: boolean;
+  isSavingProfileChanges: boolean;
   onAdjustFilters: () => void;
   onCreatePlaylist: (source: RecommendationSource) => void;
   onEditProfile: () => void;
   onLoadMore: () => void;
+  onRetry: () => void;
+  onSaveProfileChanges: () => void;
+  profileChangesError: string | null;
+  profileChangesSavedMessage: string | null;
   profileExists: boolean;
   recommendations: Recommendation[] | null;
   savePrompt: ReactElement | null;
@@ -700,12 +804,18 @@ function ArchiveDiscoverPage({
   canLoadMore,
   error,
   filterSummary,
+  hasUnsavedProfileChanges,
   isLoading,
   isLoadingMore,
+  isSavingProfileChanges,
   onAdjustFilters,
   onCreatePlaylist,
   onEditProfile,
   onLoadMore,
+  onRetry,
+  onSaveProfileChanges,
+  profileChangesError,
+  profileChangesSavedMessage,
   profileExists,
   recommendations,
   savePrompt,
@@ -739,6 +849,9 @@ function ArchiveDiscoverPage({
         <p className="eyebrow">Entdecken</p>
         <h1>Das Archiv ist gerade nicht erreichbar</h1>
         <p>{error}</p>
+        <button className="primary-button" onClick={onRetry} type="button">
+          Erneut versuchen
+        </button>
         <button className="secondary-button" onClick={onEditProfile} type="button">
           Musikprofil anpassen
         </button>
@@ -753,14 +866,21 @@ function ArchiveDiscoverPage({
       {error !== null && recommendations !== null && (
         <p className="form-error archive-inline-error">{error}</p>
       )}
+      {profileChangesError !== null && (
+        <p className="form-error archive-inline-error">{profileChangesError}</p>
+      )}
       <RecommendationList
         canLoadMore={canLoadMore}
         filterSummary={filterSummary}
+        hasUnsavedProfileChanges={hasUnsavedProfileChanges}
+        isSavingProfileChanges={isSavingProfileChanges}
         loadingMore={isLoadingMore}
         message={`${total} Alben passen zu deinen Einstellungen. ${loadedCount} werden gerade angezeigt.`}
         onAdjustFilters={onAdjustFilters}
         onCreatePlaylist={onCreatePlaylist}
         onLoadMore={onLoadMore}
+        onSaveProfileChanges={onSaveProfileChanges}
+        profileChangesSavedMessage={profileChangesSavedMessage}
         recommendations={recommendations ?? []}
         savePrompt={savePrompt}
         source="entdecken"

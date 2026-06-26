@@ -239,7 +239,12 @@ export function ProfileSetupShell({
   }
 
   function navigateToStep(target: SetupStep): void {
-    if (!canNavigateToSetupStep(step, target)) {
+    if (
+      !canNavigateToSetupStep(step, target, {
+        hasBroadSelection: selectedBroadCategories.length > 0,
+        hasDetailSelection: selectedCommunityIds.length > 0,
+      })
+    ) {
       return;
     }
     setStep(target);
@@ -266,7 +271,10 @@ export function ProfileSetupShell({
       <div className="setup-progress" aria-label="Musikprofil Fortschritt">
         {SETUP_STEPS.map((progressStep) => {
           const isActive = step === progressStep.id;
-          const canNavigate = canNavigateToSetupStep(step, progressStep.id);
+          const canNavigate = canNavigateToSetupStep(step, progressStep.id, {
+            hasBroadSelection: selectedBroadCategories.length > 0,
+            hasDetailSelection: selectedCommunityIds.length > 0,
+          });
           return (
             <button
               aria-current={isActive ? "step" : undefined}

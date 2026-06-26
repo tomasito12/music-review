@@ -12,10 +12,30 @@ const SETUP_STEP_ORDER: Record<SetupStep, number> = {
   filters: 2,
 };
 
-/** Whether the progress bar may jump to an earlier or current wizard step. */
+export interface SetupStepNavigationContext {
+  hasBroadSelection: boolean;
+  hasDetailSelection: boolean;
+}
+
+/** Whether the progress bar may jump to another wizard step. */
 export function canNavigateToSetupStep(
   current: SetupStep,
   target: SetupStep,
+  context: SetupStepNavigationContext = {
+    hasBroadSelection: false,
+    hasDetailSelection: false,
+  },
 ): boolean {
-  return SETUP_STEP_ORDER[target] <= SETUP_STEP_ORDER[current];
+  const currentOrder = SETUP_STEP_ORDER[current];
+  const targetOrder = SETUP_STEP_ORDER[target];
+  if (targetOrder <= currentOrder) {
+    return true;
+  }
+  if (target === "details" && context.hasBroadSelection) {
+    return true;
+  }
+  if (target === "filters" && context.hasDetailSelection) {
+    return true;
+  }
+  return false;
 }
