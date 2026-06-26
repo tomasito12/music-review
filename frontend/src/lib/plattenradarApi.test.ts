@@ -4,6 +4,7 @@ import { ApiClient } from "./apiClient";
 import {
   createTemporaryTasteProfile,
   DEFAULT_BALANCED_FILTER_SETTINGS,
+  exportPlaylist,
   filterSettingsFromPreset,
   loadArchiveRecommendations,
   loginAccount,
@@ -288,6 +289,47 @@ describe("loadNewReviewRecommendations", () => {
       limit: 20,
       offset: 0,
       profile: temporaryProfileToApi(createTemporaryTasteProfile(["C001"])),
+    });
+  });
+});
+
+describe("exportPlaylist", () => {
+  it("posts playlist export settings to the API", async () => {
+    const fetchMock = vi.fn().mockResolvedValue(
+      new Response(
+        JSON.stringify({
+          source: "archive",
+          name: "Test",
+          format: "txt",
+          filename: "test.txt",
+          content_type: "text/plain",
+          content: "Artist - Track",
+          items: [],
+        }),
+        { status: 200 },
+      ),
+    );
+    vi.stubGlobal("fetch", fetchMock);
+
+    const profile = createTemporaryTasteProfile(["C001"]);
+    const result = await exportPlaylist(new ApiClient({ baseUrl: "https://api.example.test" }), {
+      source: "entdecken",
+      profile,
+      name: "Test",
+      targetCount: 20,
+      focus: "balanced",
+      variation: 0.35,
+      updateRounds: "4",
+      format: "txt",
+    });
+
+    expect(result.filename).toBe("test.txt");
+    const requestBody = JSON.parse(String(fetchMock.mock.calls[0]?.[1]?.body));
+    expect(requestBody).toMatchObject({
+      source: "archive",
+      playlist_name: "Test",
+      target_count: 20,
+      format: "txt",
     });
   });
 });

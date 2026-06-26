@@ -1,23 +1,111 @@
-import { useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import type { ReactElement } from "react";
 
-import type { PlaylistSettings, RecommendationSource } from "../types";
+import { UPDATE_ROUND_OPTIONS } from "../lib/aktuellPage";
+import type { ApiClient } from "../lib/apiClient";
+import { exportPlaylist } from "../lib/plattenradarApi";
+import type { TemporaryTasteProfile } from "../lib/plattenradarApi";
+import {
+  defaultPlaylistName,
+  downloadPlaylistContent,
+  playlistItemsToCsv,
+} from "../lib/playlistExport";
+import type { PlaylistExportResult } from "../lib/playlistExport";
+import type { RecommendationSource } from "../types";
 
 interface PlaylistGeneratorProps {
+  apiClient: () => ApiClient;
   initialSource: RecommendationSource;
+  onEditProfile: () => void;
+  profile: TemporaryTasteProfile | null;
+  updateRounds: string;
 }
 
 export function PlaylistGenerator({
+  apiClient,
   initialSource,
+  onEditProfile,
+  profile,
+  updateRounds: initialUpdateRounds,
 }: PlaylistGeneratorProps): ReactElement {
   const [source, setSource] = useState<RecommendationSource>(initialSource);
-  const settings: PlaylistSettings = {
+  const [updateRounds, setUpdateRounds] = useState(initialUpdateRounds);
+  const [trackCount, setTrackCount] = useState(30);
+  const [focus, setFocus] = useState<"balanced" | "top">("balanced");
+  const [variation, setVariation] = useState(0.35);
+  const [name, setName] = useState(() => defaultPlaylistName());
+  const [isGenerating, setIsGenerating] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const [exportResult, setExportResult] = useState<PlaylistExportResult | null>(null);
+  const [copyMessage, setCopyMessage] = useState<string | null>(null);
+
+  useEffect(() => {
+    setSource(initialSource);
+  }, [initialSource]);
+
+  useEffect(() => {
+    setUpdateRounds(initialUpdateRounds);
+  }, [initialUpdateRounds]);
+
+  const generatePlaylist = useCallback(async () => {
+    if (profile === null) {
+      return;
+    }
+
+    setIsGenerating(true);
+    setError(null);
+    setCopyMessage(null);
+
+    try {
+      const result = await exportPlaylist(apiClient(), {
+        source,
+        profile,
+        name,
+        targetCount: trackCount,
+        focus,
+        variation,
+        updateRounds,
+        format: "txt",
+      });
+      setExportResult(result);
+    } catch (generateError) {
+      const message =
+        generateError instanceof Error
+          ? generateError.message
+          : "Die Playlist konnte nicht erzeugt werden.";
+      setError(message);
+      setExportResult(null);
+    } finally {
+      setIsGenerating(false);
+    }
+  }, [
+    apiClient,
+    focus,
+    name,
+    profile,
     source,
-    trackCount: 30,
-    focus: "balanced",
-    variation: 0.35,
-    name: `Plattenradar ${new Date().toISOString().slice(0, 10)}`,
-  };
+    trackCount,
+    updateRounds,
+    variation,
+  ]);
+
+  if (profile === null) {
+    return (
+      <section className="playlist-page">
+        <p className="eyebrow">Playlists</p>
+        <h1>Neue Playlist erzeugen</h1>
+        <div className="empty-results">
+          <p>
+            Für Playlist-Vorschläge brauchst du zuerst ein Musikprofil mit
+            Stilrichtungen und Filtern.
+          </p>
+          <button className="primary-button" onClick={onEditProfile} type="button">
+            Musikprofil anlegen
+          </button>
+        </div>
+      </section>
+    );
+  }
 
   return (
     <section className="playlist-page">
@@ -31,7 +119,10 @@ export function PlaylistGenerator({
         <label>
           Musik auswählen aus
           <select
-            onChange={(event) => setSource(event.target.value as RecommendationSource)}
+            onChange={(event) => {
+              setSource(event.target.value as RecommendationSource);
+              setExportResult(null);
+            }}
             value={source}
           >
             <option value="aktuell">Den letzten Updates</option>
@@ -41,20 +132,35 @@ export function PlaylistGenerator({
         {source === "aktuell" && (
           <label>
             Zeitraum
-            <select defaultValue="4">
-              <option value="1">Der letzten Update-Runde</option>
-              <option value="4">Den letzten 4 Update-Runden</option>
-              <option value="8">Den letzten 8 Update-Runden</option>
+            <select
+              onChange={(event) => setUpdateRounds(event.target.value)}
+              value={updateRounds}
+            >
+              {UPDATE_ROUND_OPTIONS.map((option) => (
+                <option key={option.value} value={option.value}>
+                  {option.label}
+                </option>
+              ))}
             </select>
           </label>
         )}
         <label>
           Anzahl Tracks
-          <input defaultValue={settings.trackCount} min="5" step="5" type="number" />
+          <input
+            max="100"
+            min="5"
+            onChange={(event) => setTrackCount(Number(event.target.value))}
+            step="1"
+            type="number"
+            value={trackCount}
+          />
         </label>
         <label>
           Fokus
-          <select defaultValue={settings.focus}>
+          <select
+            onChange={(event) => setFocus(event.target.value as "balanced" | "top")}
+            value={focus}
+          >
             <option value="balanced">Breit über die Liste</option>
             <option value="top">Stärker auf Top-Treffer</option>
           </select>
@@ -64,11 +170,12 @@ export function PlaylistGenerator({
             Abwechslung
             <input
               aria-label="Abwechslung in der Archiv-Playlist"
-              defaultValue={settings.variation}
               max="1"
               min="0"
+              onChange={(event) => setVariation(Number(event.target.value))}
               step="0.05"
               type="range"
+              value={variation}
             />
             <span className="field-hint">
               Mehr Abwechslung verteilt die Auswahl stärker über die Rangliste.
@@ -77,12 +184,113 @@ export function PlaylistGenerator({
         )}
         <label>
           Playlist-Name
-          <input defaultValue={settings.name} type="text" />
+          <input onChange={(event) => setName(event.target.value)} type="text" value={name} />
         </label>
-        <button className="primary-button" type="button">
-          Playlist vorbereiten
+        <button
+          className="primary-button"
+          disabled={isGenerating}
+          onClick={() => void generatePlaylist()}
+          type="button"
+        >
+          {isGenerating ? "Playlist wird erzeugt …" : "Playlist vorbereiten"}
         </button>
+        {error !== null && (
+          <div className="playlist-error" role="alert">
+            <p>{error}</p>
+            <button
+              className="secondary-button"
+              disabled={isGenerating}
+              onClick={() => void generatePlaylist()}
+              type="button"
+            >
+              Erneut versuchen
+            </button>
+          </div>
+        )}
       </div>
+      {exportResult !== null && (
+        <div className="playlist-results">
+          <h2>{exportResult.name}</h2>
+          {exportResult.items.length < trackCount && (
+            <p className="playlist-warning">
+              Es wurden {exportResult.items.length} von {trackCount} gewünschten Titeln
+              gefunden (wenige eindeutige Tracks im Pool).
+            </p>
+          )}
+          {exportResult.items.length === 0 ? (
+            <p>
+              Es konnten keine Playlist-Vorschläge erzeugt werden. Bitte Pool oder
+              Einstellungen prüfen.
+            </p>
+          ) : (
+            <>
+              <div className="playlist-actions">
+                <button
+                  className="secondary-button"
+                  onClick={() => {
+                    void navigator.clipboard.writeText(exportResult.content).then(() => {
+                      setCopyMessage("In die Zwischenablage kopiert.");
+                    });
+                  }}
+                  type="button"
+                >
+                  Text kopieren
+                </button>
+                <button
+                  className="secondary-button"
+                  onClick={() =>
+                    downloadPlaylistContent(
+                      exportResult.filename,
+                      exportResult.content,
+                      exportResult.content_type,
+                    )
+                  }
+                  type="button"
+                >
+                  Als TXT herunterladen
+                </button>
+                <button
+                  className="secondary-button"
+                  onClick={() => {
+                    const csv = playlistItemsToCsv(exportResult.items);
+                    downloadPlaylistContent(
+                      exportResult.filename.replace(/\.txt$/i, ".csv"),
+                      csv,
+                      "text/csv;charset=utf-8",
+                    );
+                  }}
+                  type="button"
+                >
+                  Als CSV herunterladen
+                </button>
+              </div>
+              {copyMessage !== null && <p className="field-hint">{copyMessage}</p>}
+              <table className="playlist-table">
+                <thead>
+                  <tr>
+                    <th>Künstler</th>
+                    <th>Album</th>
+                    <th>Track</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {exportResult.items.map((item) => (
+                    <tr key={`${item.review_id}-${item.track_title}`}>
+                      <td>{item.artist}</td>
+                      <td>{item.album}</td>
+                      <td>{item.track_title}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+              <label>
+                Für TuneMyMusic (Freitext)
+                <textarea readOnly rows={8} value={exportResult.content} />
+              </label>
+            </>
+          )}
+        </div>
+      )}
       <aside className="import-note">
         <h2>Danach</h2>
         <p>

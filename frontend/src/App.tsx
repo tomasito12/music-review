@@ -605,7 +605,13 @@ export function App(): ReactElement {
         />
       )}
       {route === "playlists" && (
-        <PlaylistGenerator initialSource={playlistSource} />
+        <PlaylistGenerator
+          apiClient={apiClient}
+          initialSource={playlistSource}
+          onEditProfile={editProfile}
+          profile={temporaryProfile}
+          updateRounds={updateRounds}
+        />
       )}
       {route === "musikprofil" && (
         <ProfileSetupShell

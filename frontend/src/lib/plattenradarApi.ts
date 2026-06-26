@@ -1,4 +1,9 @@
 import { ApiClient } from "./apiClient";
+import type {
+  PlaylistExportRequestOptions,
+  PlaylistExportResult,
+} from "./playlistExport";
+import { buildPlaylistExportPayload } from "./playlistExport";
 
 import type { Recommendation, RecommendationTag } from "../types";
 
@@ -247,6 +252,20 @@ export async function saveTasteProfile(
     throw new Error("Taste profile was not saved.");
   }
   return apiProfileToTemporary(response.profile);
+}
+
+export type { PlaylistExportResult } from "./playlistExport";
+export { buildPlaylistExportPayload } from "./playlistExport";
+
+/** Generates a synchronous playlist export from the API. */
+export async function exportPlaylist(
+  client: ApiClient,
+  options: PlaylistExportRequestOptions,
+): Promise<PlaylistExportResult> {
+  return client.post<PlaylistExportResult>(
+    "/v1/playlists/export",
+    buildPlaylistExportPayload(options),
+  );
 }
 
 /** Loads one page of archive recommendations for a temporary taste profile. */
