@@ -1526,6 +1526,33 @@ Letzte Verfeinerung:
   Rangliste wird deutlich erhöht. Die drei Ebenen sollen separat atmen können,
   ohne den zusammenhängenden Charakter der persönlichen Auswahl aufzulösen.
 
+## Erster Echter Frontend-Durchstich
+
+Datum: 2026-06-26
+
+Umgesetzt:
+
+- `GET /v1/taste-communities` liefert dem Frontend auswählbare Community-IDs
+  mit lesbaren Genre-Labels.
+- Das Musikprofil lädt diese Optionen aus der API und kann daraus ein
+  temporäres, ausgewogenes Geschmacksprofil bauen.
+- Nach Abschluss lädt `Entdecken` echte Archivempfehlungen über
+  `POST /v1/recommendations/archive`; die Mock-Liste wird dort nicht mehr
+  verwendet.
+- Empfehlungskarten werden aus dem API-Vertrag gemappt und behalten Artist,
+  Album, Plattentests-Wertung, Score, Label, Textauszug, Rezension-Link und
+  passende Style-Tags.
+- Lade-, Leer- und Fehlerzustände sind als echte Seitenzustände vorgesehen.
+
+Bewusste Zwischenstufe:
+
+- Der vollständige, bestehende Schritt-1-bis-3-Geschmackswizard ist noch nicht
+  migriert. Die aktuelle Auswahl bindet nur Stil-Communities und die
+  ausgewogenen Standardfilter an, damit der Kernflow bereits real funktioniert.
+- Die nächste große fachliche Aufgabe ist die vollständige Übernahme dieser
+  Schrittfolge einschließlich Feinwahl, Stilgewichtung und semantischer
+  Filtermodi.
+
 ## Streamlit-Audit Nach Feedbackrunde 1
 
 Datum: 2026-06-25

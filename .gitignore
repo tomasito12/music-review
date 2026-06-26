@@ -13,6 +13,9 @@ dist/
 venv/
 env/
 node_modules/
+frontend/screenshots/*.png
+frontend/playwright-report/
+frontend/test-results/
 
 # IDE / editor
 .vscode/

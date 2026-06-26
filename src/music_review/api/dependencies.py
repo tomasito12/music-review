@@ -14,6 +14,7 @@ from music_review.dashboard.user_db import get_connection
 from music_review.data_access.affinities import affinities_by_review_id, affinities_list
 from music_review.data_access.communities import (
     load_artist_communities,
+    load_broad_categories_res_10,
     load_communities_res_10,
     load_genre_labels_res_10,
 )
@@ -52,6 +53,9 @@ class CorpusProvider(Protocol):
 
     def communities(self) -> Sequence[Mapping[str, Any]]:
         """Return community metadata."""
+
+    def broad_categories(self) -> tuple[list[str], dict[str, list[str]]]:
+        """Return broad category labels and community assignments."""
 
     def genre_labels(self) -> Mapping[str, str]:
         """Return readable community labels."""
@@ -99,6 +103,10 @@ class FileCorpusProvider:
     def communities(self) -> Sequence[Mapping[str, Any]]:
         """Return local resolution-10 community metadata."""
         return load_communities_res_10()
+
+    def broad_categories(self) -> tuple[list[str], dict[str, list[str]]]:
+        """Return local broad categories and community assignments."""
+        return load_broad_categories_res_10()
 
     def genre_labels(self) -> Mapping[str, str]:
         """Return local generated community labels."""

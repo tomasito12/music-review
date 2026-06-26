@@ -273,6 +273,20 @@ class CommunityMatch(ApiModel):
     matched: bool = True
 
 
+class TasteCommunity(ApiModel):
+    """One selectable music-style community for the profile setup."""
+
+    id: str
+    label: str
+    broad_categories: tuple[str, ...] = ()
+
+    @field_validator("broad_categories", mode="before")
+    @classmethod
+    def _normalize_broad_categories(cls, value: Any) -> tuple[str, ...]:
+        """Normalize broad category labels."""
+        return _str_tuple(value)
+
+
 class Recommendation(ApiModel):
     """One ranked album recommendation for a taste profile."""
 

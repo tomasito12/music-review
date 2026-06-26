@@ -61,6 +61,10 @@ class FakeCorpusProvider:
         """Return fake community metadata."""
         return [{"id": "C001", "centroid": "Indie Rock"}]
 
+    def broad_categories(self) -> tuple[list[str], dict[str, list[str]]]:
+        """Return fake broad category mappings."""
+        return ["Rock & Alternative"], {"C001": ["Rock & Alternative"]}
+
     def genre_labels(self) -> Mapping[str, str]:
         """Return fake community labels."""
         return {"C001": "Indie Rock"}
@@ -205,6 +209,20 @@ def test_taste_filter_ui_endpoint_exposes_frontend_labels() -> None:
         "years",
         "plattenlabels",
     }
+
+
+def test_taste_communities_endpoint_exposes_readable_profile_options() -> None:
+    """Profile setup receives stable ids and user-facing community labels."""
+    response = _client().get("/v1/taste-communities")
+
+    assert response.status_code == 200
+    assert response.json() == [
+        {
+            "id": "C001",
+            "label": "Indie Rock",
+            "broad_categories": ["Rock & Alternative"],
+        },
+    ]
 
 
 def test_archive_recommendations_endpoint_ranks_profile_matches() -> None:

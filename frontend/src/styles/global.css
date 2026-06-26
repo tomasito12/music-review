@@ -501,7 +501,8 @@ p {
 
 .setup-shell,
 .playlist-page,
-.account-page {
+.account-page,
+.empty-results {
   max-width: 960px;
 }
 
@@ -542,11 +543,17 @@ p {
 .setup-summary,
 .generator-card,
 .import-note,
-.account-page {
+.account-page,
+.empty-results {
   border: 1px solid var(--line);
   border-radius: 8px;
   padding: 1.2rem;
   background: rgba(255, 253, 250, 0.92);
+}
+
+.empty-results .primary-button,
+.empty-results .secondary-button {
+  margin-top: 0.5rem;
 }
 
 .choice-grid {
@@ -564,6 +571,46 @@ p {
   text-align: left;
   font-size: 0.92rem;
   font-weight: 600;
+}
+
+.choice-card small {
+  display: block;
+  margin-top: 0.35rem;
+  color: var(--muted);
+  font-size: 0.72rem;
+  font-weight: 400;
+  line-height: 1.35;
+}
+
+.choice-card.selected {
+  border-color: var(--accent);
+  color: var(--accent);
+  background: var(--accent-soft);
+}
+
+.choice-grid-details {
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+
+.form-error {
+  color: #9b1c26;
+  font-size: 0.9rem;
+}
+
+.setup-summary-section {
+  display: grid;
+  gap: 0.2rem;
+  margin: 0.8rem 0;
+  color: var(--muted);
+  font-size: 0.86rem;
+  line-height: 1.45;
+}
+
+.setup-summary-section strong {
+  color: var(--ink);
+  font-size: 0.78rem;
+  letter-spacing: 0.03em;
+  text-transform: uppercase;
 }
 
 .setup-summary ul {

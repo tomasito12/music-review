@@ -55,6 +55,10 @@ Music Review is a Python 3.12+ CLI-based data pipeline that scrapes album review
 | Artist reference graph | `hatch run graph-build` — GraphML from `data/reviews.jsonl`; add `--export-communities 10` (+ `--export-album-affinities`) for communities; default `--communities-mode incremental` (stable IDs), `--communities-mode louvain` to recluster |
 | Community LLM labels | `hatch run community-genre-labels` — `--only-missing` merges with existing JSON and only labels new `community_id` values |
 | Streamlit dashboard | `hatch run dashboard` (browse reviews by artist/album) |
+| FastAPI (Plattenradar v1) | `hatch run api` |
+| React frontend dev server | `hatch run frontend` (after `hatch run frontend-install`) |
+| Frontend unit tests | `hatch run frontend-test` |
+| Frontend UI screenshots | `hatch run frontend-screenshot` (after `hatch run frontend-playwright-install`) |
 | Install pre-commit hooks | `hatch run pre-commit install` |
 
 ### Streamlit UI (German copy)

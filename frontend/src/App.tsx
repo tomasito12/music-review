@@ -11,10 +11,17 @@ import {
   aktuellHighlights,
   aktuellRecommendations,
   aktuellSummary,
-  entdeckenRecommendations,
 } from "./data/mockRecommendations";
+import { ApiClient } from "./lib/apiClient";
+import { loadArchiveRecommendations } from "./lib/plattenradarApi";
 import { routeFromPath } from "./lib/routes";
-import type { AppRoute, RecommendationSource, UserState } from "./types";
+import type { TemporaryTasteProfile } from "./lib/plattenradarApi";
+import type {
+  AppRoute,
+  Recommendation,
+  RecommendationSource,
+  UserState,
+} from "./types";
 
 export function App(): ReactElement {
   const [route, setRoute] = useState<AppRoute>(() =>
@@ -25,6 +32,14 @@ export function App(): ReactElement {
   const [authMode, setAuthMode] = useState<"login" | "save-profile">("login");
   const [playlistSource, setPlaylistSource] =
     useState<RecommendationSource>("aktuell");
+  const [temporaryProfile, setTemporaryProfile] =
+    useState<TemporaryTasteProfile | null>(null);
+  const [archiveRecommendations, setArchiveRecommendations] = useState<
+    Recommendation[] | null
+  >(null);
+  const [archiveTotal, setArchiveTotal] = useState(0);
+  const [archiveLoading, setArchiveLoading] = useState(false);
+  const [archiveError, setArchiveError] = useState<string | null>(null);
 
   const pageTitle = useMemo(() => {
     switch (route) {
@@ -62,9 +77,24 @@ export function App(): ReactElement {
     setAuthOpen(true);
   }
 
-  function finishSetup(): void {
+  async function finishSetup(profile: TemporaryTasteProfile): Promise<void> {
     setUserState("anonymous_temporary_profile");
+    setTemporaryProfile(profile);
+    setArchiveLoading(true);
+    setArchiveError(null);
     navigate("entdecken");
+    try {
+      const result = await loadArchiveRecommendations(new ApiClient(), profile);
+      setArchiveRecommendations(result.recommendations);
+      setArchiveTotal(result.total);
+    } catch {
+      setArchiveRecommendations(null);
+      setArchiveError(
+        "Die Archivempfehlungen konnten gerade nicht geladen werden. Bitte versuche es noch einmal.",
+      );
+    } finally {
+      setArchiveLoading(false);
+    }
   }
 
   return (
@@ -92,18 +122,22 @@ export function App(): ReactElement {
         />
       )}
       {route === "entdecken" && (
-        <RecommendationList
-          message="Das Archiv ist der große Fundus: Alben aus vielen Jahren plattentests.de, sortiert nach deiner Stilpassung und deinen Filtereinstellungen."
+        <ArchiveDiscoverPage
+          error={archiveError}
+          isLoading={archiveLoading}
           onCreatePlaylist={createPlaylist}
-          recommendations={entdeckenRecommendations}
-          source="entdecken"
-          title="Im Archiv entdecken"
+          onEditProfile={() => navigate("musikprofil")}
+          profileExists={temporaryProfile !== null}
+          recommendations={archiveRecommendations}
+          total={archiveTotal}
         />
       )}
       {route === "playlists" && (
         <PlaylistGenerator initialSource={playlistSource} />
       )}
-      {route === "musikprofil" && <ProfileSetupShell onFinish={finishSetup} />}
+      {route === "musikprofil" && (
+        <ProfileSetupShell isSubmitting={archiveLoading} onFinish={finishSetup} />
+      )}
       {route === "konto" && (
         <section className="account-page">
           <p className="eyebrow">Konto</p>
@@ -121,5 +155,70 @@ export function App(): ReactElement {
         <AuthDialog mode={authMode} onClose={() => setAuthOpen(false)} />
       )}
     </AppShell>
+  );
+}
+
+interface ArchiveDiscoverPageProps {
+  error: string | null;
+  isLoading: boolean;
+  onCreatePlaylist: (source: RecommendationSource) => void;
+  onEditProfile: () => void;
+  profileExists: boolean;
+  recommendations: Recommendation[] | null;
+  total: number;
+}
+
+function ArchiveDiscoverPage({
+  error,
+  isLoading,
+  onCreatePlaylist,
+  onEditProfile,
+  profileExists,
+  recommendations,
+  total,
+}: ArchiveDiscoverPageProps): ReactElement {
+  if (!profileExists) {
+    return (
+      <section className="empty-results">
+        <p className="eyebrow">Entdecken</p>
+        <h1>Dein Archiv wartet auf dein Musikprofil</h1>
+        <p>Wähle zuerst ein paar Stilrichtungen, damit die Auswahl zu dir passt.</p>
+        <button className="primary-button" onClick={onEditProfile} type="button">
+          Musikprofil erstellen
+        </button>
+      </section>
+    );
+  }
+
+  if (isLoading) {
+    return (
+      <section className="empty-results">
+        <p className="eyebrow">Entdecken</p>
+        <h1>Das Archiv wird für dich durchsucht</h1>
+      </section>
+    );
+  }
+
+  if (error !== null) {
+    return (
+      <section className="empty-results">
+        <p className="eyebrow">Entdecken</p>
+        <h1>Das Archiv ist gerade nicht erreichbar</h1>
+        <p>{error}</p>
+        <button className="secondary-button" onClick={onEditProfile} type="button">
+          Musikprofil anpassen
+        </button>
+      </section>
+    );
+  }
+
+  return (
+    <RecommendationList
+      message={`${total} Alben aus dem Plattentests-Archiv passen zu deinen aktuellen Einstellungen.`}
+      onCreatePlaylist={onCreatePlaylist}
+      recommendations={recommendations ?? []}
+      source="entdecken"
+      title="Im Archiv entdecken"
+    />
   );
 }

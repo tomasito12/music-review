@@ -9,6 +9,7 @@ from datetime import UTC, datetime
 from typing import Any, Literal
 
 from fastapi import Depends, FastAPI, Header, HTTPException, status
+from fastapi.middleware.cors import CORSMiddleware
 
 from music_review.api.dependencies import (
     CorpusProvider,
@@ -34,6 +35,7 @@ from music_review.application.models import (
     Recommendation,
     RecommendationSet,
     RecommendationSource,
+    TasteCommunity,
     TasteProfile,
 )
 from music_review.application.newest_reviews_service import (
@@ -76,6 +78,13 @@ def create_app() -> FastAPI:
         version="0.1.0",
         description="Private HTTP boundary for Plattenradar v1 clients.",
     )
+    app.add_middleware(
+        CORSMiddleware,
+        allow_origins=["http://127.0.0.1:5173", "http://127.0.0.1:5174"],
+        allow_credentials=False,
+        allow_methods=["*"],
+        allow_headers=["*"],
+    )
 
     @app.get("/health", response_model=HealthResponse)
     def health() -> HealthResponse:
@@ -91,6 +100,28 @@ def create_app() -> FastAPI:
     def taste_filter_ui() -> TasteFilterUiConfig:
         """Return labels and grouping for the taste filter UI."""
         return get_filter_ui_config()
+
+    @app.get("/v1/taste-communities", response_model=tuple[TasteCommunity, ...])
+    def taste_communities(
+        provider: CorpusProvider = CORPUS_PROVIDER_DEPENDENCY,
+    ) -> tuple[TasteCommunity, ...]:
+        """Return readable communities that can be selected for a taste profile."""
+        labels = provider.genre_labels()
+        _category_names, category_map = provider.broad_categories()
+        options = {
+            TasteCommunity(
+                id=str(item["id"]),
+                label=_community_label(
+                    str(item["id"]),
+                    genre_labels=labels,
+                    community=item,
+                ),
+                broad_categories=tuple(category_map.get(str(item["id"]), ())),
+            )
+            for item in provider.communities()
+            if item.get("id")
+        }
+        return tuple(sorted(options, key=lambda option: option.label.casefold()))
 
     @app.post(
         "/v1/auth/register",
