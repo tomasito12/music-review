@@ -5,6 +5,7 @@ import type { AppRoute, UserState } from "../types";
 interface AppShellProps {
   activeRoute: AppRoute;
   children: ReactNode;
+  userEmail?: string | null;
   userState: UserState;
   onNavigate: (route: AppRoute) => void;
   onLoginClick: () => void;
@@ -20,6 +21,7 @@ const navItems: Array<{ route: AppRoute; label: string }> = [
 export function AppShell({
   activeRoute,
   children,
+  userEmail = null,
   userState,
   onNavigate,
   onLoginClick,
@@ -64,7 +66,7 @@ export function AppShell({
               onClick={() => onNavigate("konto")}
               type="button"
             >
-              alex@example.com
+              {userEmail ?? "Konto"}
             </button>
           ) : (
             <button className="account-button" onClick={onLoginClick} type="button">

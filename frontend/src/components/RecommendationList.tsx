@@ -20,9 +20,13 @@ interface RecommendationListProps {
   filterSummary?: string[];
   canLoadMore?: boolean;
   loadingMore?: boolean;
+  savePrompt?: ReactElement | null;
+  updateRoundOptions?: ReadonlyArray<{ value: string; label: string }>;
+  updateRounds?: string;
   onAdjustFilters?: () => void;
   onCreatePlaylist: (source: RecommendationSource) => void;
   onLoadMore?: () => void;
+  onUpdateRoundsChange?: (value: string) => void;
 }
 
 export function RecommendationList({
@@ -35,9 +39,13 @@ export function RecommendationList({
   filterSummary,
   canLoadMore = false,
   loadingMore = false,
+  savePrompt = null,
+  updateRoundOptions,
+  updateRounds = "4",
   onAdjustFilters,
   onCreatePlaylist,
   onLoadMore,
+  onUpdateRoundsChange,
 }: RecommendationListProps): ReactElement {
   return (
     <section className="results-page">
@@ -56,14 +64,21 @@ export function RecommendationList({
         </button>
       </div>
 
+      {savePrompt}
+
       <div className="results-toolbar">
-        {source === "aktuell" && (
+        {source === "aktuell" && updateRoundOptions !== undefined && (
           <label className="range-control">
             Zeitraum
-            <select defaultValue="4">
-              <option value="1">Letzte Update-Runde</option>
-              <option value="4">Letzte 4 Update-Runden</option>
-              <option value="8">Letzte 8 Update-Runden</option>
+            <select
+              onChange={(event) => onUpdateRoundsChange?.(event.target.value)}
+              value={updateRounds}
+            >
+              {updateRoundOptions.map((option) => (
+                <option key={option.value} value={option.value}>
+                  {option.label}
+                </option>
+              ))}
             </select>
           </label>
         )}

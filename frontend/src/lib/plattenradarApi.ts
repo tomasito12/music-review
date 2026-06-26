@@ -67,6 +67,28 @@ export interface TemporaryTasteProfile {
   selected_communities: string[];
 }
 
+export interface AuthUser {
+  email: string;
+  slug: string;
+}
+
+interface AuthTokenResponse {
+  access_token: string;
+  token_type: string;
+  user: AuthUser;
+}
+
+export interface ApiTasteProfilePayload {
+  community_weights_raw: Record<string, number>;
+  filter_settings: TasteFilterSettings;
+  name: string;
+  selected_communities: string[];
+}
+
+interface TasteProfileResponse {
+  profile: ApiTasteProfilePayload | null;
+}
+
 interface ApiCommunityMatch {
   affinity: number;
   id: string;
@@ -98,6 +120,10 @@ export const ARCHIVE_PAGE_SIZE = 20;
 export interface ArchivePageRequest {
   limit?: number;
   offset?: number;
+}
+
+export interface NewReviewsPageRequest extends ArchivePageRequest {
+  newestCount?: number;
 }
 
 /** Balanced defaults used when presets are not loaded yet. */
@@ -133,6 +159,96 @@ export async function loadTasteFilterUi(
   return client.get<TasteFilterUiConfig>("/v1/taste-filter-ui");
 }
 
+/** Converts a temporary frontend profile into an API taste-profile payload. */
+export function temporaryProfileToApi(
+  profile: TemporaryTasteProfile,
+): ApiTasteProfilePayload {
+  return {
+    name: profile.name,
+    selected_communities: [...profile.selected_communities],
+    community_weights_raw: { ...profile.community_weights_raw },
+    filter_settings: normalizeFilterSettings(profile.filter_settings),
+  };
+}
+
+/** Converts a stored API profile into the temporary frontend shape. */
+export function apiProfileToTemporary(
+  profile: ApiTasteProfilePayload,
+): TemporaryTasteProfile {
+  return {
+    name: profile.name,
+    selected_communities: [...profile.selected_communities],
+    community_weights_raw: { ...profile.community_weights_raw },
+    filter_settings: normalizeFilterSettings(profile.filter_settings),
+  };
+}
+
+/** Registers a new account and optionally stores a taste profile. */
+export async function registerAccount(
+  client: ApiClient,
+  email: string,
+  password: string,
+  profile?: TemporaryTasteProfile,
+): Promise<{ token: string; user: AuthUser }> {
+  const response = await client.post<AuthTokenResponse>("/v1/auth/register", {
+    email,
+    password,
+    profile:
+      profile === undefined ? undefined : temporaryProfileToApi(profile),
+  });
+  return {
+    token: response.access_token,
+    user: response.user,
+  };
+}
+
+/** Logs in with email and password. */
+export async function loginAccount(
+  client: ApiClient,
+  email: string,
+  password: string,
+): Promise<{ token: string; user: AuthUser }> {
+  const response = await client.post<AuthTokenResponse>("/v1/auth/login", {
+    email,
+    password,
+  });
+  return {
+    token: response.access_token,
+    user: response.user,
+  };
+}
+
+/** Returns the authenticated user for a bearer token. */
+export async function fetchCurrentUser(client: ApiClient): Promise<AuthUser> {
+  return client.get<AuthUser>("/v1/me");
+}
+
+/** Loads the saved taste profile for the authenticated user. */
+export async function fetchSavedTasteProfile(
+  client: ApiClient,
+): Promise<TemporaryTasteProfile | null> {
+  const response = await client.get<TasteProfileResponse>("/v1/me/taste-profile");
+  if (response.profile === null) {
+    return null;
+  }
+  return apiProfileToTemporary(response.profile);
+}
+
+/** Replaces the authenticated user's saved taste profile. */
+export async function saveTasteProfile(
+  client: ApiClient,
+  profile: TemporaryTasteProfile,
+): Promise<TemporaryTasteProfile> {
+  const response = await client.put<TasteProfileResponse>(
+    "/v1/me/taste-profile",
+    temporaryProfileToApi(profile),
+  );
+  if (response.profile === null) {
+    throw new Error("Taste profile was not saved.");
+  }
+  return apiProfileToTemporary(response.profile);
+}
+
 /** Loads one page of archive recommendations for a temporary taste profile. */
 export async function loadArchiveRecommendations(
   client: ApiClient,
@@ -146,7 +262,34 @@ export async function loadArchiveRecommendations(
     { profile, limit, offset },
   );
   return {
-    recommendations: response.items.map(toRecommendation),
+    recommendations: response.items.map((item) => toRecommendation(item, "entdecken")),
+    total: response.total,
+  };
+}
+
+/** Loads one page of newest-review recommendations for a taste profile. */
+export async function loadNewReviewRecommendations(
+  client: ApiClient,
+  profile: TemporaryTasteProfile | null,
+  page: NewReviewsPageRequest = {},
+): Promise<{ recommendations: Recommendation[]; total: number }> {
+  const limit = page.limit ?? ARCHIVE_PAGE_SIZE;
+  const offset = page.offset ?? 0;
+  const newestCount = page.newestCount ?? 120;
+  const payload: Record<string, unknown> = {
+    limit,
+    offset,
+    newest_count: newestCount,
+  };
+  if (profile !== null) {
+    payload.profile = temporaryProfileToApi(profile);
+  }
+  const response = await client.post<ApiRecommendationSet>(
+    "/v1/recommendations/new-reviews",
+    payload,
+  );
+  return {
+    recommendations: response.items.map((item) => toRecommendation(item, "aktuell")),
     total: response.total,
   };
 }
@@ -197,7 +340,10 @@ function normalizeFilterSettings(
   };
 }
 
-function toRecommendation(item: ApiRecommendation): Recommendation {
+function toRecommendation(
+  item: ApiRecommendation,
+  source: Recommendation["source"],
+): Recommendation {
   const tags = item.matched_tags.map(toRecommendationTag);
   const fitPercent = Math.round(item.overall_score * 100);
   return {
@@ -213,7 +359,7 @@ function toRecommendation(item: ApiRecommendation): Recommendation {
     excerpt: item.text_excerpt,
     reviewUrl: item.url ?? "https://www.plattentests.de/",
     tags,
-    source: "entdecken",
+    source,
   };
 }
 
