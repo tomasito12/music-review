@@ -657,6 +657,10 @@ Noch nicht gebaut:
 - `POST /v1/taste-profiles/{profile_id}/make-default`
 - `GET /v1/reviews/{review_id}`
 - optional: `GET /v1/reviews?query=&artist=&year_min=&year_max=`
+- Favoriten (nur für eingeloggte Nutzer, siehe Abschnitt **Album-Favoriten (Zukunft)**):
+  - `GET /v1/me/favorites`
+  - `PUT /v1/me/favorites/{review_id}`
+  - `DELETE /v1/me/favorites/{review_id}`
 
 Spätere Profilregeln:
 
@@ -962,6 +966,62 @@ V1-Arbeitshypothese:
 
 > Gespeichert wird zunächst das fachliche Geschmacksprofil, nicht zwingend jede generierte Empfehlungshistorie.
 
+### Album-Favoriten (Zukunft)
+
+Nutzer sollen Alben aus Empfehlungslisten als **Favoriten** markieren können. Die Favoriten gehören zum **Nutzerkonto** und werden **dauerhaft im Profil** gespeichert — nicht nur in der aktuellen Browser-Session.
+
+Zweck:
+
+- interessante Fundstücke festhalten, ohne sofort eine Playlist zu erzeugen,
+- persönliche Sammlung über Zeit aufbauen,
+- spätere Playlist-Funktionen mit echter Nutzerintention verbinden.
+
+V1-Status:
+
+> Nicht Teil von v1. Die Spezifikation hält die Richtung fest, damit API, Datenmodell und UI sie nicht verbauen.
+
+Produktverhalten (Zielbild):
+
+- Favorit markieren ist nur für **eingeloggte Nutzer** sinnvoll; Gäste sehen höchstens einen Hinweis zum Speichern/Anmelden.
+- Ein Favorit bezieht sich auf ein **Album bzw. eine Rezension** (`review_id` als stabiler Schlüssel).
+- Favoriten werden **pro Nutzer** gespeichert, unabhängig vom aktuellen Geschmacksprofil-Entwurf.
+- In der UI reicht zunächst eine dezente Aktion auf der Empfehlungskarte (z. B. „Merken“ / „Favorit“).
+- Später kann es eine eigene Übersicht geben (z. B. unter Konto oder eigener Bereich „Favoriten“).
+
+Datenmodell (Arbeitshypothese):
+
+```json
+{
+  "review_id": 12345,
+  "artist": "Beispielkünstler",
+  "album": "Beispielalbum",
+  "saved_at": "2026-06-26T12:00:00Z",
+  "source": "archive"
+}
+```
+
+`source` dokumentiert optional, ob das Album aus `archive`, `new_reviews` oder einer anderen Liste gemerkt wurde.
+
+API-Richtung (später):
+
+- `GET /v1/me/favorites` — Liste der gemerkten Alben
+- `PUT /v1/me/favorites/{review_id}` — Album merken (idempotent)
+- `DELETE /v1/me/favorites/{review_id}` — Merken aufheben
+
+Spätere Playlist-Anbindung:
+
+- Nutzer können eine Playlist **aus ihren Favoriten** erzeugen, nicht nur aus dem aktuellen Empfehlungs-Pool.
+- Mögliche Erweiterung von `POST /v1/playlists/export`:
+  - `source: "favorites"` oder zusätzlicher Parameter `use_favorites: true`
+  - optional Filter: nur Favoriten der letzten X Wochen, nur aus `Aktuell`, nur aus `Entdecken`
+- Die bestehende Export-Pipeline (Track-Auswahl, TXT/CSV) kann wiederverwendet werden; die **Quelle** wechselt von berechneten Empfehlungen zu gespeicherten Favoriten.
+
+Architektur-Hinweise:
+
+- Favoriten sind **Nutzerdaten**, kein Teil von `TasteProfile`.
+- Empfehlungskarten sollten `review_id` zuverlässig liefern, damit Favoriten stabil sind.
+- Das Frontend sollte die Aktion visuell vorsehen, auch wenn die API erst später kommt.
+
 ### Automatische Playlist-Zustellung
 
 Playlist-Zustellung ist ein wichtiges Zukunftsfeature, muss aber nicht vollständig in v1 umgesetzt sein. Es soll architektonisch mitgedacht werden.
@@ -1010,6 +1070,7 @@ Das schafft Transparenz und schützt vor falschen Erwartungen.
 - Der Flow nach dem Geschmacksprofil ist die zentrale UX-Entscheidung.
 - Gespeicherte Profildaten müssen aus der bestehenden Empfehlungslogik abgeleitet werden.
 - Playlist-Zustellung soll als späterer Job/Export mitgedacht werden.
+- Album-Favoriten für eingeloggte Nutzer spezifizieren und später an Playlist-Export anbinden (siehe **Album-Favoriten (Zukunft)**).
 - Ein erstes Playlistformat kann Text oder CSV sein.
 - Wöchentliche Empfehlungsläufe brauchen eine Qualitäts- oder Fit-Einschätzung pro Nutzerprofil.
 
@@ -2312,7 +2373,9 @@ Spätere Ressourcen können sein:
 
 - `PlaylistSubscription`,
 - `EmailDelivery`,
-- `ScheduledPlaylistRun`.
+- `ScheduledPlaylistRun`,
+- `FavoriteAlbum` / `UserFavoriteReview` (siehe **Album-Favoriten (Zukunft)**),
+- `PlaylistExport` mit Quelle `favorites`.
 
 Diese Ressourcen gehören nicht zur v1-Pflicht-API, können aber als spätere Erweiterung im Dokument erwähnt bleiben.
 

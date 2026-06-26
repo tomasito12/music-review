@@ -719,6 +719,17 @@ Those future settings may later live either in `Playlists` or account settings.
 For v1, the frontend shell should leave room for this future but not implement
 playlist management.
 
+Future favorites:
+
+- logged-in users can mark albums from recommendation cards as favorites,
+- favorites are stored on the user account (not only in session storage),
+- later, playlist generation may use favorites as a source pool in addition to
+  `Aktuell` and `Entdecken`.
+
+The recommendation card should eventually expose a calm favorite action. Until the
+API exists, the shell may show the affordance only for authenticated users with
+a save/login prompt for guests.
+
 ### After Generation
 
 After generating a playlist, the most important next step is helping users move
@@ -1706,4 +1717,6 @@ Noch nicht umsetzen:
 - echte Highlight-Logik berechnen,
 - echten Streamlit-Filter vollständig übertragen,
 - Chart für Score-Verteilung übernehmen,
-- echte Playlist-Erzeugung im Frontend anschließen.
+- echte Playlist-Erzeugung im Frontend anschließen,
+- Album-Favoriten speichern und Favoriten-basierte Playlists (siehe
+  `docs/plattenradar-v1-product-api.md`, Abschnitt **Album-Favoriten (Zukunft)**).
