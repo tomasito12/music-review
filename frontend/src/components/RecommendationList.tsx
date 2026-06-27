@@ -26,11 +26,7 @@ interface RecommendationListProps {
   onAdjustFilters?: () => void;
   onCreatePlaylist: (source: RecommendationSource) => void;
   onLoadMore?: () => void;
-  onSaveProfileChanges?: () => void;
   onUpdateRoundsChange?: (value: string) => void;
-  hasUnsavedProfileChanges?: boolean;
-  isSavingProfileChanges?: boolean;
-  profileChangesSavedMessage?: string | null;
 }
 
 export function RecommendationList({
@@ -49,11 +45,7 @@ export function RecommendationList({
   onAdjustFilters,
   onCreatePlaylist,
   onLoadMore,
-  onSaveProfileChanges,
   onUpdateRoundsChange,
-  hasUnsavedProfileChanges = false,
-  isSavingProfileChanges = false,
-  profileChangesSavedMessage = null,
 }: RecommendationListProps): ReactElement {
   return (
     <section className="results-page">
@@ -94,22 +86,7 @@ export function RecommendationList({
           {(filterSummary ?? ["Ausgewogen", "Stilpassung sichtbar"]).map((chip) => (
             <span key={chip}>{chip}</span>
           ))}
-          {hasUnsavedProfileChanges && (
-            <span className="filter-summary-unsaved">Ungespeicherte Änderungen</span>
-          )}
-          {profileChangesSavedMessage !== null && (
-            <span className="filter-summary-saved">{profileChangesSavedMessage}</span>
-          )}
           <div className="filter-summary-actions">
-            {hasUnsavedProfileChanges && onSaveProfileChanges !== undefined && (
-              <button
-                disabled={isSavingProfileChanges}
-                onClick={onSaveProfileChanges}
-                type="button"
-              >
-                {isSavingProfileChanges ? "Speichert ..." : "Änderungen speichern"}
-              </button>
-            )}
             {onAdjustFilters !== undefined && (
               <button onClick={onAdjustFilters} type="button">
                 Filter anpassen

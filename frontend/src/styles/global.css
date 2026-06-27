@@ -50,10 +50,13 @@ a {
     #f7f5f1;
 }
 
-.topbar {
+.app-header {
   position: sticky;
   top: 0;
   z-index: 20;
+}
+
+.topbar {
   display: grid;
   grid-template-columns: minmax(12rem, 1fr) auto minmax(9rem, 1fr);
   align-items: center;
@@ -62,6 +65,49 @@ a {
   border-bottom: 1px solid rgba(222, 216, 206, 0.8);
   background: rgba(255, 253, 250, 0.9);
   backdrop-filter: blur(14px);
+}
+
+.profile-save-banner {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.75rem;
+  padding: 0.42rem clamp(1rem, 3vw, 2.5rem);
+  border-bottom: 1px solid rgba(222, 216, 206, 0.8);
+  background: rgba(255, 248, 236, 0.96);
+}
+
+.profile-save-banner-message {
+  margin: 0;
+  color: var(--ink);
+  font-size: 0.84rem;
+  font-weight: 550;
+}
+
+.profile-save-banner .secondary-button {
+  flex-shrink: 0;
+  padding: 0.35rem 0.72rem;
+  font-size: 0.82rem;
+}
+
+.profile-save-banner--saved {
+  background: rgba(36, 85, 58, 0.08);
+}
+
+.profile-save-banner--saved .profile-save-banner-message {
+  color: #24553a;
+}
+
+.profile-save-banner--error {
+  background: rgba(181, 29, 41, 0.08);
+}
+
+.profile-save-banner--error .profile-save-banner-message {
+  color: #7a1a24;
+}
+
+.profile-save-banner--saving .profile-save-banner-message {
+  color: var(--muted);
 }
 
 .brand {
@@ -303,17 +349,6 @@ p {
   flex-wrap: wrap;
   gap: 0.45rem;
   margin-left: auto;
-}
-
-.filter-summary-unsaved {
-  color: var(--ink);
-  background: rgba(255, 253, 250, 0.92);
-  border: 1px solid var(--line);
-}
-
-.filter-summary-saved {
-  color: #24553a;
-  background: rgba(36, 85, 58, 0.08);
 }
 
 .personal-recommendations {
@@ -1253,6 +1288,11 @@ select {
 
   .account-slot {
     justify-content: flex-start;
+  }
+
+  .profile-save-banner {
+    align-items: flex-start;
+    flex-direction: column;
   }
 
   .welcome-screen,

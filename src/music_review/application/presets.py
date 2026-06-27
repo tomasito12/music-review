@@ -10,6 +10,27 @@ from music_review.application.models import ApiModel, TasteFilterSettings
 
 DEFAULT_PRESET_ID = "balanced"
 
+_PRESET_FILTER_BASELINE = TasteFilterSettings(
+    score_min=0.40,
+    score_max=1.0,
+    rating_min=6,
+    rating_max=10,
+    overall_weight_alpha=0.50,
+    overall_weight_beta=0.25,
+    overall_weight_gamma=0.25,
+    community_spectrum_crossover=0.50,
+    sort_mode="deterministic",
+    serendipity=0.0,
+)
+
+
+def _preset_filter_settings(**overrides: float | str) -> TasteFilterSettings:
+    """Build preset settings with shared filters and preset-specific weights."""
+    data = _PRESET_FILTER_BASELINE.model_dump()
+    data.update(overrides)
+    return TasteFilterSettings(**data)
+
+
 ControlKind = Literal["range", "slider", "segmented", "multi_select"]
 
 
@@ -66,79 +87,55 @@ TASTE_PRESETS: tuple[TastePreset, ...] = (
         id="precise",
         label="Treffsicher",
         subtitle="Nah an deinem Profil",
-        description=("Strenge Stilpassung, ohne stilreine Alben unfair zu bevorzugen."),
+        description=(
+            "Sortiert stärker danach, wie genau Alben zu deinen gewählten "
+            "Musikrichtungen passen."
+        ),
         icon="crosshair",
-        filter_settings=TasteFilterSettings(
-            score_min=0.50,
-            score_max=1.0,
-            rating_min=6,
-            rating_max=10,
-            overall_weight_alpha=0.60,
+        filter_settings=_preset_filter_settings(
+            overall_weight_alpha=0.70,
             overall_weight_beta=0.20,
-            overall_weight_gamma=0.20,
-            community_spectrum_crossover=0.50,
-            sort_mode="deterministic",
-            serendipity=0.0,
+            overall_weight_gamma=0.10,
         ),
     ),
     TastePreset(
         id="balanced",
         label="Ausgewogen",
         subtitle="Der beste Startpunkt",
-        description="Gute Mischung aus Stilpassung, Wertung und Vielschichtigkeit.",
-        icon="sliders-horizontal",
-        filter_settings=TasteFilterSettings(
-            score_min=0.40,
-            score_max=1.0,
-            rating_min=6,
-            rating_max=10,
-            overall_weight_alpha=0.50,
-            overall_weight_beta=0.25,
-            overall_weight_gamma=0.25,
-            community_spectrum_crossover=0.50,
-            sort_mode="deterministic",
-            serendipity=0.0,
+        description=(
+            "Ausgewogene Gewichtung aus Stilpassung, Wertung und Vielschichtigkeit "
+            "in der Sortierung."
         ),
+        icon="sliders-horizontal",
+        filter_settings=_preset_filter_settings(),
     ),
     TastePreset(
         id="exploratory",
         label="Entdeckerisch",
         subtitle="Mehr angrenzende Stile",
         description=(
-            "Öffnet die Auswahl für Alben, die etwas weiter von deinem Profil "
-            "entfernt liegen."
+            "Sortiert weniger strikt nach einzelnen Musikrichtungen und öffnet "
+            "die Rangliste für angrenzende Fundstücke."
         ),
         icon="compass",
-        filter_settings=TasteFilterSettings(
-            score_min=0.25,
-            score_max=1.0,
-            rating_min=6,
-            rating_max=10,
-            overall_weight_alpha=0.50,
-            overall_weight_beta=0.25,
-            overall_weight_gamma=0.25,
-            community_spectrum_crossover=0.50,
-            sort_mode="deterministic",
-            serendipity=0.0,
+        filter_settings=_preset_filter_settings(
+            overall_weight_alpha=0.30,
+            overall_weight_beta=0.30,
+            overall_weight_gamma=0.40,
         ),
     ),
     TastePreset(
         id="critics",
         label="Kritikerlieblinge",
         subtitle="Höher bewertete Alben zuerst",
-        description="Bevorzugt Alben mit starken plattentests.de-Wertungen.",
+        description=(
+            "Hebt die plattentests.de-Wertung in der Sortierung stärker hervor."
+        ),
         icon="star",
-        filter_settings=TasteFilterSettings(
-            score_min=0.40,
-            score_max=1.0,
-            rating_min=8,
-            rating_max=10,
-            overall_weight_alpha=0.35,
-            overall_weight_beta=0.45,
+        filter_settings=_preset_filter_settings(
+            overall_weight_alpha=0.30,
+            overall_weight_beta=0.50,
             overall_weight_gamma=0.20,
-            community_spectrum_crossover=0.50,
-            sort_mode="deterministic",
-            serendipity=0.0,
         ),
     ),
     TastePreset(
@@ -146,20 +143,15 @@ TASTE_PRESETS: tuple[TastePreset, ...] = (
         label="Vielschichtig",
         subtitle="Mehrere deiner Stile zugleich",
         description=(
-            "Bevorzugt Alben, die mehrere deiner gewählten Stilrichtungen berühren."
+            "Bevorzugt in der Sortierung Alben, die mehrere deiner gewählten "
+            "Stilrichtungen zugleich berühren."
         ),
         icon="layers",
-        filter_settings=TasteFilterSettings(
-            score_min=0.40,
-            score_max=1.0,
-            rating_min=6,
-            rating_max=10,
-            overall_weight_alpha=0.45,
-            overall_weight_beta=0.20,
-            overall_weight_gamma=0.35,
+        filter_settings=_preset_filter_settings(
+            overall_weight_alpha=0.35,
+            overall_weight_beta=0.15,
+            overall_weight_gamma=0.50,
             community_spectrum_crossover=0.75,
-            sort_mode="deterministic",
-            serendipity=0.0,
         ),
     ),
 )
@@ -167,7 +159,8 @@ TASTE_PRESETS: tuple[TastePreset, ...] = (
 TASTE_FILTER_UI = TasteFilterUiConfig(
     preset_display_hint=(
         "Presets erscheinen als mittelgroße Auswahlkarten mit Icon, Titel und "
-        "kurzem Erklärungssatz. Sie setzen die darunterliegenden Regler einmalig."
+        "kurzem Erklärungssatz. Sie setzen vor allem die Gewichtung des "
+        "Gesamtscores einmalig; Filtergrenzen bleiben gleich."
     ),
     groups=(
         FilterGroup(

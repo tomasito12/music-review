@@ -32,13 +32,14 @@ def test_presets_keep_list_variation_disabled() -> None:
 
 
 def test_preset_values_match_v1_specification() -> None:
-    """The configured v1 presets follow the product specification."""
+    """Presets share filter baselines and differ mainly in score weighting."""
+    shared_filters = (0.4, 6)
     expected = {
-        "precise": (0.5, 6, 0.6, 0.2, 0.2, 0.5),
-        "balanced": (0.4, 6, 0.5, 0.25, 0.25, 0.5),
-        "exploratory": (0.25, 6, 0.5, 0.25, 0.25, 0.5),
-        "critics": (0.4, 8, 0.35, 0.45, 0.2, 0.5),
-        "multifaceted": (0.4, 6, 0.45, 0.2, 0.35, 0.75),
+        "precise": (*shared_filters, 0.7, 0.2, 0.1, 0.5),
+        "balanced": (*shared_filters, 0.5, 0.25, 0.25, 0.5),
+        "exploratory": (*shared_filters, 0.3, 0.3, 0.4, 0.5),
+        "critics": (*shared_filters, 0.3, 0.5, 0.2, 0.5),
+        "multifaceted": (*shared_filters, 0.35, 0.15, 0.5, 0.75),
     }
 
     for preset in list_presets():

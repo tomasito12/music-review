@@ -48,6 +48,7 @@ import {
   shouldLandOnAktuell,
   syncBrowserPath,
 } from "./lib/initialRoute";
+import { resolveProfileSaveBannerState } from "./lib/unsavedProfileBanner";
 import type { TemporaryTasteProfile } from "./lib/plattenradarApi";
 import type {
   AppRoute,
@@ -109,6 +110,14 @@ export function App(): ReactElement {
     temporaryProfile !== null &&
     lastSavedProfile !== null &&
     !tasteProfilesMatch(temporaryProfile, lastSavedProfile);
+
+  const profileSaveBanner = resolveProfileSaveBannerState({
+    isAuthenticated,
+    hasUnsavedProfileChanges,
+    isSavingProfileChanges,
+    savedMessage: profileChangesSavedMessage,
+    errorMessage: profileChangesError,
+  });
 
   const apiClient = useCallback(
     () => new ApiClient({ token: authSession?.accessToken }),
@@ -224,7 +233,7 @@ export function App(): ReactElement {
     }
     const timeoutId = window.setTimeout(() => {
       setProfileChangesSavedMessage(null);
-    }, 4000);
+    }, 3000);
     return () => {
       window.clearTimeout(timeoutId);
     };
@@ -409,7 +418,7 @@ export function App(): ReactElement {
       };
       writeProfileSession(updatedSession);
       setProfileSession(updatedSession);
-      setProfileChangesSavedMessage("Änderungen gespeichert.");
+      setProfileChangesSavedMessage("Gespeichert.");
     } catch {
       setProfileChangesError(
         "Deine Änderungen konnten gerade nicht gespeichert werden. Bitte versuche es noch einmal.",
@@ -564,6 +573,10 @@ export function App(): ReactElement {
       activeRoute={route}
       onLoginClick={openLogin}
       onNavigate={navigate}
+      onSaveProfileChanges={() => {
+        void saveProfileChanges();
+      }}
+      profileSaveBanner={profileSaveBanner}
       userEmail={authSession?.email ?? null}
       userState={userState}
     >
@@ -578,7 +591,6 @@ export function App(): ReactElement {
           canLoadMore={canLoadMoreAktuell}
           error={aktuellError}
           filterSummary={aktuellFilterSummary}
-          hasUnsavedProfileChanges={hasUnsavedProfileChanges}
           highlights={
             aktuellRecommendations !== null
               ? buildAktuellHighlights(aktuellRecommendations)
@@ -586,16 +598,12 @@ export function App(): ReactElement {
           }
           isLoading={aktuellLoading}
           isLoadingMore={aktuellLoadingMore}
-          isSavingProfileChanges={isSavingProfileChanges}
           onAdjustFilters={adjustFilters}
           onCreatePlaylist={createPlaylist}
           onEditProfile={editProfile}
           onLoadMore={loadMoreAktuellRecommendations}
           onRetry={retryAktuellLoad}
-          onSaveProfileChanges={saveProfileChanges}
           onUpdateRoundsChange={handleUpdateRoundsChange}
-          profileChangesError={profileChangesError}
-          profileChangesSavedMessage={profileChangesSavedMessage}
           profileExists={temporaryProfile !== null}
           recommendations={aktuellRecommendations}
           total={aktuellTotal}
@@ -608,18 +616,13 @@ export function App(): ReactElement {
           canLoadMore={canLoadMoreArchive}
           error={archiveError}
           filterSummary={archiveFilterSummary}
-          hasUnsavedProfileChanges={hasUnsavedProfileChanges}
           isLoading={archiveLoading}
           isLoadingMore={archiveLoadingMore}
-          isSavingProfileChanges={isSavingProfileChanges}
           onAdjustFilters={adjustFilters}
           onCreatePlaylist={createPlaylist}
           onEditProfile={editProfile}
           onLoadMore={loadMoreArchiveRecommendations}
           onRetry={retryArchiveLoad}
-          onSaveProfileChanges={saveProfileChanges}
-          profileChangesError={profileChangesError}
-          profileChangesSavedMessage={profileChangesSavedMessage}
           profileExists={temporaryProfile !== null}
           recommendations={archiveRecommendations}
           savePrompt={savePromptSlot}
@@ -685,20 +688,15 @@ interface AktuellDiscoverPageProps {
   canLoadMore: boolean;
   error: string | null;
   filterSummary?: string[];
-  hasUnsavedProfileChanges: boolean;
   highlights: ReturnType<typeof buildAktuellHighlights>;
   isLoading: boolean;
   isLoadingMore: boolean;
-  isSavingProfileChanges: boolean;
   onAdjustFilters: () => void;
   onCreatePlaylist: (source: RecommendationSource) => void;
   onEditProfile: () => void;
   onLoadMore: () => void;
   onRetry: () => void;
-  onSaveProfileChanges: () => void;
   onUpdateRoundsChange: (value: string) => void;
-  profileChangesError: string | null;
-  profileChangesSavedMessage: string | null;
   profileExists: boolean;
   recommendations: Recommendation[] | null;
   total: number;
@@ -710,20 +708,15 @@ function AktuellDiscoverPage({
   canLoadMore,
   error,
   filterSummary,
-  hasUnsavedProfileChanges,
   highlights,
   isLoading,
   isLoadingMore,
-  isSavingProfileChanges,
   onAdjustFilters,
   onCreatePlaylist,
   onEditProfile,
   onLoadMore,
   onRetry,
-  onSaveProfileChanges,
   onUpdateRoundsChange,
-  profileChangesError,
-  profileChangesSavedMessage,
   profileExists,
   recommendations,
   total,
@@ -778,23 +771,16 @@ function AktuellDiscoverPage({
       {error !== null && recommendations !== null && (
         <p className="form-error archive-inline-error">{error}</p>
       )}
-      {profileChangesError !== null && (
-        <p className="form-error archive-inline-error">{profileChangesError}</p>
-      )}
       <RecommendationList
         canLoadMore={canLoadMore}
         filterSummary={filterSummary}
-        hasUnsavedProfileChanges={hasUnsavedProfileChanges}
         highlights={highlights}
-        isSavingProfileChanges={isSavingProfileChanges}
         loadingMore={isLoadingMore}
         message={`${total} neue Rezensionen im gewählten Zeitraum. ${loadedCount} werden gerade angezeigt.`}
         onAdjustFilters={onAdjustFilters}
         onCreatePlaylist={onCreatePlaylist}
         onLoadMore={onLoadMore}
-        onSaveProfileChanges={onSaveProfileChanges}
         onUpdateRoundsChange={onUpdateRoundsChange}
-        profileChangesSavedMessage={profileChangesSavedMessage}
         recommendations={recommendations ?? []}
         source="aktuell"
         title="Neue Rezensionen für dich"
@@ -810,18 +796,13 @@ interface ArchiveDiscoverPageProps {
   canLoadMore: boolean;
   error: string | null;
   filterSummary?: string[];
-  hasUnsavedProfileChanges: boolean;
   isLoading: boolean;
   isLoadingMore: boolean;
-  isSavingProfileChanges: boolean;
   onAdjustFilters: () => void;
   onCreatePlaylist: (source: RecommendationSource) => void;
   onEditProfile: () => void;
   onLoadMore: () => void;
   onRetry: () => void;
-  onSaveProfileChanges: () => void;
-  profileChangesError: string | null;
-  profileChangesSavedMessage: string | null;
   profileExists: boolean;
   recommendations: Recommendation[] | null;
   savePrompt: ReactElement | null;
@@ -832,18 +813,13 @@ function ArchiveDiscoverPage({
   canLoadMore,
   error,
   filterSummary,
-  hasUnsavedProfileChanges,
   isLoading,
   isLoadingMore,
-  isSavingProfileChanges,
   onAdjustFilters,
   onCreatePlaylist,
   onEditProfile,
   onLoadMore,
   onRetry,
-  onSaveProfileChanges,
-  profileChangesError,
-  profileChangesSavedMessage,
   profileExists,
   recommendations,
   savePrompt,
@@ -894,21 +870,14 @@ function ArchiveDiscoverPage({
       {error !== null && recommendations !== null && (
         <p className="form-error archive-inline-error">{error}</p>
       )}
-      {profileChangesError !== null && (
-        <p className="form-error archive-inline-error">{profileChangesError}</p>
-      )}
       <RecommendationList
         canLoadMore={canLoadMore}
         filterSummary={filterSummary}
-        hasUnsavedProfileChanges={hasUnsavedProfileChanges}
-        isSavingProfileChanges={isSavingProfileChanges}
         loadingMore={isLoadingMore}
         message={`${total} Alben passen zu deinen Einstellungen. ${loadedCount} werden gerade angezeigt.`}
         onAdjustFilters={onAdjustFilters}
         onCreatePlaylist={onCreatePlaylist}
         onLoadMore={onLoadMore}
-        onSaveProfileChanges={onSaveProfileChanges}
-        profileChangesSavedMessage={profileChangesSavedMessage}
         recommendations={recommendations ?? []}
         savePrompt={savePrompt}
         source="entdecken"

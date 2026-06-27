@@ -19,11 +19,13 @@ const exploratoryPreset = {
   id: "exploratory",
   label: "Entdeckerisch",
   subtitle: "Mehr angrenzende Stile",
-  description: "Öffnet die Auswahl.",
+  description: "Öffnet die Sortierung für angrenzende Fundstücke.",
   icon: "compass",
   filter_settings: {
     ...DEFAULT_BALANCED_FILTER_SETTINGS,
-    score_min: 0.25,
+    overall_weight_alpha: 0.3,
+    overall_weight_beta: 0.3,
+    overall_weight_gamma: 0.4,
   },
 };
 
@@ -41,7 +43,9 @@ describe("createTemporaryTasteProfile", () => {
       filterSettingsFromPreset(exploratoryPreset),
     );
 
-    expect(profile.filter_settings.score_min).toBe(0.25);
+    expect(profile.filter_settings.score_min).toBe(0.4);
+    expect(profile.filter_settings.overall_weight_alpha).toBe(0.3);
+    expect(profile.filter_settings.overall_weight_gamma).toBe(0.4);
   });
 
   it("maps temporary profiles into API payloads", () => {
