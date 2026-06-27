@@ -271,6 +271,33 @@ def _select_best_release_group(
     return groups[0]
 
 
+def fetch_artist_alias_names(mbid: str) -> list[str]:
+    """Return alias names for one MusicBrainz artist MBID."""
+    detailed = _lookup_artist_with_tags(mbid)
+    if detailed is None:
+        return []
+
+    names: list[str] = []
+    for alias in detailed.get("aliases", []):
+        if not isinstance(alias, dict):
+            continue
+        alias_name = alias.get("name")
+        if isinstance(alias_name, str) and alias_name.strip():
+            names.append(alias_name.strip())
+    return names
+
+
+def fetch_artist_disambiguation(mbid: str) -> str | None:
+    """Return the MusicBrainz disambiguation comment for one artist MBID."""
+    detailed = _lookup_artist_with_tags(mbid)
+    if detailed is None:
+        return None
+    disambiguation = detailed.get("disambiguation")
+    if isinstance(disambiguation, str) and disambiguation.strip():
+        return disambiguation.strip()
+    return None
+
+
 def fetch_artist_wikidata_id(mbid: str) -> str | None:
     """Return the Wikidata Q-ID linked from a MusicBrainz artist MBID."""
     params = {

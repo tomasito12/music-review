@@ -7,7 +7,7 @@ interface ArtistImageProps {
   image: ArtistImageData;
 }
 
-/** Renders a highlight tile photo with required attribution. */
+/** Renders a highlight tile photo with a discrete source attribution control. */
 export function ArtistImage({
   artistName,
   image,
@@ -21,7 +21,15 @@ export function ArtistImage({
         loading="lazy"
         src={image.thumbnailUrl}
       />
-      <figcaption className="artist-attribution">{image.attributionText}</figcaption>
+      <details className="artist-image-source">
+        <summary>Quelle</summary>
+        <div className="artist-image-source-panel">
+          <p>{image.attributionText}</p>
+          <a href={image.sourceUrl} rel="noreferrer" target="_blank">
+            Bild auf Wikimedia Commons
+          </a>
+        </div>
+      </details>
     </figure>
   );
 }

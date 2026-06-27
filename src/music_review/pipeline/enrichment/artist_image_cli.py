@@ -12,8 +12,10 @@ from music_review.application.artist_image_batch import (
     artist_lookup_from_review_metadata,
 )
 from music_review.application.artist_image_download import artist_image_download_enabled
+from music_review.application.artist_image_models import ArtistImageRecord
 from music_review.application.artist_image_resolver import resolve_artist_image
 from music_review.application.artist_image_service import ArtistImageService
+from music_review.application.artist_image_store import upsert_artist_image
 from music_review.config import resolve_data_path
 from music_review.data_access.paths import (
     DATA_ARTIST_IMAGES,
@@ -76,6 +78,11 @@ def _build_parser() -> argparse.ArgumentParser:
         help="Resolve images but do not write the JSONL cache.",
     )
     parser.add_argument(
+        "--force",
+        action="store_true",
+        help="Ignore cached entries and resolve again.",
+    )
+    parser.add_argument(
         "-v",
         "--verbose",
         action="store_true",
@@ -106,22 +113,53 @@ def main(argv: list[str] | None = None) -> int:
 
     ok_count = 0
     for artist_mbid, artist_name in targets:
-        if args.dry_run:
-            record = resolve_artist_image(
-                artist_mbid=artist_mbid or None,
-                artist_name=artist_name or None,
-            )
-        else:
-            record = service.lookup(
-                artist_mbid or "",
-                artist_name=artist_name or None,
-            )
+        record = _lookup_target(
+            service,
+            artist_mbid=artist_mbid,
+            artist_name=artist_name,
+            dry_run=args.dry_run,
+            force=args.force,
+            output_path=output_path,
+        )
         _print_record(record)
         if record.status == "ok":
             ok_count += 1
 
     logger.info("Resolved %d/%d artist images successfully.", ok_count, len(targets))
     return 0 if ok_count > 0 else 1
+
+
+def _lookup_target(
+    service: ArtistImageService,
+    *,
+    artist_mbid: str,
+    artist_name: str,
+    dry_run: bool,
+    force: bool,
+    output_path: Path,
+) -> ArtistImageRecord:
+    """Resolve one CLI target and optionally persist it to the JSONL cache."""
+    if dry_run:
+        return resolve_artist_image(
+            artist_mbid=artist_mbid or None,
+            artist_name=artist_name or None,
+        )
+
+    if artist_mbid.strip():
+        return service.lookup(
+            artist_mbid,
+            artist_name=artist_name or None,
+            force=force,
+        )
+
+    record = resolve_artist_image(
+        artist_mbid=None,
+        artist_name=artist_name or None,
+    )
+    if record.artist_mbid:
+        record = service._ensure_local_copy(record)
+        upsert_artist_image(output_path, record)
+    return record
 
 
 def _resolve_targets(args: argparse.Namespace) -> list[tuple[str, str]]:

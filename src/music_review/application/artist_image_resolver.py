@@ -7,15 +7,28 @@ import logging
 from music_review.application.artist_image_attribution import (
     commons_image_to_record_fields,
 )
-from music_review.application.artist_image_models import ArtistImageRecord, utc_now_iso
-from music_review.pipeline.enrichment.commons_client import fetch_commons_image_info
+from music_review.application.artist_image_models import (
+    ArtistImageRecord,
+    CommonsImageInfo,
+    utc_now_iso,
+)
+from music_review.pipeline.enrichment.commons_client import (
+    fetch_commons_image_info,
+    find_commons_image_by_artist_name,
+)
 from music_review.pipeline.enrichment.musicbrainz_client import (
+    fetch_artist_alias_names,
+    fetch_artist_disambiguation,
     fetch_artist_info,
     fetch_artist_wikidata_id,
 )
 from music_review.pipeline.enrichment.wikidata_client import (
     fetch_commons_filename,
     fetch_wikidata_id_by_musicbrainz_mbid,
+)
+from music_review.pipeline.enrichment.wikipedia_client import (
+    build_wikipedia_search_names,
+    find_commons_image_via_wikipedia,
 )
 
 logger = logging.getLogger(__name__)
@@ -38,21 +51,83 @@ def resolve_artist_image(
             reason="artist_not_found",
         )
 
-    wikidata_id = fetch_artist_wikidata_id(resolved_mbid)
-    if wikidata_id is None:
-        wikidata_id = fetch_wikidata_id_by_musicbrainz_mbid(resolved_mbid)
-    if wikidata_id is None:
-        return _not_found_record(
+    primary = _resolve_via_wikidata(resolved_mbid, resolved_name)
+    if primary.status == "ok":
+        return primary
+
+    wikipedia_image, wikidata_id = _resolve_via_wikipedia(resolved_mbid, resolved_name)
+    if wikipedia_image is not None:
+        fields = commons_image_to_record_fields(wikipedia_image)
+        logger.info(
+            "Resolved Wikipedia fallback for %s (%s): %s",
+            resolved_name,
+            resolved_mbid,
+            wikipedia_image.commons_file,
+        )
+        return ArtistImageRecord(
             artist_mbid=resolved_mbid,
             artist_name=resolved_name,
+            status="ok",
+            fetched_at=utc_now_iso(),
+            wikidata_id=wikidata_id or primary.wikidata_id,
+            **fields,
+        )
+
+    commons_image = find_commons_image_by_artist_name(resolved_name)
+    if commons_image is not None:
+        fields = commons_image_to_record_fields(commons_image)
+        logger.info(
+            "Resolved Commons search fallback for %s (%s): %s",
+            resolved_name,
+            resolved_mbid,
+            commons_image.commons_file,
+        )
+        return ArtistImageRecord(
+            artist_mbid=resolved_mbid,
+            artist_name=resolved_name,
+            status="ok",
+            fetched_at=utc_now_iso(),
+            wikidata_id=primary.wikidata_id,
+            **fields,
+        )
+
+    return primary
+
+
+def _resolve_via_wikipedia(
+    artist_mbid: str,
+    artist_name: str,
+) -> tuple[CommonsImageInfo | None, str | None]:
+    """Try resolving an image via English Wikipedia article search."""
+    disambiguation = fetch_artist_disambiguation(artist_mbid)
+    search_names = build_wikipedia_search_names(
+        artist_name,
+        alias_names=fetch_artist_alias_names(artist_mbid),
+        include_the_variants=disambiguation is None,
+    )
+    return find_commons_image_via_wikipedia(
+        search_names,
+        disambiguation=disambiguation,
+    )
+
+
+def _resolve_via_wikidata(artist_mbid: str, artist_name: str) -> ArtistImageRecord:
+    """Resolve one artist image via Wikidata property P18."""
+    wikidata_id = fetch_artist_wikidata_id(artist_mbid)
+    if wikidata_id is None:
+        wikidata_id = fetch_wikidata_id_by_musicbrainz_mbid(artist_mbid)
+    if wikidata_id is None:
+        return _not_found_record(
+            artist_mbid=artist_mbid,
+            artist_name=artist_name,
             reason="no_wikidata_id",
         )
 
     commons_filename = fetch_commons_filename(wikidata_id)
     if commons_filename is None:
         return _not_found_record(
-            artist_mbid=resolved_mbid,
-            artist_name=resolved_name,
+            artist_mbid=artist_mbid,
+            artist_name=artist_name,
             reason="no_commons_image",
             wikidata_id=wikidata_id,
         )
@@ -60,8 +135,8 @@ def resolve_artist_image(
     commons_info = fetch_commons_image_info(commons_filename)
     if commons_info is None:
         return _not_found_record(
-            artist_mbid=resolved_mbid,
-            artist_name=resolved_name,
+            artist_mbid=artist_mbid,
+            artist_name=artist_name,
             reason="license_rejected_or_missing_metadata",
             wikidata_id=wikidata_id,
             commons_file=commons_filename,
@@ -69,14 +144,14 @@ def resolve_artist_image(
 
     fields = commons_image_to_record_fields(commons_info)
     logger.info(
-        "Resolved Commons image for %s (%s): %s",
-        resolved_name,
-        resolved_mbid,
+        "Resolved Wikidata image for %s (%s): %s",
+        artist_name,
+        artist_mbid,
         commons_info.commons_file,
     )
     return ArtistImageRecord(
-        artist_mbid=resolved_mbid,
-        artist_name=resolved_name,
+        artist_mbid=artist_mbid,
+        artist_name=artist_name,
         status="ok",
         fetched_at=utc_now_iso(),
         wikidata_id=wikidata_id,

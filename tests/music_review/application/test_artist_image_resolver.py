@@ -42,10 +42,30 @@ def test_resolve_artist_image_returns_ok_record(monkeypatch) -> None:
 
 
 def test_resolve_artist_image_records_missing_wikidata(monkeypatch) -> None:
-    """Missing Wikidata links are stored as negative cache entries."""
+    """Missing Wikidata links fall back to Commons search when that also fails."""
     monkeypatch.setattr(
         "music_review.application.artist_image_resolver.fetch_artist_wikidata_id",
         lambda _mbid: None,
+    )
+    monkeypatch.setattr(
+        "music_review.application.artist_image_resolver.fetch_wikidata_id_by_musicbrainz_mbid",
+        lambda _mbid: None,
+    )
+    monkeypatch.setattr(
+        "music_review.application.artist_image_resolver.fetch_artist_alias_names",
+        lambda _mbid: [],
+    )
+    monkeypatch.setattr(
+        "music_review.application.artist_image_resolver.fetch_artist_disambiguation",
+        lambda _mbid: None,
+    )
+    monkeypatch.setattr(
+        "music_review.application.artist_image_resolver.find_commons_image_via_wikipedia",
+        lambda _names, disambiguation=None: (None, None),
+    )
+    monkeypatch.setattr(
+        "music_review.application.artist_image_resolver.find_commons_image_by_artist_name",
+        lambda _name: None,
     )
 
     record = resolve_artist_image(
@@ -55,3 +75,104 @@ def test_resolve_artist_image_records_missing_wikidata(monkeypatch) -> None:
 
     assert record.status == "not_found"
     assert record.reason == "no_wikidata_id"
+
+
+def test_resolve_artist_image_uses_commons_search_fallback(monkeypatch) -> None:
+    """When Wikidata and Wikipedia have no image, Commons search can still succeed."""
+    monkeypatch.setattr(
+        "music_review.application.artist_image_resolver.fetch_artist_wikidata_id",
+        lambda _mbid: None,
+    )
+    monkeypatch.setattr(
+        "music_review.application.artist_image_resolver.fetch_wikidata_id_by_musicbrainz_mbid",
+        lambda _mbid: None,
+    )
+    monkeypatch.setattr(
+        "music_review.application.artist_image_resolver.fetch_artist_alias_names",
+        lambda _mbid: [],
+    )
+    monkeypatch.setattr(
+        "music_review.application.artist_image_resolver.fetch_artist_disambiguation",
+        lambda _mbid: None,
+    )
+    monkeypatch.setattr(
+        "music_review.application.artist_image_resolver.find_commons_image_via_wikipedia",
+        lambda _names, disambiguation=None: (None, None),
+    )
+    monkeypatch.setattr(
+        "music_review.application.artist_image_resolver.find_commons_image_by_artist_name",
+        lambda _name: CommonsImageInfo(
+            commons_file="Francis of Delirium (2024) 1.jpg",
+            image_url="https://example.com/full.jpg",
+            thumbnail_url="https://example.com/thumb.jpg",
+            license="CC BY-SA 4.0",
+            license_url="https://creativecommons.org/licenses/by-sa/4.0/",
+            author="User:Example",
+            source_url="https://commons.wikimedia.org/wiki/File:Francis_of_Delirium.jpg",
+            attribution_text="credit",
+            title="Francis of Delirium",
+        ),
+    )
+
+    record = resolve_artist_image(
+        artist_mbid="mbid-3",
+        artist_name="Francis of Delirium",
+    )
+
+    assert record.status == "ok"
+    assert record.thumbnail_url == "https://example.com/thumb.jpg"
+    assert record.commons_file == "Francis of Delirium (2024) 1.jpg"
+
+
+def test_resolve_artist_image_uses_wikipedia_fallback(monkeypatch) -> None:
+    """Wikipedia article images are preferred over noisy Commons search hits."""
+    monkeypatch.setattr(
+        "music_review.application.artist_image_resolver.fetch_artist_wikidata_id",
+        lambda _mbid: None,
+    )
+    monkeypatch.setattr(
+        "music_review.application.artist_image_resolver.fetch_wikidata_id_by_musicbrainz_mbid",
+        lambda _mbid: None,
+    )
+    monkeypatch.setattr(
+        "music_review.application.artist_image_resolver.fetch_artist_alias_names",
+        lambda _mbid: [],
+    )
+    monkeypatch.setattr(
+        "music_review.application.artist_image_resolver.fetch_artist_disambiguation",
+        lambda _mbid: None,
+    )
+    monkeypatch.setattr(
+        "music_review.application.artist_image_resolver.find_commons_image_via_wikipedia",
+        lambda _names, disambiguation=None: (
+            CommonsImageInfo(
+                commons_file="The Memorials.jpg",
+                image_url="https://example.com/full.jpg",
+                thumbnail_url="https://example.com/thumb.jpg",
+                license="CC BY 3.0",
+                license_url="https://creativecommons.org/licenses/by/3.0/",
+                author="User:Example",
+                source_url="https://commons.wikimedia.org/wiki/File:The_Memorials.jpg",
+                attribution_text="credit",
+                title="The Memorials",
+            ),
+            "Q7750962",
+        ),
+    )
+
+    def _fail_commons_search(_name: str) -> CommonsImageInfo:
+        raise AssertionError("commons search should not run")
+
+    monkeypatch.setattr(
+        "music_review.application.artist_image_resolver.find_commons_image_by_artist_name",
+        _fail_commons_search,
+    )
+
+    record = resolve_artist_image(
+        artist_mbid="mbid-memorials",
+        artist_name="Memorials",
+    )
+
+    assert record.status == "ok"
+    assert record.commons_file == "The Memorials.jpg"
+    assert record.wikidata_id == "Q7750962"

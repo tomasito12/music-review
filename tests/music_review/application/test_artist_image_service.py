@@ -171,3 +171,44 @@ def test_lookup_re_resolves_expired_negative_cache(tmp_path: Path) -> None:
 
     assert record.status == "ok"
     resolver.assert_called_once()
+
+
+def test_lookup_force_bypasses_negative_cache(tmp_path: Path) -> None:
+    """Force lookups ignore fresh negative cache entries."""
+    cache_path = tmp_path / "artist_images.jsonl"
+    cached = ArtistImageRecord(
+        artist_mbid="mbid-5",
+        artist_name="Epsilon",
+        status="not_found",
+        fetched_at=utc_now_iso(),
+        reason="no_wikidata_id",
+    )
+    from music_review.application.artist_image_store import upsert_artist_image
+
+    upsert_artist_image(cache_path, cached)
+    resolved = ArtistImageRecord(
+        artist_mbid="mbid-5",
+        artist_name="Epsilon",
+        status="ok",
+        fetched_at=utc_now_iso(),
+        thumbnail_url="https://example.com/epsilon.jpg",
+        license="CC BY 2.0",
+        attribution_text="Epsilon, CC BY 2.0 via Wikimedia Commons",
+        source_url="https://commons.wikimedia.org/wiki/File:Epsilon.jpg",
+    )
+    resolver = MagicMock(return_value=resolved)
+    service = ArtistImageService(
+        cache_path=cache_path,
+        images_dir=tmp_path / "artist_images",
+        negative_ttl_days=30,
+    )
+
+    with pytest.MonkeyPatch.context() as monkeypatch:
+        monkeypatch.setattr(
+            "music_review.application.artist_image_service.resolve_artist_image",
+            resolver,
+        )
+        record = service.lookup("mbid-5", force=True)
+
+    assert record.status == "ok"
+    resolver.assert_called_once()

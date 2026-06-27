@@ -67,20 +67,22 @@ class ArtistImageService:
         artist_mbid: str,
         *,
         artist_name: str | None = None,
+        force: bool = False,
     ) -> ArtistImageRecord:
         """Return a cached or freshly resolved artist image record."""
         mbid = artist_mbid.strip()
         if not mbid:
             return _empty_not_found_record()
 
-        cached = self.cached_record(mbid)
-        if cached is not None:
-            if cached.status == "ok":
-                logger.debug("Artist image cache hit for %s", mbid)
-                return self._ensure_local_copy(cached)
-            if self.is_negative_cache_fresh(cached):
-                logger.debug("Artist image negative cache hit for %s", mbid)
-                return cached
+        if not force:
+            cached = self.cached_record(mbid)
+            if cached is not None:
+                if cached.status == "ok":
+                    logger.debug("Artist image cache hit for %s", mbid)
+                    return self._ensure_local_copy(cached)
+                if self.is_negative_cache_fresh(cached):
+                    logger.debug("Artist image negative cache hit for %s", mbid)
+                    return cached
 
         record = resolve_artist_image(artist_mbid=mbid, artist_name=artist_name)
         record = self._ensure_local_copy(record)

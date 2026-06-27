@@ -22,8 +22,95 @@ logger = logging.getLogger(__name__)
 
 COMMONS_API_URL = "https://commons.wikimedia.org/w/api.php"
 _THUMB_WIDTH = 400
+_SEARCH_RESULT_LIMIT = 15
+_MIN_SEARCH_SCORE = 10
 _RATE_LIMIT_SECONDS = 0.5
 _last_call_ts: float | None = None
+
+_EXCLUDED_FILENAME_RE = re.compile(
+    r"(?:^|[\s_\-])(?:logo|icon|flag|map|chart|diagram|discography|signature|"
+    r"locator|ticket|screenshot|music.?video|official.?video|album.?cover|"
+    r"single.?cover|war.?memorial)(?:[\s_\-]|$)",
+    flags=re.IGNORECASE,
+)
+_PREFERRED_FILENAME_RE = re.compile(
+    r"(live|concert|perform|press|portrait|band|festival|on.?stage|tour)",
+    flags=re.IGNORECASE,
+)
+
+
+def find_commons_image_by_artist_name(
+    artist_name: str,
+    *,
+    limit: int = _SEARCH_RESULT_LIMIT,
+    thumb_width: int = _THUMB_WIDTH,
+) -> CommonsImageInfo | None:
+    """Search Commons by artist name and return the best licensed match."""
+    name = artist_name.strip()
+    if not name:
+        return None
+
+    candidates = _search_commons_image_candidates(
+        name,
+        exact=True,
+        limit=limit,
+        thumb_width=thumb_width,
+    )
+    if not candidates:
+        candidates = _search_commons_image_candidates(
+            name,
+            exact=False,
+            limit=limit,
+            thumb_width=thumb_width,
+        )
+    if not candidates:
+        logger.info("Commons search returned no files for %s", name)
+        return None
+
+    ranked = sorted(
+        candidates,
+        key=lambda item: score_commons_search_candidate(item[0], name),
+        reverse=True,
+    )
+    for title, imageinfo in ranked:
+        score = score_commons_search_candidate(title, name)
+        if score < _MIN_SEARCH_SCORE:
+            continue
+        info = parse_commons_image_info(title, imageinfo)
+        if info is not None:
+            logger.info(
+                "Commons search selected %s for %s (score=%d)",
+                info.commons_file,
+                name,
+                score,
+            )
+            return info
+
+    logger.info("Commons search found files for %s but none passed filters", name)
+    return None
+
+
+def score_commons_search_candidate(commons_title: str, artist_name: str) -> int:
+    """Score one Commons search hit for artist-name relevance."""
+    normalized_name = _normalize_match_text(artist_name)
+    normalized_file = _normalize_match_text(_filename_from_title(commons_title))
+    if not normalized_name or not normalized_file:
+        return -100
+
+    score = 0
+    if normalized_name in normalized_file:
+        score += 50
+
+    for token in _name_tokens(normalized_name):
+        if token in normalized_file:
+            score += 10
+
+    if _EXCLUDED_FILENAME_RE.search(normalized_file.replace(" ", "_")):
+        score -= 100
+    if _PREFERRED_FILENAME_RE.search(normalized_file):
+        score += 5
+
+    return score
 
 
 def fetch_commons_image_info(
@@ -93,6 +180,63 @@ def commons_file_page_url(commons_title: str) -> str:
     """Build the Commons file page URL for a file title."""
     normalized = _commons_file_title(commons_title).replace(" ", "_")
     return f"https://commons.wikimedia.org/wiki/{quote(normalized, safe=':/_')}"
+
+
+def _search_commons_image_candidates(
+    artist_name: str,
+    *,
+    exact: bool,
+    limit: int,
+    thumb_width: int,
+) -> list[tuple[str, dict[str, Any]]]:
+    """Return Commons search hits with parsed imageinfo payloads."""
+    query = f'"{artist_name}"' if exact else artist_name
+    params = {
+        "action": "query",
+        "format": "json",
+        "generator": "search",
+        "gsrsearch": query,
+        "gsrnamespace": "6",
+        "gsrlimit": str(max(1, limit)),
+        "prop": "imageinfo",
+        "iiprop": "url|extmetadata",
+        "iiurlwidth": str(thumb_width),
+    }
+    try:
+        payload = _get(params)
+    except requests.RequestException as exc:
+        logger.warning("Commons search failed for %s: %s", artist_name, exc)
+        return []
+
+    query_block = payload.get("query")
+    if not isinstance(query_block, dict):
+        return []
+    pages = query_block.get("pages")
+    if not isinstance(pages, dict) or not pages:
+        return []
+
+    candidates: list[tuple[str, dict[str, Any]]] = []
+    for page in pages.values():
+        if not isinstance(page, dict):
+            continue
+        title = _optional_str(page.get("title"))
+        imageinfo = page.get("imageinfo")
+        if title is None or not isinstance(imageinfo, list) or not imageinfo:
+            continue
+        first = imageinfo[0]
+        if isinstance(first, dict):
+            candidates.append((title, first))
+    return candidates
+
+
+def _normalize_match_text(value: str) -> str:
+    """Normalize text for loose artist/file name matching."""
+    return re.sub(r"[^a-z0-9]+", " ", value.casefold()).strip()
+
+
+def _name_tokens(normalized_name: str) -> list[str]:
+    """Return significant name tokens for matching."""
+    return [token for token in normalized_name.split() if len(token) > 2]
 
 
 def _query_image_info(title: str, *, thumb_width: int) -> dict[str, Any] | None:
