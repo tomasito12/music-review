@@ -82,6 +82,7 @@ frontend = "corepack pnpm --dir frontend dev"
 frontend-test = "corepack pnpm --dir frontend test"
 frontend-build = "corepack pnpm --dir frontend build"
 frontend-screenshot = "corepack pnpm --dir frontend screenshot"
+artist-image-cli = "python -m music_review.pipeline.enrichment.artist_image_cli {args:}"
 
 # --- Lint environment -------------------------------------------------------
 

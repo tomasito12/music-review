@@ -10,6 +10,7 @@ You *must* set a sensible USER_AGENT_* configuration before using this module.
 from __future__ import annotations
 
 import logging
+import re
 import time
 import warnings
 from collections.abc import Iterable
@@ -268,6 +269,60 @@ def _select_best_release_group(
         return albums[0]
 
     return groups[0]
+
+
+def fetch_artist_wikidata_id(mbid: str) -> str | None:
+    """Return the Wikidata Q-ID linked from a MusicBrainz artist MBID."""
+    params = {
+        "fmt": "json",
+        "inc": "url-rels",
+    }
+    try:
+        data = _get(f"/artist/{mbid}", params)
+    except Exception as exc:
+        logger.warning(
+            "MusicBrainz artist url-rel lookup failed for mbid=%s: %s",
+            mbid,
+            exc,
+        )
+        return None
+    return extract_wikidata_id_from_artist(data)
+
+
+def extract_wikidata_id_from_artist(artist: dict[str, Any]) -> str | None:
+    """Extract a Wikidata Q-ID from a MusicBrainz artist JSON object."""
+    for rel in artist.get("relations", []):
+        if not isinstance(rel, dict):
+            continue
+        if rel.get("type") != "wikidata":
+            continue
+        resource = _relation_url_resource(rel.get("url"))
+        wikidata_id = _wikidata_id_from_resource(resource)
+        if wikidata_id is not None:
+            return wikidata_id
+    return None
+
+
+def _relation_url_resource(url_field: object) -> str | None:
+    """Read the URL resource from one MusicBrainz relation payload."""
+    if isinstance(url_field, dict):
+        resource = url_field.get("resource")
+        if isinstance(resource, str) and resource.strip():
+            return resource.strip()
+        return None
+    if isinstance(url_field, str) and url_field.strip():
+        return url_field.strip()
+    return None
+
+
+def _wikidata_id_from_resource(resource: str | None) -> str | None:
+    """Extract a Q-ID from a Wikidata URL or bare identifier."""
+    if resource is None:
+        return None
+    match = re.search(r"(Q\d+)", resource, flags=re.IGNORECASE)
+    if match is None:
+        return None
+    return f"Q{match.group(1)[1:]}"
 
 
 def _lookup_artist_with_tags(mbid: str) -> dict[str, Any] | None:

@@ -4,22 +4,23 @@ import type {
   Recommendation,
   RecommendationHighlight,
   RecommendationSource,
-  UpdateSummary,
 } from "../types";
+import type { AktuellBriefing } from "../lib/aktuellPage";
 import type { TasteCommunityOption, TasteFilterSettings, TastePreset } from "../lib/plattenradarApi";
 import type { ProfileSetupResult } from "../lib/profileSessionStorage";
 
 import { RecommendationCard } from "./RecommendationCard";
 import { RecommendationHighlights } from "./RecommendationHighlights";
+import { RecommendationTagLegend } from "./RecommendationTagLegend";
 import { ResultsFilterPanel } from "./ResultsFilterPanel";
 
 interface RecommendationListProps {
+  aktuellBriefing?: AktuellBriefing;
   title: string;
   message: string;
   source: RecommendationSource;
   recommendations: Recommendation[];
   highlights?: RecommendationHighlight[];
-  updateSummary?: UpdateSummary;
   filterSummary?: string[];
   canLoadMore?: boolean;
   loadingMore?: boolean;
@@ -44,12 +45,12 @@ interface RecommendationListProps {
 }
 
 export function RecommendationList({
+  aktuellBriefing,
   title,
   message,
   source,
   recommendations,
   highlights,
-  updateSummary,
   filterSummary,
   canLoadMore = false,
   loadingMore = false,
@@ -78,32 +79,66 @@ export function RecommendationList({
     onFilterSettingsChange !== undefined &&
     onFilterCommunityWeightsChange !== undefined &&
     onEditProfile !== undefined;
+  const topRecommendationIds = new Set(
+    (source === "aktuell" && highlights !== undefined ? highlights : []).map(
+      (highlight) =>
+        `${highlight.recommendation.artist}-${highlight.recommendation.album}`,
+    ),
+  );
+  const listRecommendations =
+    source === "aktuell" && recommendations.length > topRecommendationIds.size
+      ? recommendations.filter(
+          (item) => !topRecommendationIds.has(`${item.artist}-${item.album}`),
+        )
+      : recommendations;
+  const rankingTitle =
+    source === "aktuell" ? "Weitere neue Rezensionen" : "Alle Empfehlungen";
+  const rankingDescription =
+    source === "aktuell"
+      ? "Dichter sortiert, damit du den Update-Schwung schnell scannen kannst."
+      : "Sortiert nach der Passung zu deinem Musikprofil.";
 
   return (
     <section className="results-page page-shell">
-      <div className="results-header">
-        <header className="page-header">
-          <p className="eyebrow">{source === "aktuell" ? "Neue Rezensionen" : "Archiv"}</p>
-          <h1>{title}</h1>
-          <p>{message}</p>
-        </header>
-        <button
-          className="primary-button"
-          onClick={() => onCreatePlaylist(source)}
-          type="button"
-        >
-          Playlist erzeugen
-        </button>
-      </div>
+      {aktuellBriefing !== undefined ? (
+        <section className="aktuell-briefing" aria-labelledby="aktuell-heading">
+          <div className="aktuell-briefing-toolbar">
+            <button
+              className="primary-button"
+              onClick={() => onCreatePlaylist(source)}
+              type="button"
+            >
+              Playlist aus Aktuell vorbereiten
+            </button>
+          </div>
+          <div className="aktuell-briefing-copy">
+            <p className="eyebrow">{aktuellBriefing.kicker}</p>
+            <h1 id="aktuell-heading">{aktuellBriefing.title}</h1>
+            <p>{aktuellBriefing.description}</p>
+          </div>
+        </section>
+      ) : (
+        <div className="results-header">
+          <header className="page-header">
+            <p className="eyebrow">
+              {source === "aktuell" ? "Neue Rezensionen" : "Archiv"}
+            </p>
+            <h1>{title}</h1>
+            <p>{message}</p>
+          </header>
+          <button
+            className="primary-button"
+            onClick={() => onCreatePlaylist(source)}
+            type="button"
+          >
+            Playlist erzeugen
+          </button>
+        </div>
+      )}
 
       {savePrompt}
 
       <div className="results-filter-region">
-        {isReloading && (
-          <p aria-live="polite" className="results-reload-status">
-            Empfehlungen werden aktualisiert ...
-          </p>
-        )}
         <div className="results-toolbar">
           {source === "aktuell" && updateRoundOptions !== undefined && (
             <label className="range-control">
@@ -125,6 +160,11 @@ export function RecommendationList({
               <span key={chip}>{chip}</span>
             ))}
           </div>
+          {isReloading && (
+            <span className="results-reload-chip" role="status">
+              Aktualisiere ...
+            </span>
+          )}
         </div>
 
         {showFilterPanel && (
@@ -144,37 +184,34 @@ export function RecommendationList({
         )}
       </div>
 
-      {(updateSummary !== undefined || (highlights !== undefined && highlights.length > 0)) && (
+      {source === "aktuell" && <RecommendationTagLegend />}
+
+      <div className={`results-body${isReloading ? " results-reloading" : ""}`}>
+      {highlights !== undefined && highlights.length > 0 && (
         <section
-          aria-label="Deine persönliche Auswahl"
+          aria-label="Top-Fundstücke"
           className="personal-recommendations"
         >
-          {updateSummary !== undefined && (
-            <div className="update-summary">
-              <div className="update-summary-lead">
-                <p className="eyebrow">Deine persönliche Auswahl</p>
-                <h2>{updateSummary.title}</h2>
-              </div>
-              <p>{updateSummary.description}</p>
-            </div>
-          )}
-          {highlights !== undefined && highlights.length > 0 && (
-            <RecommendationHighlights highlights={highlights} />
-          )}
+          <h2 className="top-fundstuecke-heading">Top-Fundstücke</h2>
+          <RecommendationHighlights highlights={highlights} showSaveAction />
         </section>
       )}
 
       <section
         aria-labelledby="ranking-heading"
-        className={`ranking-section${isReloading ? " results-reloading" : ""}`}
+        className="ranking-section"
       >
         <div className="ranking-heading">
-          <h2 id="ranking-heading">Alle Empfehlungen</h2>
-          <p>Sortiert nach der Passung zu deinem Musikprofil.</p>
+          <h2 id="ranking-heading">{rankingTitle}</h2>
+          <p>{rankingDescription}</p>
         </div>
         <div className="recommendation-list">
-          {recommendations.map((item) => (
-            <RecommendationCard key={`${item.source}-${item.rank}`} recommendation={item} />
+          {listRecommendations.map((item) => (
+            <RecommendationCard
+              key={`${item.source}-${item.rank}`}
+              recommendation={item}
+              showSaveAction={source === "aktuell"}
+            />
           ))}
         </div>
         {canLoadMore && onLoadMore !== undefined && (
@@ -190,6 +227,7 @@ export function RecommendationList({
           </div>
         )}
       </section>
+      </div>
     </section>
   );
 }

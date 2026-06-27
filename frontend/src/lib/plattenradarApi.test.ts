@@ -126,6 +126,7 @@ describe("loadArchiveRecommendations", () => {
               artist: "Alpha",
               album: "First",
               year: 2024,
+              release_date: "2024-05-01",
               rating: 8,
               overall_score: 0.81,
               labels: "Tiny Label",
@@ -154,7 +155,7 @@ describe("loadArchiveRecommendations", () => {
       fitPercent: 81,
       fitLabel: "Sehr passend",
       source: "entdecken",
-      tags: [{ label: "Indie Rock", matchesProfile: true, strength: "high" }],
+      tags: [{ label: "Indie Rock", matchesProfile: true, affinity: 0.9 }],
     });
   });
 
@@ -262,6 +263,7 @@ describe("loadNewReviewRecommendations", () => {
               artist: "Alpha",
               album: "First",
               year: 2024,
+              release_date: "2024-05-01",
               rating: 8,
               overall_score: 0.81,
               labels: "Tiny Label",

@@ -10,8 +10,8 @@ import { SaveProfileConfirmation } from "./components/SaveProfileConfirmation";
 import { SaveProfilePrompt } from "./components/SaveProfilePrompt";
 import { WelcomeScreen } from "./components/WelcomeScreen";
 import {
+  buildAktuellBriefing,
   buildAktuellHighlights,
-  buildAktuellSummary,
   newestCountFromUpdateRounds,
   UPDATE_ROUND_OPTIONS,
 } from "./lib/aktuellPage";
@@ -64,7 +64,6 @@ import {
   type ProfileSessionUpdate,
 } from "./lib/resultProfileUpdate";
 import { useResultsFilterOptions } from "./lib/useResultsFilterOptions";
-import { shouldRefetchRecommendations } from "./lib/recommendationFetch";
 import { resolveProfileSaveBannerState } from "./lib/unsavedProfileBanner";
 import type { TasteFilterSettings, TastePreset, TemporaryTasteProfile } from "./lib/plattenradarApi";
 import type {
@@ -316,13 +315,7 @@ export function App(): ReactElement {
     if (route !== "entdecken" || temporaryProfile === null) {
       return;
     }
-    if (
-      !shouldRefetchRecommendations(
-        archiveRecommendations,
-        archiveReloadToken,
-        lastArchiveReloadTokenHandled.current,
-      )
-    ) {
+    if (archiveReloadToken === lastArchiveReloadTokenHandled.current) {
       return;
     }
     lastArchiveReloadTokenHandled.current = archiveReloadToken;
@@ -348,20 +341,15 @@ export function App(): ReactElement {
 
     return () => {
       active = false;
+      setArchiveLoading(false);
     };
-  }, [archiveRecommendations, archiveReloadToken, loadArchivePage, route, temporaryProfile]);
+  }, [archiveReloadToken, loadArchivePage, route, temporaryProfile]);
 
   useEffect(() => {
     if (route !== "aktuell" || temporaryProfile === null) {
       return;
     }
-    if (
-      !shouldRefetchRecommendations(
-        aktuellRecommendations,
-        aktuellReloadToken,
-        lastAktuellReloadTokenHandled.current,
-      )
-    ) {
+    if (aktuellReloadToken === lastAktuellReloadTokenHandled.current) {
       return;
     }
     lastAktuellReloadTokenHandled.current = aktuellReloadToken;
@@ -387,8 +375,9 @@ export function App(): ReactElement {
 
     return () => {
       active = false;
+      setAktuellLoading(false);
     };
-  }, [aktuellRecommendations, aktuellReloadToken, loadAktuellPage, route, temporaryProfile]);
+  }, [aktuellReloadToken, loadAktuellPage, route, temporaryProfile]);
 
   function invalidateRecommendationResults(): void {
     setArchiveReloadToken((token) => token + 1);
@@ -686,13 +675,13 @@ export function App(): ReactElement {
   function retryArchiveLoad(): void {
     setArchiveError(null);
     setArchiveRecommendations(null);
-    setArchiveLoading(false);
+    setArchiveReloadToken((token) => token + 1);
   }
 
   function retryAktuellLoad(): void {
     setAktuellError(null);
     setAktuellRecommendations(null);
-    setAktuellLoading(false);
+    setAktuellReloadToken((token) => token + 1);
   }
 
   const archiveFilterSummary =
@@ -780,7 +769,6 @@ export function App(): ReactElement {
           recommendations={aktuellRecommendations}
           total={aktuellTotal}
           updateRounds={updateRounds}
-          updateSummary={buildAktuellSummary(aktuellTotal)}
         />
       )}
       {route === "entdecken" && (
@@ -911,7 +899,6 @@ interface AktuellDiscoverPageProps {
   recommendations: Recommendation[] | null;
   total: number;
   updateRounds: string;
-  updateSummary: ReturnType<typeof buildAktuellSummary>;
 }
 
 function AktuellDiscoverPage({
@@ -942,7 +929,6 @@ function AktuellDiscoverPage({
   recommendations,
   total,
   updateRounds,
-  updateSummary,
 }: AktuellDiscoverPageProps): ReactElement {
   if (!profileExists) {
     return (
@@ -986,6 +972,10 @@ function AktuellDiscoverPage({
   }
 
   const loadedCount = recommendations?.length ?? 0;
+  const updateRoundLabel =
+    UPDATE_ROUND_OPTIONS.find((option) => option.value === updateRounds)?.label ??
+    "Gewählter Zeitraum";
+  const aktuellBriefing = buildAktuellBriefing(total, loadedCount, updateRoundLabel);
 
   return (
     <>
@@ -993,6 +983,7 @@ function AktuellDiscoverPage({
         <p className="form-error archive-inline-error">{error}</p>
       )}
       <RecommendationList
+        aktuellBriefing={aktuellBriefing}
         canLoadMore={canLoadMore}
         filterCommunities={filterCommunities}
         filterError={filterError}
@@ -1018,7 +1009,6 @@ function AktuellDiscoverPage({
         title="Neue Rezensionen für dich"
         updateRoundOptions={UPDATE_ROUND_OPTIONS}
         updateRounds={updateRounds}
-        updateSummary={updateSummary}
       />
     </>
   );

@@ -114,6 +114,7 @@ interface ApiRecommendation {
   overall_score: number;
   rank: number;
   rating: number | null;
+  release_date: string | null;
   source: "archive" | "new_reviews";
   text_excerpt: string;
   url: string | null;
@@ -390,6 +391,7 @@ function toRecommendation(
     score: item.overall_score,
     fitLabel: fitLabel(item.overall_score),
     fitPercent,
+    releaseDate: item.release_date ?? undefined,
     recordLabel: item.labels || undefined,
     excerpt: item.text_excerpt,
     reviewUrl: item.url ?? "https://www.plattentests.de/",
@@ -401,8 +403,8 @@ function toRecommendation(
 function toRecommendationTag(tag: ApiCommunityMatch): RecommendationTag {
   return {
     label: tag.label,
+    affinity: tag.affinity,
     matchesProfile: tag.matched,
-    strength: tag.affinity >= 0.7 ? "high" : tag.affinity >= 0.35 ? "medium" : "low",
   };
 }
 

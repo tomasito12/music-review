@@ -12,9 +12,45 @@ export const UPDATE_ROUND_OPTIONS = [
 
 export const NEW_REVIEWS_PER_ROUND = 30;
 
+export interface AktuellBriefing {
+  description: string;
+  kicker: string;
+  title: string;
+}
+
 /** Maps UI update-round selection to the API newest_count parameter. */
 export function newestCountFromUpdateRounds(rounds: number): number {
   return Math.min(200, Math.max(1, rounds) * NEW_REVIEWS_PER_ROUND);
+}
+
+/** Builds the personal briefing copy for the Aktuell reference screen. */
+export function buildAktuellBriefing(
+  total: number,
+  _shownCount: number,
+  _updateRoundLabel: string,
+): AktuellBriefing {
+  if (total === 0) {
+    return {
+      kicker: "Dein Update",
+      title: "Diesmal gab es keine sicheren Treffer.",
+      description:
+        "Wenn neue Rezensionen nah an deinem Musikprofil liegen, tauchen sie hier zuerst auf.",
+    };
+  }
+  if (total <= 3) {
+    return {
+      kicker: "Dein Update",
+      title: "Ein kleiner Schwung, aber ein paar Fundstücke sind nah dran.",
+      description:
+        "Nicht viel lag diesmal genau auf deiner Linie. Die besten Einstiege stehen trotzdem direkt oben.",
+    };
+  }
+  return {
+    kicker: "Schön, dass du zurück bist",
+    title: `${total} neue Rezensionen liegen nah an deinem Musikprofil.`,
+    description:
+      "Starte mit den stärksten Fundstücken und scanne danach den restlichen Update-Schwung.",
+  };
 }
 
 /** Builds a short summary for the Aktuell highlight section. */
@@ -27,9 +63,9 @@ export function buildAktuellSummary(total: number): UpdateSummary {
     };
   }
   return {
-    title: `${total} neue Rezensionen im gewählten Zeitraum.`,
+    title: "Drei Einstiege für deinen ersten Klick.",
     description:
-      "Plattenradar sortiert sie nach Passung zu deinem Musikprofil. Die Hervorhebungen darunter zeigen besonders lohnende Einstiege.",
+      "Diese Fundstücke liegen nah an deinem Profil, sind stark bewertet oder öffnen eine spannende Abzweigung.",
   };
 }
 

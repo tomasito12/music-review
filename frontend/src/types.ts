@@ -17,7 +17,7 @@ export type RecommendationSource = "aktuell" | "entdecken";
 
 export interface RecommendationTag {
   label: string;
-  strength: "high" | "medium" | "low";
+  affinity: number;
   matchesProfile: boolean;
 }
 
@@ -30,6 +30,7 @@ export interface Recommendation {
   score: number;
   fitLabel: string;
   fitPercent: number;
+  releaseDate?: string;
   recordLabel?: string;
   excerpt: string;
   reviewUrl: string;

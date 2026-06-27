@@ -2,13 +2,17 @@ import type { ReactElement } from "react";
 
 import type { RecommendationHighlight } from "../types";
 
+import { RecommendationCard } from "./RecommendationCard";
+
 interface RecommendationHighlightsProps {
   highlights: RecommendationHighlight[];
+  showSaveAction?: boolean;
 }
 
 /** Shows a small editorial selection before the complete ranking. */
 export function RecommendationHighlights({
   highlights,
+  showSaveAction = false,
 }: RecommendationHighlightsProps): ReactElement {
   return (
     <div className="recommendation-highlights">
@@ -21,20 +25,11 @@ export function RecommendationHighlights({
             key={highlight.label}
           >
             <p className="highlight-label">{highlight.label}</p>
-            <h3>
-              <a
-                href={highlight.recommendation.reviewUrl}
-                rel="noreferrer"
-                target="_blank"
-              >
-                {highlight.recommendation.artist} - {highlight.recommendation.album}
-              </a>
-            </h3>
-            <p>{highlight.description}</p>
-            <div className="highlight-meta">
-              <span>{highlight.recommendation.rating}/10 bei plattentests.de</span>
-              <span>Score {highlight.recommendation.score.toFixed(2)}</span>
-            </div>
+            <RecommendationCard
+              recommendation={highlight.recommendation}
+              showSaveAction={showSaveAction}
+              variant="feature"
+            />
           </article>
         ))}
       </div>

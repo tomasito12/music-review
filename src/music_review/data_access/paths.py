@@ -19,6 +19,8 @@ DATA_PIPELINE_HEALTH_REPORT = "data/pipeline_health_report.json"
 DATA_PRODUCTION_UPDATE_LOCK = "data/.production_update.lock"
 DATA_ARTIST_REFERENCE_GRAPH = "data/artist_reference_graph.graphml"
 DATA_COMMUNITY_RESOLUTION_SCAN = "data/community_resolution_scan.json"
+DATA_ARTIST_IMAGES = "data/artist_images.jsonl"
+DATA_ARTIST_IMAGES_DIR = "data/artist_images"
 DATA_DIR = "data"
 
 
@@ -90,3 +92,13 @@ def artist_reference_graph_path() -> Path:
 def community_resolution_scan_path() -> Path:
     """Resolved path to the Louvain resolution scan JSON."""
     return resolve_data_path(DATA_COMMUNITY_RESOLUTION_SCAN)
+
+
+def artist_images_path() -> Path:
+    """Resolved path to the artist image metadata JSONL cache."""
+    return resolve_data_path(DATA_ARTIST_IMAGES)
+
+
+def artist_images_dir() -> Path:
+    """Resolved path to optional locally cached artist image files."""
+    return resolve_data_path(DATA_ARTIST_IMAGES_DIR)

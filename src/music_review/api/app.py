@@ -28,6 +28,7 @@ from music_review.api.schemas import (
     RecommendationRequest,
     TasteProfileResponse,
 )
+from music_review.application.community_tags import community_tags_from_entries
 from music_review.application.models import (
     CommunityMatch,
     ExplanationSignals,
@@ -52,6 +53,7 @@ from music_review.application.presets import (
 from music_review.application.recommendation_service import (
     RecommendationInputs,
     RecommendationService,
+    selected_communities_from_profile,
 )
 from music_review.dashboard.user_db import (
     authenticate_user_by_email,
@@ -305,12 +307,14 @@ def _new_review_rows(
     rows = NewestReviewsService(inputs).compute_ranked_rows(profile)
     if rows is None:
         rows = [_unranked_new_review_row(review) for review in newest]
+    selected_comms = selected_communities_from_profile(profile)
     return [
         _with_new_review_card_fields(
             row,
             affinity_by_review_id=affinity_by_id,
             genre_labels=genre_labels,
             comm_by_id=comm_by_id,
+            selected_community_ids=selected_comms,
         )
         for row in rows
     ]
@@ -464,19 +468,23 @@ def _matched_tags(row: Mapping[str, Any]) -> tuple[CommunityMatch, ...]:
     if not isinstance(top, list):
         return ()
     tags: list[CommunityMatch] = []
-    for item in top[:3]:
+    for item in top:
         if not isinstance(item, Mapping):
             continue
         community_id = _optional_str(item.get("id"))
         label = _optional_str(item.get("label"))
         if not community_id or not label:
             continue
+        affinity = max(
+            0.0,
+            float(item.get("affinity", item.get("score", 0.0)) or 0.0),
+        )
         tags.append(
             CommunityMatch(
                 id=community_id,
                 label=label,
-                affinity=max(0.0, float(item.get("affinity", 0.0) or 0.0)),
-                matched=True,
+                affinity=affinity,
+                matched=bool(item.get("matched", False)),
             ),
         )
     return tuple(tags)
@@ -567,6 +575,7 @@ def _with_new_review_card_fields(
     affinity_by_review_id: Mapping[int, Mapping[str, Any]],
     genre_labels: Mapping[str, str],
     comm_by_id: Mapping[str, Mapping[str, Any]],
+    selected_community_ids: set[str] | frozenset[str] | None = None,
 ) -> dict[str, Any]:
     """Add card-facing fields that newest ranking rows do not own."""
     copied = dict(row)
@@ -580,6 +589,7 @@ def _with_new_review_card_fields(
         affinity_by_review_id.get(review_id),
         genre_labels=genre_labels,
         comm_by_id=comm_by_id,
+        selected_community_ids=selected_community_ids,
     )
     return copied
 
@@ -589,8 +599,24 @@ def _top_communities_from_affinity(
     *,
     genre_labels: Mapping[str, str],
     comm_by_id: Mapping[str, Mapping[str, Any]],
+    selected_community_ids: set[str] | frozenset[str] | None = None,
 ) -> list[dict[str, object]]:
-    """Return the top affinity tags in the same shape as archive rows."""
+    """Return affinity tags in the same shape as archive rows."""
+    return community_tags_from_entries(
+        _affinity_entries(affinity),
+        label_for_id=lambda community_id: _community_label(
+            community_id,
+            genre_labels=genre_labels,
+            community=comm_by_id.get(community_id),
+        ),
+        selected_community_ids=selected_community_ids,
+    )
+
+
+def _affinity_entries(
+    affinity: Mapping[str, Any] | None,
+) -> list[Mapping[str, object]]:
+    """Extract ranked community affinity entries for one review."""
     if affinity is None:
         return []
     communities = affinity.get("communities")
@@ -599,23 +625,7 @@ def _top_communities_from_affinity(
     entries = communities.get("res_10")
     if not isinstance(entries, list):
         return []
-    top_entries = sorted(
-        (entry for entry in entries if isinstance(entry, Mapping)),
-        key=lambda entry: float(entry.get("score", 0.0) or 0.0),
-        reverse=True,
-    )[:3]
-    return [
-        {
-            "id": str(entry.get("id")),
-            "label": _community_label(
-                str(entry.get("id")),
-                genre_labels=genre_labels,
-                community=comm_by_id.get(str(entry.get("id"))),
-            ),
-            "affinity": float(entry.get("score", 0.0) or 0.0),
-        }
-        for entry in top_entries
-    ]
+    return [entry for entry in entries if isinstance(entry, Mapping)]
 
 
 def _community_label(

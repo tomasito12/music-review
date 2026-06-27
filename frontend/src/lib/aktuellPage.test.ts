@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 
 import {
+  buildAktuellBriefing,
   buildAktuellHighlights,
   buildAktuellSummary,
   newestCountFromUpdateRounds,
@@ -19,7 +20,7 @@ const sampleRecommendations: Recommendation[] = [
     fitPercent: 90,
     excerpt: "A",
     reviewUrl: "https://example.com/a",
-    tags: [{ label: "Indie", strength: "high", matchesProfile: true }],
+    tags: [{ label: "Indie", affinity: 0.8, matchesProfile: true }],
     source: "aktuell",
   },
   {
@@ -33,7 +34,7 @@ const sampleRecommendations: Recommendation[] = [
     fitPercent: 50,
     excerpt: "B",
     reviewUrl: "https://example.com/b",
-    tags: [{ label: "Jazz", strength: "medium", matchesProfile: false }],
+    tags: [{ label: "Jazz", affinity: 0.4, matchesProfile: false }],
     source: "aktuell",
   },
 ];
@@ -49,6 +50,32 @@ describe("newestCountFromUpdateRounds", () => {
 describe("buildAktuellSummary", () => {
   it("returns an empty-state summary when no reviews are available", () => {
     expect(buildAktuellSummary(0).title).toContain("Noch keine");
+  });
+
+  it("frames non-empty updates as listening entry points", () => {
+    expect(buildAktuellSummary(6).title).toBe(
+      "Drei Einstiege für deinen ersten Klick.",
+    );
+  });
+});
+
+describe("buildAktuellBriefing", () => {
+  it("frames an empty update without implying personal matches", () => {
+    const briefing = buildAktuellBriefing(0, 0, "Letzte Update-Runde");
+
+    expect(briefing.title).toContain("keine sicheren Treffer");
+  });
+
+  it("uses a more exploratory tone for small update batches", () => {
+    const briefing = buildAktuellBriefing(2, 2, "Letzte 4 Update-Runden");
+
+    expect(briefing.title).toContain("kleiner Schwung");
+  });
+
+  it("welcomes returning listeners for larger batches", () => {
+    const briefing = buildAktuellBriefing(12, 5, "Letzte 8 Update-Runden");
+
+    expect(briefing.kicker).toBe("Schön, dass du zurück bist");
   });
 });
 
