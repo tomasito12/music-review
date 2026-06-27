@@ -428,6 +428,27 @@ export function App(): ReactElement {
     }
   }
 
+  function discardProfileChanges(): void {
+    if (lastSavedProfile === null) {
+      return;
+    }
+    const restoredSession: ProfileSetupResult = {
+      presetId: "saved",
+      presetLabel: "Gespeichertes Profil",
+      profile: cloneTasteProfile(lastSavedProfile),
+    };
+    writeProfileSession(restoredSession);
+    setProfileSession(restoredSession);
+    setProfileChangesError(null);
+    setProfileChangesSavedMessage(null);
+    setArchiveRecommendations(null);
+    setArchiveTotal(0);
+    setAktuellRecommendations(null);
+    setAktuellTotal(0);
+    setArchiveError(null);
+    setAktuellError(null);
+  }
+
   function handleDismissSavePrompt(): void {
     dismissSavePrompt();
     setSavePromptHidden(true);
@@ -573,6 +594,7 @@ export function App(): ReactElement {
       activeRoute={route}
       onLoginClick={openLogin}
       onNavigate={navigate}
+      onDiscardProfileChanges={discardProfileChanges}
       onSaveProfileChanges={() => {
         void saveProfileChanges();
       }}

@@ -9,6 +9,7 @@ interface AppShellProps {
   activeRoute: AppRoute;
   children: ReactNode;
   profileSaveBanner: ProfileSaveBannerState;
+  onDiscardProfileChanges: () => void;
   onSaveProfileChanges: () => void;
   userEmail?: string | null;
   userState: UserState;
@@ -27,6 +28,7 @@ export function AppShell({
   activeRoute,
   children,
   profileSaveBanner,
+  onDiscardProfileChanges,
   onSaveProfileChanges,
   userEmail = null,
   userState,
@@ -83,7 +85,11 @@ export function AppShell({
             )}
           </div>
         </header>
-        <UnsavedProfileBanner onSave={onSaveProfileChanges} state={profileSaveBanner} />
+        <UnsavedProfileBanner
+          onDiscard={onDiscardProfileChanges}
+          onSave={onSaveProfileChanges}
+          state={profileSaveBanner}
+        />
       </div>
       <main className="app-main">{children}</main>
     </div>

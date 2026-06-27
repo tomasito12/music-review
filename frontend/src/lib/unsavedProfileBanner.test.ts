@@ -32,6 +32,7 @@ describe("resolveProfileSaveBannerState", () => {
       variant: "unsaved",
       message: "Profil geändert · noch nicht gespeichert",
       showSaveButton: true,
+      showDiscardButton: true,
     });
   });
 
@@ -47,6 +48,7 @@ describe("resolveProfileSaveBannerState", () => {
       variant: "saving",
       message: "Speichert ...",
       showSaveButton: false,
+      showDiscardButton: false,
     });
   });
 
@@ -61,6 +63,7 @@ describe("resolveProfileSaveBannerState", () => {
       variant: "saved",
       message: "Gespeichert.",
       showSaveButton: false,
+      showDiscardButton: false,
     });
   });
 
@@ -76,6 +79,7 @@ describe("resolveProfileSaveBannerState", () => {
       variant: "error",
       message: "Speichern fehlgeschlagen.",
       showSaveButton: true,
+      showDiscardButton: true,
     });
   });
 });

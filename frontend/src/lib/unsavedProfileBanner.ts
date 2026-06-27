@@ -13,6 +13,7 @@ export interface ProfileSaveBannerView {
   variant: ProfileSaveBannerVariant;
   message: string;
   showSaveButton: boolean;
+  showDiscardButton: boolean;
 }
 
 export type ProfileSaveBannerState =
@@ -41,6 +42,7 @@ export function resolveProfileSaveBannerState(
       variant: "saved",
       message: savedMessage,
       showSaveButton: false,
+      showDiscardButton: false,
     };
   }
 
@@ -54,6 +56,7 @@ export function resolveProfileSaveBannerState(
       variant: "saving",
       message: "Speichert ...",
       showSaveButton: false,
+      showDiscardButton: false,
     };
   }
 
@@ -63,6 +66,7 @@ export function resolveProfileSaveBannerState(
       variant: "error",
       message: errorMessage,
       showSaveButton: true,
+      showDiscardButton: true,
     };
   }
 
@@ -71,5 +75,6 @@ export function resolveProfileSaveBannerState(
     variant: "unsaved",
     message: "Profil geändert · noch nicht gespeichert",
     showSaveButton: true,
+    showDiscardButton: true,
   };
 }

@@ -90,6 +90,20 @@ a {
   font-size: 0.82rem;
 }
 
+.profile-save-banner-actions {
+  display: flex;
+  flex-shrink: 0;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 0.45rem;
+}
+
+.profile-save-banner .ghost-button {
+  padding: 0.35rem 0.72rem;
+  font-size: 0.82rem;
+}
+
 .profile-save-banner--saved {
   background: rgba(36, 85, 58, 0.08);
 }
@@ -1293,6 +1307,11 @@ select {
   .profile-save-banner {
     align-items: flex-start;
     flex-direction: column;
+  }
+
+  .profile-save-banner-actions {
+    width: 100%;
+    justify-content: flex-start;
   }
 
   .welcome-screen,
