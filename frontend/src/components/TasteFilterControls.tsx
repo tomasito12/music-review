@@ -290,21 +290,6 @@ export function TasteFilterControls({
         </section>
 
         <section className="filter-section">
-          <h3>Gewichte pro Stil-Schwerpunkt</h3>
-          <p className="field-hint">
-            Hier kannst du bei der Sortierung bestimmte Stilrichtungen stärker oder
-            schwächer gewichten.
-          </p>
-          <CommunityStyleWeights
-            applyMode={sliderApplyMode}
-            communities={communities}
-            onChange={onCommunityWeightsChange}
-            selectedCommunityIds={selectedCommunityIds}
-            weights={communityWeights}
-          />
-        </section>
-
-        <section className="filter-section">
           <h3>Liste</h3>
           <fieldset className="filter-control">
             <legend>Sortierung</legend>
@@ -363,6 +348,21 @@ export function TasteFilterControls({
             </div>
           </label>
         </section>
+      </details>
+
+      <details className="filter-panel">
+        <summary>Gewichte pro Stil-Schwerpunkt</summary>
+        <p className="field-hint filter-panel-intro">
+          Hier kannst du bei der Sortierung bestimmte Stilrichtungen stärker oder
+          schwächer gewichten.
+        </p>
+        <CommunityStyleWeights
+          applyMode={sliderApplyMode}
+          communities={communities}
+          onChange={onCommunityWeightsChange}
+          selectedCommunityIds={selectedCommunityIds}
+          weights={communityWeights}
+        />
       </details>
     </div>
   );

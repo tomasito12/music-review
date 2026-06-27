@@ -51,43 +51,40 @@ export function CommunityStyleWeights({
         const exampleCaption = formatCommunityExampleArtists(
           community?.example_artists ?? [],
         );
-        const label = community?.label ?? communityId;
 
         return (
-          <details className="style-weight-panel" key={communityId}>
-            <summary className="style-weight-summary">{label}</summary>
-            <div className="style-weight-panel-body">
-              {exampleCaption !== "" && (
-                <p className="style-weight-artists">{exampleCaption}</p>
-              )}
-              <div className="style-weight-slider-row">
-                <span
-                  aria-hidden="true"
-                  className="style-weight-cap"
-                  title="Geringeres Gewicht für diese Stilrichtung"
-                >
-                  −
-                </span>
-                <BalanceSlider
-                  applyMode={applyMode}
-                  ariaLabel={`Gewicht für ${label}`}
-                  onChange={(nextBias) => {
-                    onChange(
-                      updateCommunityWeightBias(weights, communityId, nextBias),
-                    );
-                  }}
-                  value={bias}
-                />
-                <span
-                  aria-hidden="true"
-                  className="style-weight-cap"
-                  title="Stärkeres Gewicht für diese Stilrichtung"
-                >
-                  +
-                </span>
-              </div>
+          <article className="style-weight-card" key={communityId}>
+            <p className="style-weight-name">{community?.label ?? communityId}</p>
+            {exampleCaption !== "" && (
+              <p className="style-weight-artists">{exampleCaption}</p>
+            )}
+            <div className="style-weight-slider-row">
+              <span
+                aria-hidden="true"
+                className="style-weight-cap"
+                title="Geringeres Gewicht für diese Stilrichtung"
+              >
+                −
+              </span>
+              <BalanceSlider
+                applyMode={applyMode}
+                ariaLabel={`Gewicht für ${community?.label ?? communityId}`}
+                onChange={(nextBias) => {
+                  onChange(
+                    updateCommunityWeightBias(weights, communityId, nextBias),
+                  );
+                }}
+                value={bias}
+              />
+              <span
+                aria-hidden="true"
+                className="style-weight-cap"
+                title="Stärkeres Gewicht für diese Stilrichtung"
+              >
+                +
+              </span>
             </div>
-          </details>
+          </article>
         );
       })}
     </div>
