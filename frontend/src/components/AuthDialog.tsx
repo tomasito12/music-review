@@ -3,6 +3,16 @@ import type { FormEvent, ReactElement } from "react";
 
 import { ApiClient } from "../lib/apiClient";
 import {
+  authDialogCssModifier,
+  authDialogEyebrow,
+  authDialogIntro,
+  authDialogSubmitLabel,
+  authDialogSwitchAction,
+  authDialogSwitchPrompt,
+  authDialogTitle,
+  shouldShowAuthModeSwitch,
+} from "../lib/authDialogCopy";
+import {
   authErrorMessage,
   validateLoginForm,
   validateSaveProfileForm,
@@ -12,6 +22,7 @@ import { loginAccount, registerAccount, saveTasteProfile } from "../lib/plattenr
 import type { TemporaryTasteProfile } from "../lib/plattenradarApi";
 
 interface AuthDialogProps {
+  lockMode?: boolean;
   mode: "login" | "save-profile";
   onClose: () => void;
   onSuccess: (session: AuthSession) => void;
@@ -20,6 +31,7 @@ interface AuthDialogProps {
 }
 
 export function AuthDialog({
+  lockMode = false,
   mode,
   onClose,
   onSuccess,
@@ -32,6 +44,7 @@ export function AuthDialog({
   const [passwordConfirm, setPasswordConfirm] = useState("");
   const [error, setError] = useState<string | null>(null);
   const [submitting, setSubmitting] = useState(false);
+  const showModeSwitch = shouldShowAuthModeSwitch(lockMode);
 
   async function handleSubmit(event: FormEvent<HTMLFormElement>): Promise<void> {
     event.preventDefault();
@@ -78,20 +91,16 @@ export function AuthDialog({
     <div className="dialog-backdrop" onClick={onClose} role="presentation">
       <section
         aria-modal="true"
-        className="auth-dialog"
+        className={`auth-dialog ${authDialogCssModifier(mode)}`}
         onClick={(event) => event.stopPropagation()}
         role="dialog"
       >
         <button className="dialog-close" onClick={onClose} type="button">
           Schließen
         </button>
-        <p className="eyebrow">{isLogin ? "Einloggen" : "Profil speichern"}</p>
-        <h1>{isLogin ? "Mit deinem Profil fortfahren" : "Profil per E-Mail sichern"}</h1>
-        <p>
-          {isLogin
-            ? "Melde dich mit E-Mail und Passwort an, damit Plattenradar dein gespeichertes Musikprofil laden kann."
-            : "Speichere dein aktuelles Musikprofil, damit du beim nächsten Besuch direkt neue Empfehlungen siehst."}
-        </p>
+        <p className="eyebrow">{authDialogEyebrow(mode)}</p>
+        <h1>{authDialogTitle(mode)}</h1>
+        <p>{authDialogIntro(mode)}</p>
         <form className="auth-dialog-form" onSubmit={handleSubmit}>
           <label>
             E-Mail
@@ -125,38 +134,21 @@ export function AuthDialog({
           )}
           {error !== null && <p className="form-error">{error}</p>}
           <button className="primary-button" disabled={submitting} type="submit">
-            {submitting
-              ? "Bitte warten ..."
-              : isLogin
-                ? "Einloggen"
-                : "Profil speichern"}
+            {submitting ? "Bitte warten ..." : authDialogSubmitLabel(mode)}
           </button>
         </form>
-        <p className="auth-dialog-switch">
-          {isLogin ? (
-            <>
-              Noch kein Konto?{" "}
-              <button
-                className="text-button"
-                onClick={() => onSwitchMode("save-profile")}
-                type="button"
-              >
-                Profil speichern
-              </button>
-            </>
-          ) : (
-            <>
-              Bereits ein Konto?{" "}
-              <button
-                className="text-button"
-                onClick={() => onSwitchMode("login")}
-                type="button"
-              >
-                Einloggen
-              </button>
-            </>
-          )}
-        </p>
+        {showModeSwitch && (
+          <p className="auth-dialog-switch">
+            {authDialogSwitchPrompt(mode)}{" "}
+            <button
+              className="text-button"
+              onClick={() => onSwitchMode(isLogin ? "save-profile" : "login")}
+              type="button"
+            >
+              {authDialogSwitchAction(mode)}
+            </button>
+          </p>
+        )}
       </section>
     </div>
   );

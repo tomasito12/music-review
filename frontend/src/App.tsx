@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { ReactElement } from "react";
 
 import { AuthDialog } from "./components/AuthDialog";
@@ -64,6 +64,7 @@ import {
   type ProfileSessionUpdate,
 } from "./lib/resultProfileUpdate";
 import { useResultsFilterOptions } from "./lib/useResultsFilterOptions";
+import { shouldRefetchRecommendations } from "./lib/recommendationFetch";
 import { resolveProfileSaveBannerState } from "./lib/unsavedProfileBanner";
 import type { TasteFilterSettings, TastePreset, TemporaryTasteProfile } from "./lib/plattenradarApi";
 import type {
@@ -126,6 +127,8 @@ export function App(): ReactElement {
     string | null
   >(null);
   const [profileChangesError, setProfileChangesError] = useState<string | null>(null);
+  const lastArchiveReloadTokenHandled = useRef(-1);
+  const lastAktuellReloadTokenHandled = useRef(-1);
 
   const temporaryProfile = profileSession?.profile ?? null;
   const isAuthenticated = authSession !== null;
@@ -313,6 +316,16 @@ export function App(): ReactElement {
     if (route !== "entdecken" || temporaryProfile === null) {
       return;
     }
+    if (
+      !shouldRefetchRecommendations(
+        archiveRecommendations,
+        archiveReloadToken,
+        lastArchiveReloadTokenHandled.current,
+      )
+    ) {
+      return;
+    }
+    lastArchiveReloadTokenHandled.current = archiveReloadToken;
 
     let active = true;
     setArchiveLoading(true);
@@ -336,12 +349,22 @@ export function App(): ReactElement {
     return () => {
       active = false;
     };
-  }, [archiveReloadToken, loadArchivePage, route, temporaryProfile]);
+  }, [archiveRecommendations, archiveReloadToken, loadArchivePage, route, temporaryProfile]);
 
   useEffect(() => {
     if (route !== "aktuell" || temporaryProfile === null) {
       return;
     }
+    if (
+      !shouldRefetchRecommendations(
+        aktuellRecommendations,
+        aktuellReloadToken,
+        lastAktuellReloadTokenHandled.current,
+      )
+    ) {
+      return;
+    }
+    lastAktuellReloadTokenHandled.current = aktuellReloadToken;
 
     let active = true;
     setAktuellLoading(true);
@@ -365,7 +388,7 @@ export function App(): ReactElement {
     return () => {
       active = false;
     };
-  }, [aktuellReloadToken, loadAktuellPage, route, temporaryProfile]);
+  }, [aktuellRecommendations, aktuellReloadToken, loadAktuellPage, route, temporaryProfile]);
 
   function invalidateRecommendationResults(): void {
     setArchiveReloadToken((token) => token + 1);
@@ -819,9 +842,12 @@ export function App(): ReactElement {
         />
       )}
       {route === "konto" && (
-        <section className="account-page">
-          <p className="eyebrow">Konto</p>
-          <h1>Dein Plattenradar-Konto</h1>
+        <section className="account-page page-shell">
+          <header className="page-header">
+            <p className="eyebrow">Konto</p>
+            <h1>Dein Plattenradar-Konto</h1>
+          </header>
+          <div className="account-card">
           {authSession !== null ? (
             <>
               <p>Angemeldet als {authSession.email}.</p>
@@ -840,10 +866,12 @@ export function App(): ReactElement {
               </button>
             </>
           )}
+          </div>
         </section>
       )}
       {authOpen && (
         <AuthDialog
+          lockMode
           mode={authMode}
           onClose={() => setAuthOpen(false)}
           onSuccess={handleAuthSuccess}

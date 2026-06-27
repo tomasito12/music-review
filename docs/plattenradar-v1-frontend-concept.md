@@ -1722,6 +1722,17 @@ Direkt umsetzen:
 - Empfehlungskarten um Score und Plattenlabel erweitern.
 - Tags für passende Stilrichtungen visuell subtil hervorheben.
 
+**Umsetzung (Shell, Iteration 2):**
+
+- Typografie in `global.css` beruhigt: kleinere `h1` auf Inhaltsseiten,
+  dezenteres Highlight-/Update-Summary-Styling, leichtere Nav-Links.
+- Mobile Navigation ab 900px als 4-Spalten-Grid unter Brand/Account (kein
+  horizontales Abschneiden mehr).
+- `AuthDialog` mit `lockMode`, getrennten Texten (`Anmelden` vs.
+  `Konto anlegen`) und CSS-Modifiern `--login` / `--register`.
+- `RecommendationCard`: Titel vor Meta, Fit-Badge und Score sekundär, Tags mit
+  `tag-match` / `tag-neutral`.
+
 Noch nicht umsetzen:
 
 - echten Update-Batch aus Daten ableiten,

@@ -26,3 +26,13 @@ for (const route of routes) {
     });
   });
 }
+
+test("capture entdecken mobile navigation", async ({ page }) => {
+  await page.setViewportSize({ width: 390, height: 844 });
+  await page.goto("/entdecken");
+  await page.waitForLoadState("domcontentloaded");
+  await page.screenshot({
+    path: path.join(screenshotDir, "entdecken-mobile.png"),
+    fullPage: true,
+  });
+});

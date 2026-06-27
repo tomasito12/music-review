@@ -80,13 +80,13 @@ export function RecommendationList({
     onEditProfile !== undefined;
 
   return (
-    <section className="results-page">
+    <section className="results-page page-shell">
       <div className="results-header">
-        <div>
+        <header className="page-header">
           <p className="eyebrow">{source === "aktuell" ? "Neue Rezensionen" : "Archiv"}</p>
           <h1>{title}</h1>
           <p>{message}</p>
-        </div>
+        </header>
         <button
           className="primary-button"
           onClick={() => onCreatePlaylist(source)}
@@ -99,6 +99,11 @@ export function RecommendationList({
       {savePrompt}
 
       <div className="results-filter-region">
+        {isReloading && (
+          <p aria-live="polite" className="results-reload-status">
+            Empfehlungen werden aktualisiert ...
+          </p>
+        )}
         <div className="results-toolbar">
           {source === "aktuell" && updateRoundOptions !== undefined && (
             <label className="range-control">
@@ -128,7 +133,6 @@ export function RecommendationList({
             error={filterError}
             hasSavedProfileReference={hasSavedProfileReference}
             isAuthenticated={isAuthenticated}
-            isReloading={isReloading}
             loading={filterLoading}
             onCommunityWeightsChange={onFilterCommunityWeightsChange}
             onEditProfile={onEditProfile}

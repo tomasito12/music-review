@@ -328,7 +328,7 @@ export function ProfileSetupShell({
     entryContext === "overview" && onBackToOverview !== undefined;
 
   return (
-    <section className="setup-shell">
+    <section className="setup-shell page-shell">
       {showBackToOverview && (
         <div className="setup-overview-back">
           <button className="ghost-button" onClick={onBackToOverview} type="button">
@@ -359,16 +359,41 @@ export function ProfileSetupShell({
           );
         })}
       </div>
+      <header className="page-header">
+        <p className="eyebrow">Musikprofil</p>
+        {step === "broad" && (
+          <>
+            <h1>Welche groben Richtungen passen zu dir?</h1>
+            <p>
+              Wähle zuerst die musikalischen Bereiche, aus denen Plattenradar
+              passende Detailstile vorschlagen soll.
+            </p>
+          </>
+        )}
+        {step === "details" && (
+          <>
+            <h1>Welche Detailstile sollen dein Profil prägen?</h1>
+            <p>
+              Eine Auswahl von etwa 5 bis 15 Stilen reicht meist. Du musst
+              nicht jede Kachel markieren – wähle, was sich sofort richtig
+              anfühlt.
+            </p>
+          </>
+        )}
+        {step === "filters" && (
+          <>
+            <h1>Wie sollen Empfehlungen gewichtet werden?</h1>
+            <p>
+              {filterUi?.preset_display_hint ??
+                "Wähle ein Preset als Startpunkt für Filter und Gewichtung."}
+            </p>
+          </>
+        )}
+      </header>
       <div className="setup-grid">
         <div className="setup-panel">
-          <p className="eyebrow">Musikprofil</p>
           {step === "broad" && (
             <>
-              <h1>Welche groben Richtungen passen zu dir?</h1>
-              <p>
-                Wähle zuerst die musikalischen Bereiche, aus denen Plattenradar
-                passende Detailstile vorschlagen soll.
-              </p>
               <div className="choice-grid choice-grid-broad">
                 {broadCategories.map((category) => (
                   <button
@@ -388,12 +413,6 @@ export function ProfileSetupShell({
           )}
           {step === "details" && (
             <>
-              <h1>Welche Detailstile sollen dein Profil prägen?</h1>
-              <p>
-                Eine Auswahl von etwa 5 bis 15 Stilen reicht meist. Du musst
-                nicht jede Kachel markieren – wähle, was sich sofort richtig
-                anfühlt.
-              </p>
               <p className="setup-selection-count" aria-live="polite">
                 {selectedCommunityIds.length} von {availableCommunities.length}{" "}
                 Detailstilen ausgewählt
@@ -423,11 +442,6 @@ export function ProfileSetupShell({
           )}
           {step === "filters" && (
             <>
-              <h1>Wie sollen Empfehlungen gewichtet werden?</h1>
-              <p>
-                {filterUi?.preset_display_hint ??
-                  "Wähle ein Preset als Startpunkt für Filter und Gewichtung."}
-              </p>
               <div className="preset-grid">
                 {presets.map((preset) => (
                   <button

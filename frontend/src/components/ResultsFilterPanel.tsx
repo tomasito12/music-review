@@ -11,7 +11,6 @@ interface ResultsFilterPanelProps {
   error: string | null;
   hasSavedProfileReference: boolean;
   isAuthenticated: boolean;
-  isReloading: boolean;
   loading: boolean;
   onCommunityWeightsChange: (weights: Record<string, number>) => void;
   onEditProfile: () => void;
@@ -26,7 +25,6 @@ export function ResultsFilterPanel({
   error,
   hasSavedProfileReference,
   isAuthenticated,
-  isReloading,
   loading,
   onCommunityWeightsChange,
   onEditProfile,
@@ -55,11 +53,6 @@ export function ResultsFilterPanel({
         <p className="field-hint results-filter-loading">Filter werden geladen ...</p>
       )}
       {error !== null && <p className="form-error">{error}</p>}
-      {isReloading && (
-        <p aria-live="polite" className="field-hint results-filter-reloading">
-          Empfehlungen werden aktualisiert ...
-        </p>
-      )}
 
       <details className="results-filter-panel">
         <summary>Filter und Gewichtung anpassen</summary>

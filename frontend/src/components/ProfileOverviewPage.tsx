@@ -72,8 +72,8 @@ export function ProfileOverviewPage({
       : "Temporäres Profil";
 
   return (
-    <section className="profile-overview">
-      <header className="profile-overview-header">
+    <section className="profile-overview page-shell">
+      <header className="page-header">
         <p className="eyebrow">Musikprofil</p>
         <h1>Dein Musikprofil</h1>
         <p>

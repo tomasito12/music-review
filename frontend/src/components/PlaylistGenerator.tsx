@@ -91,9 +91,11 @@ export function PlaylistGenerator({
 
   if (profile === null) {
     return (
-      <section className="playlist-page">
-        <p className="eyebrow">Playlists</p>
-        <h1>Neue Playlist erzeugen</h1>
+      <section className="playlist-page page-shell">
+        <header className="page-header">
+          <p className="eyebrow">Playlists</p>
+          <h1>Neue Playlist erzeugen</h1>
+        </header>
         <div className="empty-results">
           <p>
             Für Playlist-Vorschläge brauchst du zuerst ein Musikprofil mit
@@ -108,13 +110,15 @@ export function PlaylistGenerator({
   }
 
   return (
-    <section className="playlist-page">
-      <p className="eyebrow">Playlists</p>
-      <h1>Neue Playlist erzeugen</h1>
-      <p>
-        Stelle die Playlist passend zu deinem Hörmoment zusammen. Anschließend
-        kannst du sie als Text, TXT oder CSV in deinen Musikdienst übertragen.
-      </p>
+    <section className="playlist-page page-shell">
+      <header className="page-header">
+        <p className="eyebrow">Playlists</p>
+        <h1>Neue Playlist erzeugen</h1>
+        <p>
+          Stelle die Playlist passend zu deinem Hörmoment zusammen. Anschließend
+          kannst du sie als Text, TXT oder CSV in deinen Musikdienst übertragen.
+        </p>
+      </header>
       <div className="generator-card">
         <label>
           Musik auswählen aus
