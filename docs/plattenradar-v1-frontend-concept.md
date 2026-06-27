@@ -617,6 +617,13 @@ Possible `Musikprofil` page structure:
   - `Filter und Gewichtung bearbeiten`,
   - `Empfehlungen anzeigen`.
 
+**Umsetzung (Shell):** Route `musikprofil` zeigt für Nutzer mit bestehendem Profil
+zuerst `ProfileOverviewPage` (drei Summary-Karten). Bearbeiten öffnet weiterhin
+`ProfileSetupShell` im passenden Schritt; Erst-Setup und Shortcuts (z. B.
+`Filter anpassen` von Aktuell) überspringen die Übersicht. Abschluss aus der
+Übersicht ohne Return-Route bleibt auf `musikprofil`; Shortcuts und Erst-Setup
+nutzen die bestehende Return-/Entdecken-Navigation.
+
 ### Result-Screen Filter Changes
 
 Recommendation result screens should support lightweight filter experimentation.

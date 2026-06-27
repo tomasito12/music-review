@@ -572,10 +572,109 @@ p {
 }
 
 .setup-shell,
+.profile-overview,
 .playlist-page,
 .account-page,
 .empty-results {
   max-width: 960px;
+}
+
+.profile-overview-header h1 {
+  margin: 0.2rem 0 0.55rem;
+  font-size: 1.45rem;
+  font-weight: 650;
+}
+
+.profile-overview-header p {
+  max-width: 42rem;
+  margin: 0;
+}
+
+.profile-overview-status {
+  display: inline-block;
+  margin-top: 0.75rem;
+  border-radius: 999px;
+  padding: 0.3rem 0.62rem;
+  color: var(--ink);
+  background: rgba(255, 253, 250, 0.92);
+  border: 1px solid var(--line);
+  font-size: 0.78rem;
+  font-weight: 550;
+}
+
+.profile-overview-grid {
+  display: grid;
+  gap: 0.85rem;
+  margin: 1.2rem 0 1.4rem;
+}
+
+.profile-overview-card {
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  padding: 1rem 1.05rem;
+  background: rgba(255, 253, 250, 0.92);
+}
+
+.profile-overview-card h2 {
+  margin: 0 0 0.45rem;
+  font-size: 0.96rem;
+  font-weight: 650;
+}
+
+.profile-overview-card p {
+  margin: 0;
+  color: var(--ink);
+  font-size: 0.9rem;
+  line-height: 1.45;
+}
+
+.profile-overview-chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.4rem;
+  margin-top: 0.55rem;
+}
+
+.profile-overview-chips span {
+  border-radius: 999px;
+  padding: 0.3rem 0.58rem;
+  color: #552127;
+  background: var(--accent-soft);
+  font-size: 0.76rem;
+  font-weight: 550;
+}
+
+.profile-overview-card-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.45rem;
+  margin-top: 0.8rem;
+}
+
+.profile-overview-footer {
+  display: grid;
+  gap: 0.7rem;
+}
+
+.profile-overview-login-hint {
+  margin: 0;
+  color: var(--muted);
+  font-size: 0.86rem;
+}
+
+.link-button {
+  border: 0;
+  padding: 0;
+  color: var(--accent);
+  background: transparent;
+  font: inherit;
+  font-weight: 600;
+  text-decoration: underline;
+  cursor: pointer;
+}
+
+.setup-overview-back {
+  margin-bottom: 0.75rem;
 }
 
 .setup-panel h1,
@@ -1312,6 +1411,14 @@ select {
   .profile-save-banner-actions {
     width: 100%;
     justify-content: flex-start;
+  }
+
+  .profile-overview-card-actions {
+    width: 100%;
+  }
+
+  .profile-overview-card-actions .secondary-button {
+    width: 100%;
   }
 
   .welcome-screen,

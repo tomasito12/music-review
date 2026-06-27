@@ -6,6 +6,11 @@ import {
   normalizeCommunityWeights,
 } from "../lib/communityWeightMapping";
 import { formatCommunityExampleArtists } from "../lib/profileFormatting";
+import type { ProfileEntryContext } from "../lib/profilePageEntry";
+import {
+  resolveWizardFinishAction,
+  resolveWizardPrimaryLabel,
+} from "../lib/profileWizardFinish";
 import {
   SETUP_STEPS,
   canNavigateToSetupStep,
@@ -29,19 +34,27 @@ import type { ProfileSetupResult } from "../lib/profileSessionStorage";
 import { TasteFilterControls } from "./TasteFilterControls";
 
 interface ProfileSetupShellProps {
+  entryContext?: ProfileEntryContext;
+  hasReturnRoute?: boolean;
   initialPresetId?: string;
   initialProfile?: TemporaryTasteProfile | null;
   initialStep?: SetupStep;
   isSubmitting: boolean;
+  onBackToOverview?: () => void;
   onFinish: (result: ProfileSetupResult) => void;
+  onReturnToOverview: (result: ProfileSetupResult) => void;
 }
 
 export function ProfileSetupShell({
+  entryContext = "initial",
+  hasReturnRoute = false,
   initialPresetId,
   initialProfile = null,
   initialStep,
   isSubmitting,
+  onBackToOverview,
   onFinish,
+  onReturnToOverview,
 }: ProfileSetupShellProps): ReactElement {
   const [communities, setCommunities] = useState<TasteCommunityOption[]>([]);
   const [presets, setPresets] = useState<TastePreset[]>([]);
@@ -227,6 +240,19 @@ export function ProfileSetupShell({
     setFilterSettings(filterSettingsFromPreset(preset));
   }
 
+  function completeWizard(settings: TasteFilterSettings | undefined): void {
+    const result = buildSetupResult(buildProfile(settings));
+    const finishAction = resolveWizardFinishAction({
+      entryContext,
+      hasReturnRoute,
+    });
+    if (finishAction === "returnToOverview") {
+      onReturnToOverview(result);
+      return;
+    }
+    onFinish(result);
+  }
+
   function useExampleProfile(): void {
     const accepted = window.confirm(
       "Schnelltest mit drei Beispiel-Stilen starten? Du überspringst die Auswahl und siehst sofort Empfehlungen.",
@@ -259,7 +285,7 @@ export function ProfileSetupShell({
     const settings =
       filterSettings ??
       (selectedPreset !== null ? filterSettingsFromPreset(selectedPreset) : undefined);
-    onFinish(buildSetupResult(buildProfile(settings)));
+    completeWizard(settings);
   }
 
   function goBack(): void {
@@ -291,17 +317,25 @@ export function ProfileSetupShell({
         ? selectedCommunityIds.length > 0
         : filterSettings !== null && selectedPreset !== null;
 
-  const primaryLabel =
-    step === "broad"
-      ? "Detailstile auswählen"
-      : step === "details"
-        ? "Filter und Gewichtung"
-        : isSubmitting
-          ? "Empfehlungen werden geladen ..."
-          : "Empfehlungen anzeigen";
+  const primaryLabel = resolveWizardPrimaryLabel({
+    step,
+    entryContext,
+    isSubmitting,
+  });
+  const showSetupSummary = entryContext === "initial";
+  const showQuickTest = entryContext === "initial";
+  const showBackToOverview =
+    entryContext === "overview" && onBackToOverview !== undefined;
 
   return (
     <section className="setup-shell">
+      {showBackToOverview && (
+        <div className="setup-overview-back">
+          <button className="ghost-button" onClick={onBackToOverview} type="button">
+            Zurück zur Übersicht
+          </button>
+        </div>
+      )}
       <div className="setup-progress" aria-label="Musikprofil Fortschritt">
         {SETUP_STEPS.map((progressStep) => {
           const isActive = step === progressStep.id;
@@ -444,17 +478,20 @@ export function ProfileSetupShell({
             >
               {primaryLabel}
             </button>
-            <button
-              className="ghost-button"
-              disabled={communities.length === 0 || isSubmitting || loading}
-              onClick={useExampleProfile}
-              title="Überspringt die Auswahl und zeigt Empfehlungen mit drei Beispiel-Stilen."
-              type="button"
-            >
-              Schnelltest: Beispiel-Stile
-            </button>
+            {showQuickTest && (
+              <button
+                className="ghost-button"
+                disabled={communities.length === 0 || isSubmitting || loading}
+                onClick={useExampleProfile}
+                title="Überspringt die Auswahl und zeigt Empfehlungen mit drei Beispiel-Stilen."
+                type="button"
+              >
+                Schnelltest: Beispiel-Stile
+              </button>
+            )}
           </div>
         </div>
+        {showSetupSummary && (
         <aside className="setup-summary setup-summary-subtle">
           <h2>Dein Profil</h2>
           <p>Noch nicht gespeichert</p>
@@ -487,6 +524,7 @@ export function ProfileSetupShell({
             <li>Speichern bieten wir nach den ersten Empfehlungen an.</li>
           </ul>
         </aside>
+        )}
       </div>
     </section>
   );

@@ -4,7 +4,7 @@ import type { ReactElement } from "react";
 import { AuthDialog } from "./components/AuthDialog";
 import { AppShell } from "./components/AppShell";
 import { PlaylistGenerator } from "./components/PlaylistGenerator";
-import { ProfileSetupShell } from "./components/ProfileSetupShell";
+import { ProfilePage } from "./components/ProfilePage";
 import { RecommendationList } from "./components/RecommendationList";
 import { SaveProfileConfirmation } from "./components/SaveProfileConfirmation";
 import { SaveProfilePrompt } from "./components/SaveProfilePrompt";
@@ -43,6 +43,7 @@ import {
   writeProfileSession,
 } from "./lib/profileSessionStorage";
 import type { SetupStep } from "./lib/profileWizard";
+import type { ProfileEntryContext } from "./lib/profilePageEntry";
 import {
   resolveInitialRoute,
   shouldLandOnAktuell,
@@ -92,6 +93,8 @@ export function App(): ReactElement {
     useState<ProfileSetupMode>("initial");
   const [profileReturnRoute, setProfileReturnRoute] =
     useState<ProfileReturnRoute | null>(null);
+  const [profileWizardContext, setProfileWizardContext] =
+    useState<ProfileEntryContext | null>(null);
   const [archiveRecommendations, setArchiveRecommendations] = useState<
     Recommendation[] | null
   >(null);
@@ -356,6 +359,15 @@ export function App(): ReactElement {
     };
   }, [aktuellRecommendations, loadAktuellPage, route, temporaryProfile]);
 
+  function invalidateRecommendationResults(): void {
+    setArchiveRecommendations(null);
+    setArchiveTotal(0);
+    setAktuellRecommendations(null);
+    setAktuellTotal(0);
+    setArchiveError(null);
+    setAktuellError(null);
+  }
+
   function setAppRoute(nextRoute: AppRoute): void {
     setRoute(nextRoute);
     window.history.pushState({}, "", nextRoute === "willkommen" ? "/" : `/${nextRoute}`);
@@ -366,6 +378,8 @@ export function App(): ReactElement {
       const editState = startProfileEdit(route, profileReturnRoute);
       setProfileSetupMode(editState.mode);
       setProfileReturnRoute(editState.returnRoute);
+      setProfileEditStep(undefined);
+      setProfileWizardContext(null);
     }
     setAppRoute(nextRoute);
   }
@@ -375,6 +389,7 @@ export function App(): ReactElement {
     setProfileSetupMode(setupState.mode);
     setProfileReturnRoute(setupState.returnRoute);
     setProfileEditStep(undefined);
+    setProfileWizardContext(null);
     setAppRoute("musikprofil");
   }
 
@@ -382,8 +397,15 @@ export function App(): ReactElement {
     const editState = startProfileEdit(route, profileReturnRoute);
     setProfileSetupMode(editState.mode);
     setProfileReturnRoute(editState.returnRoute);
+    setProfileWizardContext("shortcut");
     setProfileEditStep(step);
     setAppRoute("musikprofil");
+  }
+
+  function showRecommendations(): void {
+    navigate(
+      isAuthenticated && lastSavedProfile !== null ? "aktuell" : "entdecken",
+    );
   }
 
   function createPlaylist(source: RecommendationSource): void {
@@ -479,12 +501,7 @@ export function App(): ReactElement {
     setProfileSession(restoredSession);
     setProfileChangesError(null);
     setProfileChangesSavedMessage(null);
-    setArchiveRecommendations(null);
-    setArchiveTotal(0);
-    setAktuellRecommendations(null);
-    setAktuellTotal(0);
-    setArchiveError(null);
-    setAktuellError(null);
+    invalidateRecommendationResults();
   }
 
   function handleDismissSavePrompt(): void {
@@ -505,20 +522,40 @@ export function App(): ReactElement {
     navigate("willkommen");
   }
 
-  async function finishSetup(result: ProfileSetupResult): Promise<void> {
+  function applyProfileToOverview(result: ProfileSetupResult): void {
+    const previousProfile = temporaryProfile;
     writeProfileSession(result);
     setProfileSession(result);
     setProfileEditStep(undefined);
+    setProfileWizardContext(null);
     setProfileSavedNotice(false);
     if (!isAuthenticated) {
       setUserState("anonymous_temporary_profile");
     }
-    setArchiveRecommendations(null);
-    setArchiveTotal(0);
-    setAktuellRecommendations(null);
-    setAktuellTotal(0);
-    setArchiveError(null);
-    setAktuellError(null);
+    if (
+      previousProfile !== null &&
+      !tasteProfilesMatch(previousProfile, result.profile)
+    ) {
+      invalidateRecommendationResults();
+    }
+  }
+
+  async function finishSetup(result: ProfileSetupResult): Promise<void> {
+    const previousProfile = temporaryProfile;
+    writeProfileSession(result);
+    setProfileSession(result);
+    setProfileEditStep(undefined);
+    setProfileWizardContext(null);
+    setProfileSavedNotice(false);
+    if (!isAuthenticated) {
+      setUserState("anonymous_temporary_profile");
+    }
+    if (
+      previousProfile === null ||
+      !tasteProfilesMatch(previousProfile, result.profile)
+    ) {
+      invalidateRecommendationResults();
+    }
     const destination = resolveProfileFinishRoute({
       mode: profileSetupMode,
       returnRoute: profileReturnRoute,
@@ -705,12 +742,23 @@ export function App(): ReactElement {
         />
       )}
       {route === "musikprofil" && (
-        <ProfileSetupShell
-          initialPresetId={profileSession?.presetId}
-          initialProfile={temporaryProfile}
-          initialStep={profileEditStep}
+        <ProfilePage
+          hasSavedProfileReference={lastSavedProfile !== null}
+          hasUnsavedProfileChanges={hasUnsavedProfileChanges}
+          isAuthenticated={isAuthenticated}
           isSubmitting={false}
-          onFinish={finishSetup}
+          onFinishSetup={finishSetup}
+          onOpenLogin={openLogin}
+          onReturnToOverview={applyProfileToOverview}
+          onShowRecommendations={showRecommendations}
+          profileEditStep={profileEditStep}
+          profileReturnRoute={profileReturnRoute}
+          profileSession={profileSession}
+          profileSetupMode={profileSetupMode}
+          profileWizardContext={profileWizardContext}
+          setProfileEditStep={setProfileEditStep}
+          setProfileWizardContext={setProfileWizardContext}
+          temporaryProfile={temporaryProfile}
         />
       )}
       {route === "konto" && (
