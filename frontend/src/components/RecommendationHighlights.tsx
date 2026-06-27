@@ -1,5 +1,6 @@
 import type { ReactElement } from "react";
 
+import { artistImageLookupKey } from "../lib/artistImageLookupKey";
 import { useArtistImagesBatch } from "../lib/useArtistImagesBatch";
 import type { RecommendationHighlight } from "../types";
 
@@ -15,7 +16,7 @@ export function RecommendationHighlights({
   highlights,
   showSaveAction = false,
 }: RecommendationHighlightsProps): ReactElement {
-  const { imagesByMbid, loading } = useArtistImagesBatch(
+  const { imagesByLookupKey, loading } = useArtistImagesBatch(
     highlights.map((highlight) => ({
       artistMbid: highlight.recommendation.artistMbid,
       artistName: highlight.recommendation.artist,
@@ -35,12 +36,17 @@ export function RecommendationHighlights({
 
       <div className="highlights-stack">
         {highlights.map((highlight, index) => {
-          const mbid = highlight.recommendation.artistMbid?.trim() ?? "";
+          const lookupKey = artistImageLookupKey({
+            artistMbid: highlight.recommendation.artistMbid,
+            artistName: highlight.recommendation.artist,
+          });
           return (
             <HighlightColumnCard
               highlight={highlight}
-              image={mbid ? imagesByMbid.get(mbid) ?? null : null}
-              imageLoading={loading && Boolean(mbid)}
+              image={
+                lookupKey ? imagesByLookupKey.get(lookupKey) ?? null : null
+              }
+              imageLoading={loading && Boolean(lookupKey)}
               imageOnStart={index % 2 === 0}
               key={highlight.label}
               showSaveAction={showSaveAction}

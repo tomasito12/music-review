@@ -61,25 +61,33 @@ def test_fetch_metadata_for_review_with_artist_info(monkeypatch) -> None:
         lambda **_: ExternalGenreInfo(
             mbid="rg1",
             title="Album",
-            artist="Artist",
+            artist="Josh.",
             tags=["post-punk"],
+            artist_mbid="mbid-from-release-group",
+        ),
+    )
+    monkeypatch.setattr(
+        fetch_metadata,
+        "fetch_artist_info_by_mbid",
+        lambda _mbid: ArtistInfo(
+            mbid="mbid-from-release-group",
+            name="Josh.",
+            country="DE",
+            artist_type="Person",
+            disambiguation="Johannes Sumpich",
+            tags=["indie"],
+            members=[],
         ),
     )
     monkeypatch.setattr(
         fetch_metadata,
         "fetch_artist_info",
-        lambda _name: ArtistInfo(
-            mbid="a1",
-            name="Artist",
-            country="DE",
-            artist_type="Group",
-            disambiguation="",
-            tags=["indie"],
-            members=["X"],
+        lambda _name: (_ for _ in ()).throw(
+            AssertionError("name lookup should not run"),
         ),
     )
-    result = fetch_metadata.fetch_metadata_for_review(1, "Artist", "Album")
+    result = fetch_metadata.fetch_metadata_for_review(1, "Josh.", "Album")
     assert result.mbid == "rg1"
     assert "punk" in result.genres
-    assert result.artist_mbid == "a1"
-    assert result.artist_members == ["X"]
+    assert result.artist_mbid == "mbid-from-release-group"
+    assert result.artist_disambiguation == "Johannes Sumpich"

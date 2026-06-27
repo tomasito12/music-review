@@ -8,16 +8,30 @@ import {
   visibleRecommendationTags,
 } from "../lib/recommendationTagStyles";
 import type { RecommendationHighlight } from "../types";
+import { formatRankPhotoKicker } from "../lib/entdeckenPage";
 
 import { ArtistImage } from "./ArtistImage";
 
-interface HighlightColumnCardProps {
-  highlight: RecommendationHighlight;
+interface HighlightColumnCardBaseProps {
   image: ArtistImageData | null;
   imageLoading: boolean;
   imageOnStart: boolean;
   showSaveAction: boolean;
 }
+
+interface HighlightColumnCardHighlightProps extends HighlightColumnCardBaseProps {
+  variant?: "highlight";
+  highlight: RecommendationHighlight;
+}
+
+interface HighlightColumnCardRankedProps extends HighlightColumnCardBaseProps {
+  variant: "ranked";
+  recommendation: RecommendationHighlight["recommendation"];
+}
+
+type HighlightColumnCardProps =
+  | HighlightColumnCardHighlightProps
+  | HighlightColumnCardRankedProps;
 
 function HighlightTileMedia({
   artistName,
@@ -48,14 +62,17 @@ function HighlightTileMedia({
 }
 
 /** One full-width highlight tile with alternating image placement. */
-export function HighlightColumnCard({
-  highlight,
-  image,
-  imageLoading,
-  imageOnStart,
-  showSaveAction,
-}: HighlightColumnCardProps): ReactElement {
-  const { recommendation, label, description } = highlight;
+export function HighlightColumnCard(props: HighlightColumnCardProps): ReactElement {
+  const { image, imageLoading, imageOnStart, showSaveAction } = props;
+  const recommendation =
+    props.variant === "ranked" ? props.recommendation : props.highlight.recommendation;
+  const label =
+    props.variant === "ranked"
+      ? formatRankPhotoKicker(recommendation.rank)
+      : props.highlight.label;
+  const description = props.variant === "ranked" ? null : props.highlight.description;
+  const isPrimary =
+    props.variant !== "ranked" && props.highlight.label === "Beste Passung";
   const metaParts = recommendationCardMetaParts(recommendation);
   const tags = visibleRecommendationTags(recommendation.tags);
 
@@ -63,7 +80,7 @@ export function HighlightColumnCard({
     <article
       className={`highlight-tile${
         imageOnStart ? " highlight-tile-image-start" : " highlight-tile-image-end"
-      }${label === "Beste Passung" ? " highlight-tile-primary" : ""}`}
+      }${isPrimary ? " highlight-tile-primary" : ""}`}
     >
       <div className="highlight-tile-media">
         <HighlightTileMedia
@@ -94,7 +111,7 @@ export function HighlightColumnCard({
             {recommendation.artist} – {recommendation.album}
           </a>
         </h3>
-        <p className="highlight-tile-lead">{description}</p>
+        {description !== null && <p className="highlight-tile-lead">{description}</p>}
         <p className="highlight-tile-meta">{metaParts.join(" · ")}</p>
 
         {tags.length > 0 && (

@@ -1,4 +1,5 @@
 import { ApiClient } from "./apiClient";
+import { artistImageLookupKey } from "./artistImageLookupKey";
 
 export interface ArtistImageData {
   artistMbid: string;
@@ -10,7 +11,7 @@ export interface ArtistImageData {
 }
 
 export interface ArtistImageLookup {
-  artistMbid: string;
+  artistMbid?: string;
   artistName?: string;
 }
 
@@ -55,10 +56,11 @@ export async function loadArtistImage(
   artistMbid: string,
   artistName?: string,
 ): Promise<ArtistImageData | null> {
+  const lookupKey = artistImageLookupKey({ artistMbid, artistName });
   const results = await loadArtistImagesBatch(client, [
     { artistMbid, artistName },
   ]);
-  return results.get(artistMbid.trim()) ?? null;
+  return results.get(lookupKey) ?? null;
 }
 
 /** Loads licensed thumbnails for multiple highlight artists in one request. */
@@ -66,13 +68,17 @@ export async function loadArtistImagesBatch(
   client: ApiClient,
   artists: ArtistImageLookup[],
 ): Promise<Map<string, ArtistImageData | null>> {
-  const pending = artists
+  const normalized = artists
     .map((artist) => ({
-      artistMbid: artist.artistMbid.trim(),
+      artistMbid: artist.artistMbid?.trim() ?? "",
       artistName: artist.artistName,
+      lookupKey: artistImageLookupKey(artist),
     }))
-    .filter((artist) => artist.artistMbid.length > 0)
-    .filter((artist) => !artistImageCache.has(artist.artistMbid));
+    .filter((artist) => artist.lookupKey.length > 0);
+
+  const pending = normalized.filter(
+    (artist) => !artistImageCache.has(artist.lookupKey),
+  );
 
   if (pending.length > 0) {
     const response = await client.post<ApiArtistImagesBatchResponse>(
@@ -94,12 +100,8 @@ export async function loadArtistImagesBatch(
   }
 
   const results = new Map<string, ArtistImageData | null>();
-  for (const artist of artists) {
-    const mbid = artist.artistMbid.trim();
-    if (!mbid) {
-      continue;
-    }
-    results.set(mbid, artistImageCache.get(mbid) ?? null);
+  for (const artist of normalized) {
+    results.set(artist.lookupKey, artistImageCache.get(artist.lookupKey) ?? null);
   }
   return results;
 }

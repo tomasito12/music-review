@@ -27,7 +27,7 @@ describe("loadArtistImagesBatch", () => {
     vi.unstubAllGlobals();
   });
 
-  it("returns null for an empty MBID without calling the API", async () => {
+  it("returns null for an empty MBID and missing name without calling the API", async () => {
     const fetchMock = vi.fn();
     vi.stubGlobal("fetch", fetchMock);
 
@@ -36,8 +36,40 @@ describe("loadArtistImagesBatch", () => {
       [{ artistMbid: "  " }],
     );
 
-    expect(result.get("")).toBeUndefined();
+    expect(result.size).toBe(0);
     expect(fetchMock).not.toHaveBeenCalled();
+  });
+
+  it("resolves artists by name when the MBID is missing", async () => {
+    const fetchMock = vi.fn().mockResolvedValue(
+      new Response(
+        JSON.stringify({
+          items: [
+            {
+              artist_mbid: "name:sibylle kefer",
+              image: {
+                artist_mbid: "mbid-sibylle",
+                artist_name: "Sibylle Kefer",
+                thumbnail_url: "https://example.com/sibylle.jpg",
+                attribution_text: "Sibylle Kefer by User, CC BY 4.0 via Wikimedia Commons",
+                license: "CC BY 4.0",
+                source_url: "https://commons.wikimedia.org/wiki/File:Sibylle.jpg",
+              },
+            },
+          ],
+        }),
+        { status: 200 },
+      ),
+    );
+    vi.stubGlobal("fetch", fetchMock);
+    const client = new ApiClient({ baseUrl: "https://api.example.test" });
+
+    const result = await loadArtistImagesBatch(client, [
+      { artistName: "Sibylle Kefer" },
+    ]);
+
+    expect(result.get("name:sibylle kefer")?.artistName).toBe("Sibylle Kefer");
+    expect(fetchMock).toHaveBeenCalledOnce();
   });
 
   it("maps a successful batch response and caches results", async () => {

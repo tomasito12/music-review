@@ -15,6 +15,7 @@ import {
   newestCountFromUpdateRounds,
   UPDATE_ROUND_OPTIONS,
 } from "./lib/aktuellPage";
+import { buildEntdeckenHeaderMessage } from "./lib/entdeckenPage";
 import { ApiClient } from "./lib/apiClient";
 import type { AuthSession } from "./lib/authSessionStorage";
 import {
@@ -1135,7 +1136,7 @@ function ArchiveDiscoverPage({
         isAuthenticated={isAuthenticated}
         isReloading={isReloading}
         loadingMore={isLoadingMore}
-        message={`${total} Alben passen zu deinen Einstellungen. ${loadedCount} werden gerade angezeigt.`}
+        message={buildEntdeckenHeaderMessage(total, loadedCount)}
         onCreatePlaylist={onCreatePlaylist}
         onEditProfile={onOpenProfileOverview}
         onFilterCommunityWeightsChange={onFilterCommunityWeightsChange}

@@ -34,6 +34,7 @@ from music_review.api.schemas import (
     RecommendationRequest,
     TasteProfileResponse,
 )
+from music_review.application.artist_image_lookup import artist_image_lookup_key
 from music_review.application.artist_image_models import ArtistImageRecord
 from music_review.application.artist_image_service import ArtistImageService
 from music_review.application.community_tags import community_tags_from_entries
@@ -74,6 +75,7 @@ from music_review.dashboard.user_db import (
     validate_session_token,
 )
 from music_review.domain.models import Review
+from music_review.text_encoding import repair_plattentests_text
 
 CORPUS_PROVIDER_DEPENDENCY = Depends(get_corpus_provider)
 USER_DB_DEPENDENCY = Depends(get_user_db)
@@ -180,15 +182,19 @@ def create_app() -> FastAPI:
         )
         items = tuple(
             ArtistImageBatchResult(
-                artist_mbid=item.artist_mbid,
-                image=_artist_image_response(
-                    service,
-                    records[item.artist_mbid.strip()],
-                )
-                if item.artist_mbid.strip() in records
+                artist_mbid=lookup_key,
+                image=_artist_image_response(service, records[lookup_key])
+                if lookup_key in records
                 else None,
             )
             for item in request.artists
+            for lookup_key in (
+                artist_image_lookup_key(
+                    item.artist_mbid,
+                    artist_name=item.artist_name,
+                ),
+            )
+            if lookup_key
         )
         return ArtistImagesBatchResponse(items=items)
 
@@ -520,7 +526,7 @@ def _recommendation_from_row(
         year = _optional_int(row.get("year"))
         release_date = _optional_str(row.get("release_date"))
         rating = _optional_float(row.get("rating"))
-        text = str(row.get("text", ""))
+        text = repair_plattentests_text(str(row.get("text", "")))
         review_id = int(row.get("review_id", 0))
     overall = float(row.get("overall_score", 0.0))
     return Recommendation(

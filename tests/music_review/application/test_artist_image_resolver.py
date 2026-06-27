@@ -176,3 +176,38 @@ def test_resolve_artist_image_uses_wikipedia_fallback(monkeypatch) -> None:
     assert record.status == "ok"
     assert record.commons_file == "The Memorials.jpg"
     assert record.wikidata_id == "Q7750962"
+
+
+def test_resolve_artist_image_uses_name_only_fallback_when_musicbrainz_missing(
+    monkeypatch,
+) -> None:
+    """Artists missing from MusicBrainz can still resolve via Wikipedia or Commons."""
+    monkeypatch.setattr(
+        "music_review.application.artist_image_resolver.fetch_artist_info",
+        lambda _name: None,
+    )
+    monkeypatch.setattr(
+        "music_review.application.artist_image_resolver.find_commons_image_via_wikipedia",
+        lambda _names, disambiguation=None: (None, None),
+    )
+    monkeypatch.setattr(
+        "music_review.application.artist_image_resolver.find_commons_image_by_artist_name",
+        lambda _name: CommonsImageInfo(
+            commons_file="Sibylle Kefer 2019.jpg",
+            image_url="https://example.com/full.jpg",
+            thumbnail_url="https://example.com/thumb.jpg",
+            license="CC BY-SA 4.0",
+            license_url="https://creativecommons.org/licenses/by-sa/4.0/",
+            author="User:Example",
+            source_url="https://commons.wikimedia.org/wiki/File:Sibylle_Kefer.jpg",
+            attribution_text="credit",
+            title="Sibylle Kefer",
+        ),
+    )
+
+    record = resolve_artist_image(artist_name="Sibylle Kefer")
+
+    assert record.status == "ok"
+    assert record.artist_mbid == ""
+    assert record.artist_name == "Sibylle Kefer"
+    assert record.commons_file == "Sibylle Kefer 2019.jpg"

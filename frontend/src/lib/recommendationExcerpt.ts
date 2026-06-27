@@ -1,8 +1,10 @@
+import { repairPlattentestsText } from "./plattentestsTextEncoding";
+
 export const EXCERPT_PREVIEW_LINE_COUNT = 3;
 
 /** Normalize review excerpt whitespace for card previews. */
 export function normalizeExcerptText(text: string): string {
-  return text.trim().replace(/\s+/g, " ");
+  return repairPlattentestsText(text).trim().replace(/\s+/g, " ");
 }
 
 /**

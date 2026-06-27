@@ -10,6 +10,7 @@ import type { TasteCommunityOption, TasteFilterSettings, TastePreset } from "../
 import type { ProfileSetupResult } from "../lib/profileSessionStorage";
 
 import { RecommendationCard } from "./RecommendationCard";
+import { EntdeckenRankingList } from "./EntdeckenRankingList";
 import { RecommendationHighlights } from "./RecommendationHighlights";
 import { RecommendationTagLegend } from "./RecommendationTagLegend";
 import { ResultsFilterPanel } from "./ResultsFilterPanel";
@@ -97,6 +98,63 @@ export function RecommendationList({
     source === "aktuell"
       ? "Dichter sortiert, damit du den Update-Schwung schnell scannen kannst."
       : "Sortiert nach der Passung zu deinem Musikprofil.";
+  const filterRegion = (
+    <div
+      className={`results-filter-region${
+        source === "aktuell" ? " results-filter-region-after-highlights" : ""
+      }`}
+    >
+      <div className="results-toolbar">
+        {source === "aktuell" && updateRoundOptions !== undefined && (
+          <label className="range-control">
+            Zeitraum
+            <select
+              onChange={(event) => onUpdateRoundsChange?.(event.target.value)}
+              value={updateRounds}
+            >
+              {updateRoundOptions.map((option) => (
+                <option key={option.value} value={option.value}>
+                  {option.label}
+                </option>
+              ))}
+            </select>
+          </label>
+        )}
+        <div className="filter-summary" aria-label="Aktuelle Filter">
+          {(filterSummary ?? ["Ausgewogen", "Stilpassung sichtbar"]).map((chip) => (
+            <span key={chip}>{chip}</span>
+          ))}
+        </div>
+        {isReloading && (
+          <span className="results-reload-chip" role="status">
+            Aktualisiere ...
+          </span>
+        )}
+      </div>
+
+      {showFilterPanel && (
+        <ResultsFilterPanel
+          communities={filterCommunities}
+          error={filterError}
+          hasSavedProfileReference={hasSavedProfileReference}
+          isAuthenticated={isAuthenticated}
+          loading={filterLoading}
+          onCommunityWeightsChange={onFilterCommunityWeightsChange}
+          onEditProfile={onEditProfile}
+          onFilterSettingsChange={onFilterSettingsChange}
+          onPresetSelect={onPresetSelect}
+          presets={filterPresets}
+          profileSession={profileSession}
+        />
+      )}
+    </div>
+  );
+  const entdeckenFilterRegion = (
+    <>
+      {filterRegion}
+      <RecommendationTagLegend />
+    </>
+  );
 
   return (
     <section className="results-page page-shell">
@@ -138,62 +196,39 @@ export function RecommendationList({
 
       {savePrompt}
 
-      <div className="results-filter-region">
-        <div className="results-toolbar">
-          {source === "aktuell" && updateRoundOptions !== undefined && (
-            <label className="range-control">
-              Zeitraum
-              <select
-                onChange={(event) => onUpdateRoundsChange?.(event.target.value)}
-                value={updateRounds}
-              >
-                {updateRoundOptions.map((option) => (
-                  <option key={option.value} value={option.value}>
-                    {option.label}
-                  </option>
-                ))}
-              </select>
-            </label>
-          )}
-          <div className="filter-summary" aria-label="Aktuelle Filter">
-            {(filterSummary ?? ["Ausgewogen", "Stilpassung sichtbar"]).map((chip) => (
-              <span key={chip}>{chip}</span>
-            ))}
-          </div>
-          {isReloading && (
-            <span className="results-reload-chip" role="status">
-              Aktualisiere ...
-            </span>
-          )}
-        </div>
-
-        {showFilterPanel && (
-          <ResultsFilterPanel
-            communities={filterCommunities}
-            error={filterError}
-            hasSavedProfileReference={hasSavedProfileReference}
-            isAuthenticated={isAuthenticated}
-            loading={filterLoading}
-            onCommunityWeightsChange={onFilterCommunityWeightsChange}
-            onEditProfile={onEditProfile}
-            onFilterSettingsChange={onFilterSettingsChange}
-            onPresetSelect={onPresetSelect}
-            presets={filterPresets}
-            profileSession={profileSession}
-          />
-        )}
-      </div>
-
-      {source === "aktuell" && <RecommendationTagLegend />}
-
-      <div className={`results-body${isReloading ? " results-reloading" : ""}`}>
+      <div
+        className={`results-body${
+          isReloading ? " results-reloading" : ""
+        }${source === "aktuell" ? " results-body-aktuell" : ""}${
+          source === "entdecken" ? " results-body-entdecken" : ""
+        }`}
+      >
       {highlights !== undefined && highlights.length > 0 && (
         <RecommendationHighlights highlights={highlights} showSaveAction />
       )}
 
+      {source === "aktuell" && (
+        <div className="results-list-prelude">
+          {filterRegion}
+          <RecommendationTagLegend />
+        </div>
+      )}
+
+      {source === "entdecken" ? (
+        <EntdeckenRankingList
+          canLoadMore={canLoadMore}
+          filterRegion={entdeckenFilterRegion}
+          loadingMore={loadingMore}
+          onLoadMore={onLoadMore}
+          recommendations={listRecommendations}
+          showSaveAction
+        />
+      ) : (
       <section
         aria-labelledby="ranking-heading"
-        className="ranking-section"
+        className={`ranking-section${
+          source === "aktuell" ? " ranking-section-after-prelude" : ""
+        }`}
       >
         <div className="ranking-heading">
           <h2 id="ranking-heading">{rankingTitle}</h2>
@@ -221,6 +256,7 @@ export function RecommendationList({
           </div>
         )}
       </section>
+      )}
       </div>
     </section>
   );

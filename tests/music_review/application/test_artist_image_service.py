@@ -212,3 +212,41 @@ def test_lookup_force_bypasses_negative_cache(tmp_path: Path) -> None:
 
     assert record.status == "ok"
     resolver.assert_called_once()
+
+
+def test_lookup_resolves_by_artist_name_when_mbid_missing(
+    tmp_path: Path,
+) -> None:
+    """Name-only requests resolve and cache under a stable name lookup key."""
+    from music_review.application.artist_image_store import load_artist_image_index
+
+    cache_path = tmp_path / "artist_images.jsonl"
+    resolved = ArtistImageRecord(
+        artist_mbid="mbid-sibylle",
+        artist_name="Sibylle Kefer",
+        status="ok",
+        fetched_at=utc_now_iso(),
+        thumbnail_url="https://example.com/sibylle.jpg",
+        license="CC BY 4.0",
+        attribution_text="credit",
+        source_url="https://commons.wikimedia.org/wiki/File:Sibylle.jpg",
+    )
+    service = ArtistImageService(
+        cache_path=cache_path,
+        images_dir=tmp_path / "artist_images",
+        negative_ttl_days=30,
+    )
+
+    with pytest.MonkeyPatch.context() as monkeypatch:
+        monkeypatch.setattr(
+            "music_review.application.artist_image_service.resolve_artist_image",
+            lambda **kwargs: resolved,
+        )
+        record = service.lookup("", artist_name="Sibylle Kefer")
+
+    assert record.status == "ok"
+    assert record.artist_mbid == "mbid-sibylle"
+    assert cache_path.is_file()
+    index = load_artist_image_index(cache_path)
+    assert "name:sibylle kefer" in index
+    assert index["mbid-sibylle"].status == "ok"

@@ -644,7 +644,7 @@ class BatchFakeArtistImageService:
         *,
         artist_name: str | None = None,
     ) -> ArtistImageRecord:
-        """Return ok only for mbid-alpha."""
+        """Return ok only for mbid-alpha or Sibylle Kefer by name."""
         if artist_mbid == "mbid-alpha":
             return ArtistImageRecord(
                 artist_mbid=artist_mbid,
@@ -655,6 +655,19 @@ class BatchFakeArtistImageService:
                 license="CC BY 4.0",
                 attribution_text="Alpha by User, CC BY 4.0 via Wikimedia Commons",
                 source_url="https://commons.wikimedia.org/wiki/File:Alpha.jpg",
+            )
+        if (artist_name or "").casefold() == "sibylle kefer":
+            return ArtistImageRecord(
+                artist_mbid="mbid-sibylle",
+                artist_name="Sibylle Kefer",
+                status="ok",
+                fetched_at=utc_now_iso(),
+                thumbnail_url="https://example.com/sibylle.jpg",
+                license="CC BY 4.0",
+                attribution_text=(
+                    "Sibylle Kefer by User, CC BY 4.0 via Wikimedia Commons"
+                ),
+                source_url="https://commons.wikimedia.org/wiki/File:Sibylle.jpg",
             )
         return ArtistImageRecord(
             artist_mbid=artist_mbid,
@@ -669,11 +682,15 @@ class BatchFakeArtistImageService:
         artists: list[tuple[str, str | None]],
     ) -> dict[str, ArtistImageRecord]:
         """Return batch lookup results."""
-        return {
-            artist_mbid.strip(): self.lookup(artist_mbid, artist_name=artist_name)
-            for artist_mbid, artist_name in artists
-            if artist_mbid.strip()
-        }
+        from music_review.application.artist_image_lookup import artist_image_lookup_key
+
+        results: dict[str, ArtistImageRecord] = {}
+        for artist_mbid, artist_name in artists:
+            lookup_key = artist_image_lookup_key(artist_mbid, artist_name=artist_name)
+            if not lookup_key or lookup_key in results:
+                continue
+            results[lookup_key] = self.lookup(artist_mbid, artist_name=artist_name)
+        return results
 
     def public_thumbnail_url(self, record: ArtistImageRecord) -> str | None:
         """Return the remote thumbnail URL for API responses."""
@@ -696,8 +713,29 @@ def test_artist_images_batch_endpoint_returns_available_images() -> None:
 
     assert response.status_code == 200
     payload = response.json()
+    assert payload["items"][0]["artist_mbid"] == "mbid-alpha"
     assert payload["items"][0]["image"]["artist_mbid"] == "mbid-alpha"
+    assert payload["items"][1]["artist_mbid"] == "mbid-missing"
     assert payload["items"][1]["image"] is None
+
+
+def test_artist_images_batch_endpoint_resolves_name_only_artists() -> None:
+    """Batch endpoint resolves artists without a MusicBrainz MBID by name."""
+    client = _client(artist_image_service=BatchFakeArtistImageService())  # type: ignore[arg-type]
+
+    response = client.post(
+        "/v1/artists/images",
+        json={
+            "artists": [
+                {"artist_mbid": "", "artist_name": "Sibylle Kefer"},
+            ],
+        },
+    )
+
+    assert response.status_code == 200
+    payload = response.json()
+    assert payload["items"][0]["artist_mbid"] == "name:sibylle kefer"
+    assert payload["items"][0]["image"]["artist_name"] == "Sibylle Kefer"
 
 
 def test_artist_image_file_endpoint_returns_local_jpg(tmp_path) -> None:

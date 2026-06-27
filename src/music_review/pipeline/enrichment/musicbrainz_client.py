@@ -10,6 +10,7 @@ You *must* set a sensible USER_AGENT_* configuration before using this module.
 from __future__ import annotations
 
 import logging
+import random
 import re
 import time
 import warnings
@@ -48,6 +49,8 @@ if not MB_VERIFY_TLS:
     )
 
 _RATE_LIMIT_SECONDS = 1.0
+_MAX_RETRIES = 3
+_RETRYABLE_HTTP_STATUSES = frozenset({429, 503})
 _last_call_ts: float | None = None
 
 
@@ -62,6 +65,36 @@ class ArtistInfo:
     members: list[str]
 
 
+def fetch_artist_info_by_mbid(mbid: str) -> ArtistInfo | None:
+    """Lookup a MusicBrainz artist by MBID and return normalized info."""
+    trimmed_mbid = mbid.strip()
+    if not trimmed_mbid:
+        return None
+
+    detailed = _lookup_artist_with_tags(trimmed_mbid)
+    if detailed is None:
+        return None
+
+    artist_name = detailed.get("name")
+    country = detailed.get("country")
+    artist_type = detailed.get("type")
+    disambiguation = detailed.get("disambiguation")
+    resolved_name = (
+        str(artist_name)
+        if isinstance(artist_name, str) and artist_name.strip()
+        else trimmed_mbid
+    )
+    return ArtistInfo(
+        mbid=trimmed_mbid,
+        name=resolved_name,
+        country=str(country) if isinstance(country, str) else None,
+        artist_type=str(artist_type) if isinstance(artist_type, str) else None,
+        disambiguation=str(disambiguation) if isinstance(disambiguation, str) else None,
+        tags=_extract_tag_names(detailed),
+        members=_extract_band_members(detailed),
+    )
+
+
 def fetch_artist_info(name: str) -> ArtistInfo | None:
     """Best-effort lookup of a MusicBrainz artist by human-readable name.
 
@@ -71,8 +104,11 @@ def fetch_artist_info(name: str) -> ArtistInfo | None:
         3) Lookup artist by MBID including tags & relations
         4) Return normalized ArtistInfo
     """
-    candidates = _search_artists(name=name, limit=5)
-    best = _select_best_artist(candidates)
+    candidates, search_failed = _search_artists(name=name, limit=5)
+    if search_failed:
+        return None
+
+    best = _select_best_artist(candidates, preferred_name=name)
 
     if best is None:
         logger.info("No MusicBrainz artist found for name=%s", name)
@@ -114,8 +150,11 @@ def fetch_artist_info(name: str) -> ArtistInfo | None:
     )
 
 
-def _search_artists(name: str, limit: int = 5) -> list[dict[str, Any]]:
-    """Search MusicBrainz artists by name."""
+def _search_artists(name: str, limit: int = 5) -> tuple[list[dict[str, Any]], bool]:
+    """Search MusicBrainz artists by name.
+
+    Returns a tuple of (candidates, search_failed).
+    """
     params = {
         "query": name,
         "fmt": "json",
@@ -124,18 +163,32 @@ def _search_artists(name: str, limit: int = 5) -> list[dict[str, Any]]:
 
     try:
         data = _get("/artist", params)
-    except Exception as exc:  # requests.RequestException or similar from _get
+    except requests.RequestException as exc:
         logger.warning("MusicBrainz artist search failed for %s: %s", name, exc)
-        return []
+        return [], True
 
-    return list(data.get("artists", []))
+    return list(data.get("artists", [])), False
 
 
-def _select_best_artist(candidates: Iterable[dict[str, Any]]) -> dict[str, Any] | None:
+def _select_best_artist(
+    candidates: Iterable[dict[str, Any]],
+    *,
+    preferred_name: str | None = None,
+) -> dict[str, Any] | None:
     """Pick the most likely artist candidate from a search result list."""
     artists = list(candidates)
     if not artists:
         return None
+
+    if preferred_name:
+        preferred = preferred_name.casefold().strip()
+        exact_matches = [
+            artist
+            for artist in artists
+            if str(artist.get("name", "")).casefold().strip() == preferred
+        ]
+        if exact_matches:
+            artists = exact_matches
 
     # Prefer highest MusicBrainz score if present
     def score(a: dict[str, Any]) -> int:
@@ -147,6 +200,52 @@ def _select_best_artist(candidates: Iterable[dict[str, Any]]) -> dict[str, Any] 
     artists.sort(key=score, reverse=True)
 
     return artists[0]
+
+
+def extract_artist_mbid_from_release_group(
+    release_group: dict[str, Any],
+) -> str | None:
+    """Extract the credited artist MBID from one release-group search hit."""
+    credits = release_group.get("artist-credit")
+    if not isinstance(credits, list) or not credits:
+        return None
+
+    first_credit = credits[0]
+    if not isinstance(first_credit, dict):
+        return None
+
+    artist = first_credit.get("artist")
+    if not isinstance(artist, dict):
+        return None
+
+    artist_id = artist.get("id")
+    if isinstance(artist_id, str) and artist_id.strip():
+        return artist_id.strip()
+    return None
+
+
+def extract_artist_name_from_release_group(
+    release_group: dict[str, Any],
+) -> str | None:
+    """Extract the credited artist name from one release-group search hit."""
+    credits = release_group.get("artist-credit")
+    if not isinstance(credits, list) or not credits:
+        return None
+
+    first_credit = credits[0]
+    if not isinstance(first_credit, dict):
+        return None
+
+    credit_name = first_credit.get("name")
+    if isinstance(credit_name, str) and credit_name.strip():
+        return credit_name.strip()
+
+    artist = first_credit.get("artist")
+    if isinstance(artist, dict):
+        artist_name = artist.get("name")
+        if isinstance(artist_name, str) and artist_name.strip():
+            return artist_name.strip()
+    return None
 
 
 def _extract_band_members(entity: dict[str, Any]) -> list[str]:
@@ -182,6 +281,7 @@ class ExternalGenreInfo:
     title: str
     artist: str
     tags: list[str]
+    artist_mbid: str | None = None
     source: str = "musicbrainz"
 
 
@@ -197,20 +297,67 @@ def _sleep_if_needed() -> None:
 
 
 def _get(path: str, params: dict[str, Any]) -> dict[str, Any]:
+    """Perform one rate-limited MusicBrainz GET request with transient retries."""
     global _last_call_ts
 
-    _sleep_if_needed()
     url = f"{BASE_URL}{path}"
+    last_error: requests.RequestException | None = None
 
-    response = requests.get(
-        url,
-        headers=HEADERS,
-        params=params,
-        timeout=10,
-    )
-    _last_call_ts = time.time()
-    response.raise_for_status()
-    return cast(dict[str, Any], response.json())
+    for attempt in range(1, _MAX_RETRIES + 1):
+        _sleep_if_needed()
+        try:
+            response = requests.get(
+                url,
+                headers=HEADERS,
+                params=params,
+                timeout=10,
+                verify=MB_VERIFY_TLS,
+            )
+            _last_call_ts = time.time()
+            response.raise_for_status()
+            return cast(dict[str, Any], response.json())
+        except requests.HTTPError as exc:
+            _last_call_ts = time.time()
+            status_code = exc.response.status_code if exc.response is not None else None
+            if status_code in _RETRYABLE_HTTP_STATUSES and attempt < _MAX_RETRIES:
+                last_error = exc
+                logger.warning(
+                    "MusicBrainz request failed for %s (attempt %d/%d): %s",
+                    path,
+                    attempt,
+                    _MAX_RETRIES,
+                    exc,
+                )
+                _sleep_backoff(attempt)
+                continue
+            raise
+        except (requests.ConnectionError, requests.Timeout) as exc:
+            last_error = exc
+            if attempt < _MAX_RETRIES:
+                logger.warning(
+                    "MusicBrainz request failed for %s (attempt %d/%d): %s",
+                    path,
+                    attempt,
+                    _MAX_RETRIES,
+                    exc,
+                )
+                _sleep_backoff(attempt)
+                continue
+            raise
+
+    if last_error is not None:
+        raise last_error
+    msg = "MusicBrainz request failed without a captured error"
+    raise RuntimeError(msg)
+
+
+def _sleep_backoff(attempt: int) -> None:
+    """Sleep briefly before retrying a transient MusicBrainz request."""
+    base = 0.5
+    max_sleep = 5.0
+    delay = min(max_sleep, base * (2 ** (attempt - 1)))
+    jitter = random.uniform(0.0, 0.25 * delay)
+    time.sleep(delay + jitter)
 
 
 def search_release_groups(
@@ -401,6 +548,8 @@ def fetch_album_tags(artist: str, album: str) -> ExternalGenreInfo | None:
 
     mbid = best["id"]
     title = best.get("title", album)
+    credited_artist_mbid = extract_artist_mbid_from_release_group(best)
+    credited_artist_name = extract_artist_name_from_release_group(best)
 
     detailed = _lookup_release_group_with_tags(mbid)
     if detailed is None:
@@ -420,8 +569,9 @@ def fetch_album_tags(artist: str, album: str) -> ExternalGenreInfo | None:
     return ExternalGenreInfo(
         mbid=mbid,
         title=title,
-        artist=artist,
+        artist=credited_artist_name or artist,
         tags=tags,
+        artist_mbid=credited_artist_mbid,
     )
 
 

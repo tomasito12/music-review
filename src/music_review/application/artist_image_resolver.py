@@ -44,71 +44,115 @@ def resolve_artist_image(
         artist_mbid=artist_mbid,
         artist_name=artist_name,
     )
-    if resolved_mbid is None:
+
+    if resolved_mbid is not None:
+        primary = _resolve_via_wikidata(resolved_mbid, resolved_name)
+        if primary.status == "ok":
+            return primary
+        return _resolve_wikipedia_and_commons_fallbacks(
+            resolved_mbid,
+            resolved_name,
+            wikidata_failure=primary,
+        )
+
+    if resolved_name:
+        fallback = _resolve_wikipedia_and_commons_fallbacks(
+            "",
+            resolved_name,
+            wikidata_failure=None,
+        )
+        if fallback.status == "ok":
+            return fallback
         return _not_found_record(
             artist_mbid=artist_mbid or "",
-            artist_name=artist_name or "",
+            artist_name=resolved_name,
             reason="artist_not_found",
         )
 
-    primary = _resolve_via_wikidata(resolved_mbid, resolved_name)
-    if primary.status == "ok":
-        return primary
+    return _not_found_record(
+        artist_mbid=artist_mbid or "",
+        artist_name=artist_name or "",
+        reason="artist_not_found",
+    )
 
-    wikipedia_image, wikidata_id = _resolve_via_wikipedia(resolved_mbid, resolved_name)
+
+def _resolve_wikipedia_and_commons_fallbacks(
+    artist_mbid: str,
+    artist_name: str,
+    *,
+    wikidata_failure: ArtistImageRecord | None,
+) -> ArtistImageRecord:
+    """Try Wikipedia and Commons when Wikidata is missing or MBID is unknown."""
+    wikipedia_image, wikidata_id = _resolve_wikipedia_fallback(artist_mbid, artist_name)
     if wikipedia_image is not None:
         fields = commons_image_to_record_fields(wikipedia_image)
         logger.info(
             "Resolved Wikipedia fallback for %s (%s): %s",
-            resolved_name,
-            resolved_mbid,
+            artist_name,
+            artist_mbid or "name-only",
             wikipedia_image.commons_file,
         )
         return ArtistImageRecord(
-            artist_mbid=resolved_mbid,
-            artist_name=resolved_name,
+            artist_mbid=artist_mbid,
+            artist_name=artist_name,
             status="ok",
             fetched_at=utc_now_iso(),
-            wikidata_id=wikidata_id or primary.wikidata_id,
+            wikidata_id=wikidata_id
+            or (wikidata_failure.wikidata_id if wikidata_failure else None),
             **fields,
         )
 
-    commons_image = find_commons_image_by_artist_name(resolved_name)
+    commons_image = find_commons_image_by_artist_name(artist_name)
     if commons_image is not None:
         fields = commons_image_to_record_fields(commons_image)
         logger.info(
             "Resolved Commons search fallback for %s (%s): %s",
-            resolved_name,
-            resolved_mbid,
+            artist_name,
+            artist_mbid or "name-only",
             commons_image.commons_file,
         )
         return ArtistImageRecord(
-            artist_mbid=resolved_mbid,
-            artist_name=resolved_name,
+            artist_mbid=artist_mbid,
+            artist_name=artist_name,
             status="ok",
             fetched_at=utc_now_iso(),
-            wikidata_id=primary.wikidata_id,
+            wikidata_id=wikidata_failure.wikidata_id if wikidata_failure else None,
             **fields,
         )
 
-    return primary
+    if wikidata_failure is not None:
+        return wikidata_failure
+
+    return _not_found_record(
+        artist_mbid=artist_mbid,
+        artist_name=artist_name,
+        reason="artist_not_found",
+    )
 
 
-def _resolve_via_wikipedia(
+def _resolve_wikipedia_fallback(
     artist_mbid: str,
     artist_name: str,
 ) -> tuple[CommonsImageInfo | None, str | None]:
     """Try resolving an image via English Wikipedia article search."""
-    disambiguation = fetch_artist_disambiguation(artist_mbid)
+    if artist_mbid:
+        disambiguation = fetch_artist_disambiguation(artist_mbid)
+        search_names = build_wikipedia_search_names(
+            artist_name,
+            alias_names=fetch_artist_alias_names(artist_mbid),
+            include_the_variants=disambiguation is None,
+        )
+        return find_commons_image_via_wikipedia(
+            search_names,
+            disambiguation=disambiguation,
+        )
+
     search_names = build_wikipedia_search_names(
         artist_name,
-        alias_names=fetch_artist_alias_names(artist_mbid),
-        include_the_variants=disambiguation is None,
+        alias_names=[],
+        include_the_variants=True,
     )
-    return find_commons_image_via_wikipedia(
-        search_names,
-        disambiguation=disambiguation,
-    )
+    return find_commons_image_via_wikipedia(search_names, disambiguation=None)
 
 
 def _resolve_via_wikidata(artist_mbid: str, artist_name: str) -> ArtistImageRecord:

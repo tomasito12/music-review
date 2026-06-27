@@ -9,6 +9,12 @@ describe("normalizeExcerptText", () => {
   it("collapses whitespace", () => {
     expect(normalizeExcerptText("  Hallo   Welt ")).toBe("Hallo Welt");
   });
+
+  it("repairs broken en dashes before normalizing whitespace", () => {
+    expect(normalizeExcerptText("  ausgeschieden \u0096   blo\u00df  ")).toBe(
+      "ausgeschieden \u2013 blo\u00df",
+    );
+  });
 });
 
 describe("buildExcerptPreview", () => {

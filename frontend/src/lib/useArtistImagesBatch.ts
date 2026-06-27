@@ -5,6 +5,7 @@ import {
   loadArtistImagesBatch,
   type ArtistImageData,
 } from "./artistImageApi";
+import { artistImageLookupKey } from "./artistImageLookupKey";
 
 export interface ArtistImageLookup {
   artistMbid?: string;
@@ -12,7 +13,7 @@ export interface ArtistImageLookup {
 }
 
 export interface UseArtistImagesBatchResult {
-  imagesByMbid: Map<string, ArtistImageData | null>;
+  imagesByLookupKey: Map<string, ArtistImageData | null>;
   loading: boolean;
 }
 
@@ -20,11 +21,11 @@ export interface UseArtistImagesBatchResult {
 export function useArtistImagesBatch(
   artists: ArtistImageLookup[],
 ): UseArtistImagesBatchResult {
-  const [imagesByMbid, setImagesByMbid] = useState<
+  const [imagesByLookupKey, setImagesByLookupKey] = useState<
     Map<string, ArtistImageData | null>
   >(new Map());
   const [loading, setLoading] = useState(
-    artists.some((artist) => Boolean(artist.artistMbid?.trim())),
+    artists.some((artist) => artistImageLookupKey(artist).length > 0),
   );
 
   useEffect(() => {
@@ -33,10 +34,10 @@ export function useArtistImagesBatch(
         artistMbid: artist.artistMbid?.trim() ?? "",
         artistName: artist.artistName,
       }))
-      .filter((artist) => artist.artistMbid.length > 0);
+      .filter((artist) => artistImageLookupKey(artist).length > 0);
 
     if (lookups.length === 0) {
-      setImagesByMbid(new Map());
+      setImagesByLookupKey(new Map());
       setLoading(false);
       return;
     }
@@ -50,12 +51,12 @@ export function useArtistImagesBatch(
         if (!active) {
           return;
         }
-        setImagesByMbid(results);
+        setImagesByLookupKey(results);
       } catch {
         if (!active) {
           return;
         }
-        setImagesByMbid(new Map());
+        setImagesByLookupKey(new Map());
       } finally {
         if (active) {
           setLoading(false);
@@ -70,5 +71,5 @@ export function useArtistImagesBatch(
     };
   }, [artists.map((artist) => `${artist.artistMbid ?? ""}:${artist.artistName}`).join("|")]);
 
-  return { imagesByMbid, loading };
+  return { imagesByLookupKey, loading };
 }

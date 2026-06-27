@@ -14,6 +14,10 @@ from music_review.application.artist_image_download import (
     local_image_file_path,
     local_image_relative_path,
 )
+from music_review.application.artist_image_lookup import (
+    artist_image_lookup_key,
+    is_name_lookup_key,
+)
 from music_review.application.artist_image_models import ArtistImageRecord
 from music_review.application.artist_image_resolver import resolve_artist_image
 from music_review.application.artist_image_store import (
@@ -71,9 +75,23 @@ class ArtistImageService:
     ) -> ArtistImageRecord:
         """Return a cached or freshly resolved artist image record."""
         mbid = artist_mbid.strip()
-        if not mbid:
+        if mbid:
+            return self._lookup_by_mbid(mbid, artist_name=artist_name, force=force)
+
+        name = (artist_name or "").strip()
+        if not name:
             return _empty_not_found_record()
 
+        return self._lookup_by_name(name, force=force)
+
+    def _lookup_by_mbid(
+        self,
+        mbid: str,
+        *,
+        artist_name: str | None = None,
+        force: bool = False,
+    ) -> ArtistImageRecord:
+        """Resolve one artist image when a MusicBrainz MBID is known."""
         if not force:
             cached = self.cached_record(mbid)
             if cached is not None:
@@ -89,6 +107,55 @@ class ArtistImageService:
         upsert_artist_image(self.cache_path, record)
         return record
 
+    def _lookup_by_name(
+        self,
+        artist_name: str,
+        *,
+        force: bool = False,
+    ) -> ArtistImageRecord:
+        """Resolve one artist image from a display name when no MBID is known."""
+        lookup_key = artist_image_lookup_key(None, artist_name=artist_name)
+        if not force:
+            cached = self.cached_record(lookup_key)
+            if cached is not None:
+                if cached.status == "ok":
+                    logger.debug("Artist image name-cache hit for %s", artist_name)
+                    return self._restore_resolved_record(cached)
+                if self.is_negative_cache_fresh(cached):
+                    logger.debug(
+                        "Artist image negative name-cache hit for %s",
+                        artist_name,
+                    )
+                    return cached
+
+        record = resolve_artist_image(artist_mbid=None, artist_name=artist_name)
+        record = self._ensure_local_copy(record)
+        self._persist_name_lookup(record, lookup_key)
+        return record
+
+    def _persist_name_lookup(
+        self,
+        record: ArtistImageRecord,
+        lookup_key: str,
+    ) -> None:
+        """Store a name-based lookup and optional resolved MBID cache entry."""
+        if record.artist_mbid:
+            upsert_artist_image(self.cache_path, record)
+            if record.status == "ok":
+                upsert_artist_image(
+                    self.cache_path,
+                    _artist_image_alias(record, lookup_key),
+                )
+            return
+
+        upsert_artist_image(self.cache_path, _artist_image_alias(record, lookup_key))
+
+    def _restore_resolved_record(self, cached: ArtistImageRecord) -> ArtistImageRecord:
+        """Return a usable record for one cache hit."""
+        if is_name_lookup_key(cached.artist_mbid):
+            return cached
+        return self._ensure_local_copy(cached)
+
     def lookup_batch(
         self,
         artists: list[tuple[str, str | None]],
@@ -96,10 +163,13 @@ class ArtistImageService:
         """Resolve multiple artist images, reusing cache entries when possible."""
         results: dict[str, ArtistImageRecord] = {}
         for artist_mbid, artist_name in artists:
-            mbid = artist_mbid.strip()
-            if not mbid or mbid in results:
+            lookup_key = artist_image_lookup_key(artist_mbid, artist_name=artist_name)
+            if not lookup_key or lookup_key in results:
                 continue
-            results[mbid] = self.lookup(mbid, artist_name=artist_name)
+            results[lookup_key] = self.lookup(
+                artist_mbid,
+                artist_name=artist_name,
+            )
         return results
 
     def cached_record(self, artist_mbid: str) -> ArtistImageRecord | None:
@@ -116,6 +186,8 @@ class ArtistImageService:
         """Return the API or remote URL clients should use for the thumbnail."""
         if record.status != "ok":
             return None
+        if is_name_lookup_key(record.artist_mbid):
+            return record.thumbnail_url
         if self.local_file_exists(record):
             return f"/v1/artists/{record.artist_mbid}/image/file"
         return record.thumbnail_url
@@ -158,6 +230,30 @@ def default_artist_image_service() -> ArtistImageService:
         images_dir=artist_images_dir(),
         negative_ttl_days=negative_cache_ttl_days(),
         download_enabled=artist_image_download_enabled(),
+    )
+
+
+def _artist_image_alias(
+    record: ArtistImageRecord,
+    lookup_key: str,
+) -> ArtistImageRecord:
+    """Build a name-keyed cache alias for one resolved artist image."""
+    return ArtistImageRecord(
+        artist_mbid=lookup_key,
+        artist_name=record.artist_name,
+        status=record.status,
+        fetched_at=record.fetched_at,
+        wikidata_id=record.wikidata_id,
+        commons_file=record.commons_file,
+        image_url=record.image_url,
+        thumbnail_url=record.thumbnail_url,
+        license=record.license,
+        license_url=record.license_url,
+        author=record.author,
+        source_url=record.source_url,
+        attribution_text=record.attribution_text,
+        reason=record.reason,
+        local_path=None,
     )
 
 
