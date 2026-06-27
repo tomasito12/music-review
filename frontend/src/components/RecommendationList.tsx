@@ -160,7 +160,10 @@ export function RecommendationList({
         </section>
       )}
 
-      <section aria-labelledby="ranking-heading" className="ranking-section">
+      <section
+        aria-labelledby="ranking-heading"
+        className={`ranking-section${isReloading ? " results-reloading" : ""}`}
+      >
         <div className="ranking-heading">
           <h2 id="ranking-heading">Alle Empfehlungen</h2>
           <p>Sortiert nach der Passung zu deinem Musikprofil.</p>

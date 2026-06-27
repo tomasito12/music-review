@@ -535,6 +535,14 @@ p {
   border-top: 1px solid var(--line);
 }
 
+.ranking-section.results-reloading {
+  opacity: 0.72;
+}
+
+.ranking-section.results-reloading .recommendation-list {
+  pointer-events: none;
+}
+
 .results-load-more {
   display: flex;
   justify-content: center;

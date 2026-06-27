@@ -1,13 +1,10 @@
 import type { ReactElement } from "react";
 
-import { useDebouncedCallback } from "../lib/useDebouncedCallback";
 import type { TasteCommunityOption, TasteFilterSettings, TastePreset } from "../lib/plattenradarApi";
 import type { ProfileSetupResult } from "../lib/profileSessionStorage";
 
 import { PresetPillBar } from "./PresetPillBar";
 import { TasteFilterControls } from "./TasteFilterControls";
-
-const FILTER_APPLY_DEBOUNCE_MS = 400;
 
 interface ResultsFilterPanelProps {
   communities: TasteCommunityOption[];
@@ -39,14 +36,6 @@ export function ResultsFilterPanel({
   profileSession,
 }: ResultsFilterPanelProps): ReactElement {
   const { profile } = profileSession;
-  const debouncedFilterChange = useDebouncedCallback(
-    onFilterSettingsChange,
-    FILTER_APPLY_DEBOUNCE_MS,
-  );
-  const debouncedWeightsChange = useDebouncedCallback(
-    onCommunityWeightsChange,
-    FILTER_APPLY_DEBOUNCE_MS,
-  );
 
   const introText =
     isAuthenticated && hasSavedProfileReference
@@ -80,9 +69,10 @@ export function ResultsFilterPanel({
             communities={communities}
             communityWeights={profile.community_weights_raw}
             filterSettings={profile.filter_settings}
-            onChange={debouncedFilterChange}
-            onCommunityWeightsChange={debouncedWeightsChange}
+            onChange={onFilterSettingsChange}
+            onCommunityWeightsChange={onCommunityWeightsChange}
             selectedCommunityIds={profile.selected_communities}
+            sliderApplyMode="commit"
           />
         )}
         <p className="results-filter-profile-link">

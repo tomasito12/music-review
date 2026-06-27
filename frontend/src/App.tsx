@@ -108,6 +108,7 @@ export function App(): ReactElement {
   const [archiveLoading, setArchiveLoading] = useState(false);
   const [archiveLoadingMore, setArchiveLoadingMore] = useState(false);
   const [archiveError, setArchiveError] = useState<string | null>(null);
+  const [archiveReloadToken, setArchiveReloadToken] = useState(0);
   const [updateRounds, setUpdateRounds] = useState("4");
   const [aktuellRecommendations, setAktuellRecommendations] = useState<
     Recommendation[] | null
@@ -116,6 +117,7 @@ export function App(): ReactElement {
   const [aktuellLoading, setAktuellLoading] = useState(false);
   const [aktuellLoadingMore, setAktuellLoadingMore] = useState(false);
   const [aktuellError, setAktuellError] = useState<string | null>(null);
+  const [aktuellReloadToken, setAktuellReloadToken] = useState(0);
   const [lastSavedProfile, setLastSavedProfile] = useState<TemporaryTasteProfile | null>(
     null,
   );
@@ -311,9 +313,6 @@ export function App(): ReactElement {
     if (route !== "entdecken" || temporaryProfile === null) {
       return;
     }
-    if (archiveRecommendations !== null) {
-      return;
-    }
 
     let active = true;
     setArchiveLoading(true);
@@ -324,25 +323,23 @@ export function App(): ReactElement {
         if (!active) {
           return;
         }
-        setArchiveRecommendations(null);
         setArchiveError(
           "Die Archivempfehlungen konnten gerade nicht geladen werden. Bitte versuche es noch einmal.",
         );
       })
       .finally(() => {
-        setArchiveLoading(false);
+        if (active) {
+          setArchiveLoading(false);
+        }
       });
 
     return () => {
       active = false;
     };
-  }, [archiveRecommendations, loadArchivePage, route, temporaryProfile]);
+  }, [archiveReloadToken, loadArchivePage, route, temporaryProfile]);
 
   useEffect(() => {
     if (route !== "aktuell" || temporaryProfile === null) {
-      return;
-    }
-    if (aktuellRecommendations !== null) {
       return;
     }
 
@@ -355,25 +352,24 @@ export function App(): ReactElement {
         if (!active) {
           return;
         }
-        setAktuellRecommendations(null);
         setAktuellError(
           "Die neuen Rezensionen konnten gerade nicht geladen werden. Bitte versuche es noch einmal.",
         );
       })
       .finally(() => {
-        setAktuellLoading(false);
+        if (active) {
+          setAktuellLoading(false);
+        }
       });
 
     return () => {
       active = false;
     };
-  }, [aktuellRecommendations, loadAktuellPage, route, temporaryProfile]);
+  }, [aktuellReloadToken, loadAktuellPage, route, temporaryProfile]);
 
   function invalidateRecommendationResults(): void {
-    setArchiveRecommendations(null);
-    setArchiveTotal(0);
-    setAktuellRecommendations(null);
-    setAktuellTotal(0);
+    setArchiveReloadToken((token) => token + 1);
+    setAktuellReloadToken((token) => token + 1);
     setArchiveError(null);
     setAktuellError(null);
   }
@@ -656,8 +652,7 @@ export function App(): ReactElement {
 
   function handleUpdateRoundsChange(value: string): void {
     setUpdateRounds(value);
-    setAktuellRecommendations(null);
-    setAktuellTotal(0);
+    setAktuellReloadToken((token) => token + 1);
     setAktuellError(null);
   }
 
@@ -747,7 +742,7 @@ export function App(): ReactElement {
           isAuthenticated={isAuthenticated}
           isLoading={aktuellLoading}
           isLoadingMore={aktuellLoadingMore}
-          isReloading={aktuellLoading && aktuellRecommendations === null}
+          isReloading={aktuellLoading && aktuellRecommendations !== null}
           onCreatePlaylist={createPlaylist}
           onEditProfile={editProfile}
           onFilterCommunityWeightsChange={handleResultCommunityWeightsChange}
@@ -778,7 +773,7 @@ export function App(): ReactElement {
           isAuthenticated={isAuthenticated}
           isLoading={archiveLoading}
           isLoadingMore={archiveLoadingMore}
-          isReloading={archiveLoading && archiveRecommendations === null}
+          isReloading={archiveLoading && archiveRecommendations !== null}
           onCreatePlaylist={createPlaylist}
           onEditProfile={editProfile}
           onFilterCommunityWeightsChange={handleResultCommunityWeightsChange}

@@ -9,6 +9,7 @@ import type { TasteCommunityOption } from "../lib/plattenradarApi";
 import { BalanceSlider } from "./BalanceSlider";
 
 interface CommunityStyleWeightsProps {
+  applyMode?: "immediate" | "commit";
   communities: TasteCommunityOption[];
   selectedCommunityIds: string[];
   weights: Record<string, number>;
@@ -16,6 +17,7 @@ interface CommunityStyleWeightsProps {
 }
 
 export function CommunityStyleWeights({
+  applyMode = "immediate",
   communities,
   selectedCommunityIds,
   weights,
@@ -65,6 +67,7 @@ export function CommunityStyleWeights({
                 −
               </span>
               <BalanceSlider
+                applyMode={applyMode}
                 ariaLabel={`Gewicht für ${community?.label ?? communityId}`}
                 onChange={(bias) => {
                   onChange(

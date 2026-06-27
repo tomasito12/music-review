@@ -1,8 +1,14 @@
 import type { ReactElement } from "react";
 
 import { balanceFillPercents, snapBalanceValue } from "../lib/balanceSlider";
+import {
+  handleCommittedRangeKeyUp,
+  useCommittedRangeValue,
+  type SliderApplyMode,
+} from "../lib/useCommittedRangeValue";
 
 interface BalanceSliderProps {
+  applyMode?: SliderApplyMode;
   ariaLabel: string;
   max?: number;
   min?: number;
@@ -13,6 +19,7 @@ interface BalanceSliderProps {
 
 /** Stereo-style balance control with a visible center null point. */
 export function BalanceSlider({
+  applyMode = "immediate",
   ariaLabel,
   max = 1,
   min = -1,
@@ -20,7 +27,12 @@ export function BalanceSlider({
   step = 0.1,
   value,
 }: BalanceSliderProps): ReactElement {
-  const clamped = snapBalanceValue(value, step, min, max);
+  const { displayValue, onRangeChange, onRangeCommit } = useCommittedRangeValue(
+    value,
+    onChange,
+    applyMode,
+  );
+  const clamped = snapBalanceValue(displayValue, step, min, max);
   const { left, right } = balanceFillPercents(clamped, min, max);
 
   return (
@@ -55,8 +67,15 @@ export function BalanceSlider({
         max={max}
         min={min}
         onChange={(event) => {
-          onChange(snapBalanceValue(Number(event.target.value), step, min, max));
+          onRangeChange(
+            snapBalanceValue(Number(event.target.value), step, min, max),
+          );
         }}
+        onKeyUp={(event) => {
+          handleCommittedRangeKeyUp(event, onRangeCommit);
+        }}
+        onPointerUp={onRangeCommit}
+        onTouchEnd={onRangeCommit}
         step={step}
         type="range"
         value={clamped}

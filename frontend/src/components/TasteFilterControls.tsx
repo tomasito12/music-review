@@ -1,4 +1,4 @@
-import type { ReactElement } from "react";
+import type { InputHTMLAttributes, ReactElement } from "react";
 
 import {
   DEFAULT_YEAR_MAX,
@@ -20,7 +20,48 @@ import {
   updateYearFilter,
 } from "../lib/filterControls";
 import type { TasteCommunityOption, TasteFilterSettings } from "../lib/plattenradarApi";
+import {
+  handleCommittedRangeKeyUp,
+  useCommittedRangeValue,
+  type SliderApplyMode,
+} from "../lib/useCommittedRangeValue";
 import { CommunityStyleWeights } from "./CommunityStyleWeights";
+
+interface CommittedRangeInputProps
+  extends Omit<InputHTMLAttributes<HTMLInputElement>, "type" | "value" | "onChange"> {
+  applyMode: SliderApplyMode;
+  onValueCommit: (value: number) => void;
+  value: number;
+}
+
+function CommittedRangeInput({
+  applyMode,
+  onValueCommit,
+  value,
+  ...inputProps
+}: CommittedRangeInputProps): ReactElement {
+  const { displayValue, onRangeChange, onRangeCommit } = useCommittedRangeValue(
+    value,
+    onValueCommit,
+    applyMode,
+  );
+
+  return (
+    <input
+      onChange={(event) => {
+        onRangeChange(Number(event.target.value));
+      }}
+      onKeyUp={(event) => {
+        handleCommittedRangeKeyUp(event, onRangeCommit);
+      }}
+      onPointerUp={onRangeCommit}
+      onTouchEnd={onRangeCommit}
+      type="range"
+      value={displayValue}
+      {...inputProps}
+    />
+  );
+}
 
 interface TasteFilterControlsProps {
   communities: TasteCommunityOption[];
@@ -29,6 +70,7 @@ interface TasteFilterControlsProps {
   onChange: (settings: TasteFilterSettings) => void;
   onCommunityWeightsChange: (weights: Record<string, number>) => void;
   selectedCommunityIds: string[];
+  sliderApplyMode?: SliderApplyMode;
 }
 
 export function TasteFilterControls({
@@ -38,6 +80,7 @@ export function TasteFilterControls({
   onChange,
   onCommunityWeightsChange,
   selectedCommunityIds,
+  sliderApplyMode = "immediate",
 }: TasteFilterControlsProps): ReactElement {
   const yearFilterActive = hasYearFilter(filterSettings);
   const styleMinPercent = styleMatchMinPercent(filterSettings);
@@ -131,16 +174,14 @@ export function TasteFilterControls({
             <span className="threshold-value">
               Mindestens {Math.round(filterSettings.rating_min)}
             </span>
-            <input
+            <CommittedRangeInput
+              applyMode={sliderApplyMode}
               max={MAX_PLATTENTESTS_RATING}
               min={0}
-              onChange={(event) => {
-                onChange(
-                  updateMinimumRating(filterSettings, Number(event.target.value)),
-                );
+              onValueCommit={(nextValue) => {
+                onChange(updateMinimumRating(filterSettings, nextValue));
               }}
               step={1}
-              type="range"
               value={filterSettings.rating_min}
             />
           </label>
@@ -154,19 +195,14 @@ export function TasteFilterControls({
           </p>
           <label className="threshold-control">
             <span className="threshold-value">Mindestens {styleMinPercent} %</span>
-            <input
+            <CommittedRangeInput
+              applyMode={sliderApplyMode}
               max={100}
               min={0}
-              onChange={(event) => {
-                onChange(
-                  updateStyleMatchMinPercent(
-                    filterSettings,
-                    Number(event.target.value),
-                  ),
-                );
+              onValueCommit={(nextValue) => {
+                onChange(updateStyleMatchMinPercent(filterSettings, nextValue));
               }}
               step={STYLE_MATCH_PERCENT_STEP}
-              type="range"
               value={styleMinPercent}
             />
           </label>
@@ -201,21 +237,21 @@ export function TasteFilterControls({
             <span className="threshold-value">
               {describeSpectrumCrossover(spectrumValue)}
             </span>
-            <input
+            <CommittedRangeInput
+              applyMode={sliderApplyMode}
               aria-label="Stil-Präferenz"
               max={1}
               min={0}
-              onChange={(event) => {
+              onValueCommit={(nextValue) => {
                 onChange(
                   updateFilterSettingsField(
                     filterSettings,
                     "community_spectrum_crossover",
-                    clampSpectrumCrossover(Number(event.target.value)),
+                    clampSpectrumCrossover(nextValue),
                   ),
                 );
               }}
               step={0.05}
-              type="range"
               value={spectrumValue}
             />
           </label>
@@ -233,20 +269,16 @@ export function TasteFilterControls({
             <label className="weight-control" key={field}>
               <span>{overallWeightQuestion(field)}</span>
               <div className="weight-control-row">
-                <input
+                <CommittedRangeInput
+                  applyMode={sliderApplyMode}
                   max={1}
                   min={0}
-                  onChange={(event) => {
+                  onValueCommit={(nextValue) => {
                     onChange(
-                      updateFilterSettingsField(
-                        filterSettings,
-                        field,
-                        Number(event.target.value),
-                      ),
+                      updateFilterSettingsField(filterSettings, field, nextValue),
                     );
                   }}
                   step={0.05}
-                  type="range"
                   value={filterSettings[field]}
                 />
                 <span className="threshold-value">
@@ -264,6 +296,7 @@ export function TasteFilterControls({
             schwächer gewichten.
           </p>
           <CommunityStyleWeights
+            applyMode={sliderApplyMode}
             communities={communities}
             onChange={onCommunityWeightsChange}
             selectedCommunityIds={selectedCommunityIds}
@@ -311,21 +344,17 @@ export function TasteFilterControls({
               werden.
             </p>
             <div className="weight-control-row">
-              <input
+              <CommittedRangeInput
+                applyMode={sliderApplyMode}
                 disabled={filterSettings.sort_mode !== "discovery"}
                 max={1}
                 min={0}
-                onChange={(event) => {
+                onValueCommit={(nextValue) => {
                   onChange(
-                    updateFilterSettingsField(
-                      filterSettings,
-                      "serendipity",
-                      Number(event.target.value),
-                    ),
+                    updateFilterSettingsField(filterSettings, "serendipity", nextValue),
                   );
                 }}
                 step={0.05}
-                type="range"
                 value={filterSettings.serendipity}
               />
               <span className="threshold-value">
