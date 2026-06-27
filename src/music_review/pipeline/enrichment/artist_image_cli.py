@@ -8,10 +8,18 @@ import logging
 import sys
 from pathlib import Path
 
+from music_review.application.artist_image_batch import (
+    artist_lookup_from_review_metadata,
+)
+from music_review.application.artist_image_download import artist_image_download_enabled
 from music_review.application.artist_image_resolver import resolve_artist_image
-from music_review.application.artist_image_store import upsert_artist_image
+from music_review.application.artist_image_service import ArtistImageService
 from music_review.config import resolve_data_path
-from music_review.data_access.paths import DATA_ARTIST_IMAGES, DATA_METADATA
+from music_review.data_access.paths import (
+    DATA_ARTIST_IMAGES,
+    DATA_METADATA,
+    artist_images_dir,
+)
 from music_review.io.jsonl import iter_jsonl_objects
 
 logger = logging.getLogger(__name__)
@@ -33,6 +41,17 @@ def _build_parser() -> argparse.ArgumentParser:
     )
     parser.add_argument("--mbid", help="MusicBrainz artist MBID.")
     parser.add_argument("--artist-name", help="Artist name used for search or display.")
+    parser.add_argument(
+        "--review-id",
+        type=int,
+        help="Resolve the artist for one review id via metadata JSONL.",
+    )
+    parser.add_argument(
+        "--reviews",
+        type=Path,
+        default=Path(DATA_METADATA),
+        help="Metadata JSONL used by --review-id (default: %(default)s).",
+    )
     parser.add_argument(
         "--output",
         type=Path,
@@ -76,37 +95,64 @@ def main(argv: list[str] | None = None) -> int:
     output_path = resolve_data_path(args.output)
     targets = _resolve_targets(args)
     if not targets:
-        logger.error("Provide --mbid, --artist-name, or --sample N.")
+        logger.error("Provide --mbid, --artist-name, --review-id, or --sample N.")
         return 1
+
+    service = ArtistImageService(
+        cache_path=output_path,
+        images_dir=artist_images_dir(),
+        download_enabled=artist_image_download_enabled(),
+    )
 
     ok_count = 0
     for artist_mbid, artist_name in targets:
-        record = resolve_artist_image(
-            artist_mbid=artist_mbid,
-            artist_name=artist_name,
-        )
+        if args.dry_run:
+            record = resolve_artist_image(
+                artist_mbid=artist_mbid or None,
+                artist_name=artist_name or None,
+            )
+        else:
+            record = service.lookup(
+                artist_mbid or "",
+                artist_name=artist_name or None,
+            )
         _print_record(record)
         if record.status == "ok":
             ok_count += 1
-        if not args.dry_run and record.artist_mbid:
-            upsert_artist_image(output_path, record)
 
     logger.info("Resolved %d/%d artist images successfully.", ok_count, len(targets))
     return 0 if ok_count > 0 else 1
 
 
-def _resolve_targets(args: argparse.Namespace) -> list[tuple[str | None, str]]:
+def _resolve_targets(args: argparse.Namespace) -> list[tuple[str, str]]:
     """Build the list of artists to resolve for this CLI invocation."""
     if args.sample is not None:
         return _sample_targets(resolve_data_path(args.metadata), args.sample)
 
+    if args.review_id is not None:
+        from music_review.io.jsonl import load_jsonl_as_map
+
+        metadata = load_jsonl_as_map(
+            resolve_data_path(args.reviews),
+            id_key="review_id",
+            log_errors=False,
+        )
+        artist_mbid, artist_name = artist_lookup_from_review_metadata(
+            metadata,
+            args.review_id,
+        )
+        if artist_mbid is None and not artist_name:
+            logger.error("No metadata found for review id %s.", args.review_id)
+            return []
+        return [(artist_mbid or "", artist_name)]
+
     if args.mbid or args.artist_name:
-        return [(args.mbid, args.artist_name or "")]
+        return [(args.mbid or "", args.artist_name or "")]
 
     return []
 
 
-def _sample_targets(metadata_path: Path, count: int) -> list[tuple[str | None, str]]:
+def _sample_targets(metadata_path: Path, count: int) -> list[tuple[str, str]]:
     """Pick sample artists from metadata or built-in fallback MBIDs."""
     from_metadata = _sample_from_metadata(metadata_path, count)
     if from_metadata:
@@ -122,13 +168,13 @@ def _sample_targets(metadata_path: Path, count: int) -> list[tuple[str | None, s
 def _sample_from_metadata(
     metadata_path: Path,
     count: int,
-) -> list[tuple[str | None, str]]:
+) -> list[tuple[str, str]]:
     """Return up to ``count`` unique artist MBIDs from metadata JSONL."""
     if not metadata_path.exists():
         return []
 
     seen: set[str] = set()
-    samples: list[tuple[str | None, str]] = []
+    samples: list[tuple[str, str]] = []
     for obj in iter_jsonl_objects(metadata_path, log_errors=False):
         artist_mbid = obj.get("artist_mbid")
         artist_name = obj.get("artist")

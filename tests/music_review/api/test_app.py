@@ -12,10 +12,13 @@ from fastapi.testclient import TestClient
 
 from music_review.api.app import _community_example_artists, create_app
 from music_review.api.dependencies import (
+    get_artist_image_service,
     get_corpus_provider,
     get_optional_user_db,
     get_user_db,
 )
+from music_review.application.artist_image_models import ArtistImageRecord, utc_now_iso
+from music_review.application.artist_image_service import ArtistImageService
 from music_review.dashboard.user_db import get_connection
 from music_review.domain.models import Review, Track
 
@@ -40,7 +43,18 @@ class FakeCorpusProvider:
 
     def metadata(self) -> Mapping[int, Mapping[str, Any]]:
         """Return fake metadata."""
-        return {1: {"labels": ["Tiny Label"]}, 2: {"labels": ["Other Label"]}}
+        return {
+            1: {"labels": ["Tiny Label"], "artist_mbid": "mbid-alpha"},
+            2: {"labels": ["Other Label"], "artist_mbid": "mbid-beta"},
+        }
+
+    def artist_mbid_for_review(self, review_id: int) -> str | None:
+        """Return fake artist MBIDs from metadata."""
+        row = self.metadata().get(review_id)
+        if row is None:
+            return None
+        artist_mbid = row.get("artist_mbid")
+        return str(artist_mbid) if isinstance(artist_mbid, str) else None
 
     def affinities(self) -> Sequence[Mapping[str, Any]]:
         """Return fake affinity rows."""
@@ -132,11 +146,19 @@ def user_db(tmp_path) -> sqlite3.Connection:
     return get_connection(tmp_path / "api-users.db")
 
 
-def _client(user_db: sqlite3.Connection | None = None) -> TestClient:
+def _client(
+    user_db: sqlite3.Connection | None = None,
+    *,
+    artist_image_service: object | None = None,
+) -> TestClient:
     """Return a test client with the fake corpus dependency."""
     app = create_app()
     provider = FakeCorpusProvider()
     app.dependency_overrides[get_corpus_provider] = lambda: provider
+    if artist_image_service is not None:
+        app.dependency_overrides[get_artist_image_service] = lambda: (
+            artist_image_service
+        )
     if user_db is not None:
         app.dependency_overrides[get_user_db] = lambda: user_db
         app.dependency_overrides[get_optional_user_db] = lambda: user_db
@@ -278,6 +300,7 @@ def test_archive_recommendations_endpoint_ranks_profile_matches() -> None:
     assert item["explanation_signals"]["primary_matched_labels"] == [
         "Indie Rock",
     ]
+    assert item["artist_mbid"] == "mbid-alpha"
 
 
 def test_archive_recommendations_requires_profile_for_guest() -> None:
@@ -478,3 +501,234 @@ def test_me_requires_bearer_token(user_db: sqlite3.Connection) -> None:
     response = _client(user_db).get("/v1/me")
 
     assert response.status_code == 401
+
+
+class FakeArtistImageService:
+    """Minimal artist image service stub for API tests."""
+
+    def __init__(self, record: ArtistImageRecord) -> None:
+        self._record = record
+
+    def lookup(
+        self,
+        artist_mbid: str,
+        *,
+        artist_name: str | None = None,
+    ) -> ArtistImageRecord:
+        """Return a fixed lookup result."""
+        return ArtistImageRecord(
+            artist_mbid=artist_mbid,
+            artist_name=artist_name or self._record.artist_name,
+            status=self._record.status,
+            fetched_at=self._record.fetched_at,
+            thumbnail_url=self._record.thumbnail_url,
+            license=self._record.license,
+            attribution_text=self._record.attribution_text,
+            source_url=self._record.source_url,
+            reason=self._record.reason,
+        )
+
+    def lookup_batch(
+        self,
+        artists: list[tuple[str, str | None]],
+    ) -> dict[str, ArtistImageRecord]:
+        """Return fixed lookup results for a batch request."""
+        return {
+            artist_mbid.strip(): self.lookup(artist_mbid, artist_name=artist_name)
+            for artist_mbid, artist_name in artists
+            if artist_mbid.strip()
+        }
+
+    def public_thumbnail_url(self, record: ArtistImageRecord) -> str | None:
+        """Return the remote thumbnail URL for API responses."""
+        return record.thumbnail_url
+
+
+def test_artist_image_endpoint_returns_cached_thumbnail() -> None:
+    """Artist image endpoint returns licensed thumbnail metadata."""
+    service = FakeArtistImageService(
+        ArtistImageRecord(
+            artist_mbid="mbid-alpha",
+            artist_name="Alpha",
+            status="ok",
+            fetched_at=utc_now_iso(),
+            thumbnail_url="https://example.com/alpha.jpg",
+            license="CC BY 4.0",
+            attribution_text="Alpha by User, CC BY 4.0 via Wikimedia Commons",
+            source_url="https://commons.wikimedia.org/wiki/File:Alpha.jpg",
+        ),
+    )
+    client = _client(artist_image_service=service)  # type: ignore[arg-type]
+
+    response = client.get(
+        "/v1/artists/mbid-alpha/image",
+        params={"artist_name": "Alpha"},
+    )
+
+    assert response.status_code == 200
+    assert response.json() == {
+        "artist_mbid": "mbid-alpha",
+        "artist_name": "Alpha",
+        "thumbnail_url": "https://example.com/alpha.jpg",
+        "attribution_text": "Alpha by User, CC BY 4.0 via Wikimedia Commons",
+        "license": "CC BY 4.0",
+        "source_url": "https://commons.wikimedia.org/wiki/File:Alpha.jpg",
+    }
+
+
+def test_artist_image_endpoint_returns_404_when_unavailable() -> None:
+    """Artist image endpoint returns 404 when no licensed image exists."""
+    service = FakeArtistImageService(
+        ArtistImageRecord(
+            artist_mbid="mbid-missing",
+            artist_name="Missing",
+            status="not_found",
+            fetched_at=utc_now_iso(),
+            reason="no_commons_image",
+        ),
+    )
+    client = _client(artist_image_service=service)  # type: ignore[arg-type]
+
+    response = client.get("/v1/artists/mbid-missing/image")
+
+    assert response.status_code == 404
+    assert response.json()["detail"] == "No licensed artist image is available."
+
+
+def test_artist_image_endpoint_uses_cache_on_second_request(
+    tmp_path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Second request for the same MBID reuses the JSONL cache."""
+    cache_path = tmp_path / "artist_images.jsonl"
+    service = ArtistImageService(
+        cache_path=cache_path,
+        images_dir=tmp_path / "artist_images",
+        negative_ttl_days=30,
+    )
+    calls: list[str] = []
+
+    def fake_resolve(*, artist_mbid: str | None = None, artist_name: str | None = None):
+        calls.append(str(artist_mbid))
+        return ArtistImageRecord(
+            artist_mbid=str(artist_mbid),
+            artist_name=artist_name or "Alpha",
+            status="ok",
+            fetched_at=utc_now_iso(),
+            thumbnail_url="https://example.com/alpha.jpg",
+            license="CC BY 4.0",
+            attribution_text="Alpha by User, CC BY 4.0 via Wikimedia Commons",
+            source_url="https://commons.wikimedia.org/wiki/File:Alpha.jpg",
+        )
+
+    monkeypatch.setattr(
+        "music_review.application.artist_image_service.resolve_artist_image",
+        fake_resolve,
+    )
+    client = _client(artist_image_service=service)
+
+    first = client.get("/v1/artists/mbid-alpha/image")
+    second = client.get("/v1/artists/mbid-alpha/image")
+
+    assert first.status_code == 200
+    assert second.status_code == 200
+    assert len(calls) == 1
+
+
+class BatchFakeArtistImageService:
+    """Artist image service stub with per-MBID lookup behavior."""
+
+    def lookup(
+        self,
+        artist_mbid: str,
+        *,
+        artist_name: str | None = None,
+    ) -> ArtistImageRecord:
+        """Return ok only for mbid-alpha."""
+        if artist_mbid == "mbid-alpha":
+            return ArtistImageRecord(
+                artist_mbid=artist_mbid,
+                artist_name=artist_name or "Alpha",
+                status="ok",
+                fetched_at=utc_now_iso(),
+                thumbnail_url="https://example.com/alpha.jpg",
+                license="CC BY 4.0",
+                attribution_text="Alpha by User, CC BY 4.0 via Wikimedia Commons",
+                source_url="https://commons.wikimedia.org/wiki/File:Alpha.jpg",
+            )
+        return ArtistImageRecord(
+            artist_mbid=artist_mbid,
+            artist_name=artist_name or "Missing",
+            status="not_found",
+            fetched_at=utc_now_iso(),
+            reason="no_commons_image",
+        )
+
+    def lookup_batch(
+        self,
+        artists: list[tuple[str, str | None]],
+    ) -> dict[str, ArtistImageRecord]:
+        """Return batch lookup results."""
+        return {
+            artist_mbid.strip(): self.lookup(artist_mbid, artist_name=artist_name)
+            for artist_mbid, artist_name in artists
+            if artist_mbid.strip()
+        }
+
+    def public_thumbnail_url(self, record: ArtistImageRecord) -> str | None:
+        """Return the remote thumbnail URL for API responses."""
+        return record.thumbnail_url
+
+
+def test_artist_images_batch_endpoint_returns_available_images() -> None:
+    """Batch endpoint returns one result per requested artist."""
+    client = _client(artist_image_service=BatchFakeArtistImageService())  # type: ignore[arg-type]
+
+    response = client.post(
+        "/v1/artists/images",
+        json={
+            "artists": [
+                {"artist_mbid": "mbid-alpha", "artist_name": "Alpha"},
+                {"artist_mbid": "mbid-missing", "artist_name": "Missing"},
+            ],
+        },
+    )
+
+    assert response.status_code == 200
+    payload = response.json()
+    assert payload["items"][0]["image"]["artist_mbid"] == "mbid-alpha"
+    assert payload["items"][1]["image"] is None
+
+
+def test_artist_image_file_endpoint_returns_local_jpg(tmp_path) -> None:
+    """File endpoint serves a locally cached JPG."""
+    images_dir = tmp_path / "artist_images"
+    images_dir.mkdir()
+    image_path = images_dir / "mbid-alpha.jpg"
+    image_path.write_bytes(b"fake-jpeg")
+    cache_path = tmp_path / "artist_images.jsonl"
+    from music_review.application.artist_image_store import upsert_artist_image
+
+    upsert_artist_image(
+        cache_path,
+        ArtistImageRecord(
+            artist_mbid="mbid-alpha",
+            artist_name="Alpha",
+            status="ok",
+            fetched_at=utc_now_iso(),
+            thumbnail_url="https://example.com/alpha.jpg",
+            local_path="artist_images/mbid-alpha.jpg",
+        ),
+    )
+    service = ArtistImageService(
+        cache_path=cache_path,
+        images_dir=images_dir,
+        negative_ttl_days=30,
+    )
+    client = _client(artist_image_service=service)
+
+    response = client.get("/v1/artists/mbid-alpha/image/file")
+
+    assert response.status_code == 200
+    assert response.content == b"fake-jpeg"
+    assert response.headers["cache-control"] == "public, max-age=86400"

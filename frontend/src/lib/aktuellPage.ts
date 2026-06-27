@@ -26,10 +26,11 @@ export function newestCountFromUpdateRounds(rounds: number): number {
 /** Builds the personal briefing copy for the Aktuell reference screen. */
 export function buildAktuellBriefing(
   total: number,
-  _shownCount: number,
+  shownCount: number,
   _updateRoundLabel: string,
 ): AktuellBriefing {
-  if (total === 0) {
+  const effectiveTotal = Math.max(total, shownCount);
+  if (effectiveTotal === 0) {
     return {
       kicker: "Dein Update",
       title: "Diesmal gab es keine sicheren Treffer.",
@@ -37,7 +38,7 @@ export function buildAktuellBriefing(
         "Wenn neue Rezensionen nah an deinem Musikprofil liegen, tauchen sie hier zuerst auf.",
     };
   }
-  if (total <= 3) {
+  if (effectiveTotal <= 3) {
     return {
       kicker: "Dein Update",
       title: "Ein kleiner Schwung, aber ein paar Fundstücke sind nah dran.",
@@ -47,7 +48,7 @@ export function buildAktuellBriefing(
   }
   return {
     kicker: "Schön, dass du zurück bist",
-    title: `${total} neue Rezensionen liegen nah an deinem Musikprofil.`,
+    title: `${effectiveTotal} neue Rezensionen liegen nah an deinem Musikprofil.`,
     description:
       "Starte mit den stärksten Fundstücken und scanne danach den restlichen Update-Schwung.",
   };

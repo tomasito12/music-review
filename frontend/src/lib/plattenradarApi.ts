@@ -109,6 +109,7 @@ interface ApiCommunityMatch {
 interface ApiRecommendation {
   album: string;
   artist: string;
+  artist_mbid: string | null;
   labels: string;
   matched_tags: ApiCommunityMatch[];
   overall_score: number;
@@ -397,6 +398,7 @@ function toRecommendation(
     reviewUrl: item.url ?? "https://www.plattentests.de/",
     tags,
     source,
+    artistMbid: item.artist_mbid ?? undefined,
   };
 }
 

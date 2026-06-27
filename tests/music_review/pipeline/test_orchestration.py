@@ -122,3 +122,22 @@ def test_in_process_runs_enrichment_from_first_new_id(
     cfg = _config(tmp_path, exit_if_no_new_reviews=True)
     assert run_pipeline_update(cfg, scrape_mode="in_process") == 0
     assert captured["min_id"] == 11
+
+
+def test_run_enrichment_steps_fetches_artist_images_when_enabled(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Optional artist image fetch runs after enrichment when requested."""
+    fetch_calls: list[PipelineConfig] = []
+
+    monkeypatch.setattr(orchestration, "run_module", lambda *_a, **_k: True)
+    monkeypatch.setattr(
+        orchestration,
+        "run_artist_image_fetch",
+        lambda config: fetch_calls.append(config) or 0,
+    )
+
+    cfg = _config(tmp_path, fetch_artist_images=True, skip_dq=True)
+    assert orchestration.run_enrichment_steps(cfg) == 0
+    assert fetch_calls == [cfg]

@@ -10,6 +10,10 @@ from typing import Any, Protocol
 
 from fastapi import Header
 
+from music_review.application.artist_image_service import (
+    ArtistImageService,
+    default_artist_image_service,
+)
 from music_review.dashboard.user_db import get_connection
 from music_review.data_access.affinities import affinities_by_review_id, affinities_list
 from music_review.data_access.communities import (
@@ -77,6 +81,9 @@ class CorpusProvider(Protocol):
     def year_cap(self) -> int:
         """Return the highest release year known to the corpus."""
 
+    def artist_mbid_for_review(self, review_id: int) -> str | None:
+        """Return the MusicBrainz artist ID for one review, if known."""
+
 
 @dataclass(frozen=True, slots=True)
 class FileCorpusProvider:
@@ -131,6 +138,10 @@ class FileCorpusProvider:
     def year_cap(self) -> int:
         """Return the highest release year known to local reviews."""
         return max_release_year_in_jsonl(reviews_path()) or datetime.now().year
+
+    def artist_mbid_for_review(self, review_id: int) -> str | None:
+        """Return the MusicBrainz artist ID for one local review, if known."""
+        return _artist_mbid_from_metadata(self.metadata(), review_id)
 
 
 def _corpus_source_mtimes() -> tuple[float, ...]:
@@ -255,14 +266,42 @@ class CachedCorpusProvider:
         assert self._year_cap is not None
         return self._year_cap
 
+    def artist_mbid_for_review(self, review_id: int) -> str | None:
+        """Return the MusicBrainz artist ID for one cached review, if known."""
+        self._refresh_cache_if_needed()
+        assert self._metadata is not None
+        return _artist_mbid_from_metadata(self._metadata, review_id)
+
+
+def _artist_mbid_from_metadata(
+    metadata: Mapping[int, Mapping[str, Any]],
+    review_id: int,
+) -> str | None:
+    """Return a trimmed artist MBID from one metadata row."""
+    row = metadata.get(review_id)
+    if row is None:
+        return None
+    artist_mbid = row.get("artist_mbid")
+    if not isinstance(artist_mbid, str):
+        return None
+    trimmed = artist_mbid.strip()
+    return trimmed or None
+
 
 _CACHED_CORPUS_PROVIDER: CachedCorpusProvider | None = None
+_ARTIST_IMAGE_SERVICE: ArtistImageService | None = None
 
 
 def reset_corpus_provider_cache() -> None:
     """Clear the module-level corpus provider singleton (for tests)."""
     global _CACHED_CORPUS_PROVIDER
     _CACHED_CORPUS_PROVIDER = None
+
+
+def reset_artist_image_service() -> None:
+    """Clear the module-level artist image service singleton (for tests)."""
+    global _ARTIST_IMAGE_SERVICE
+    _ARTIST_IMAGE_SERVICE = None
 
 
 def get_corpus_provider() -> CorpusProvider:
@@ -285,3 +324,11 @@ def get_optional_user_db(
     if not authorization:
         return None
     return get_connection()
+
+
+def get_artist_image_service() -> ArtistImageService:
+    """FastAPI dependency for artist image lookups."""
+    global _ARTIST_IMAGE_SERVICE
+    if _ARTIST_IMAGE_SERVICE is None:
+        _ARTIST_IMAGE_SERVICE = default_artist_image_service()
+    return _ARTIST_IMAGE_SERVICE

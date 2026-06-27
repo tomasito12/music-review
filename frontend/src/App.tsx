@@ -318,13 +318,18 @@ export function App(): ReactElement {
     if (archiveReloadToken === lastArchiveReloadTokenHandled.current) {
       return;
     }
-    lastArchiveReloadTokenHandled.current = archiveReloadToken;
 
     let active = true;
     setArchiveLoading(true);
     setArchiveError(null);
 
     void loadArchivePage(temporaryProfile, 0, "replace")
+      .then(() => {
+        if (!active) {
+          return;
+        }
+        lastArchiveReloadTokenHandled.current = archiveReloadToken;
+      })
       .catch(() => {
         if (!active) {
           return;
@@ -352,13 +357,18 @@ export function App(): ReactElement {
     if (aktuellReloadToken === lastAktuellReloadTokenHandled.current) {
       return;
     }
-    lastAktuellReloadTokenHandled.current = aktuellReloadToken;
 
     let active = true;
     setAktuellLoading(true);
     setAktuellError(null);
 
     void loadAktuellPage(0, "replace")
+      .then(() => {
+        if (!active) {
+          return;
+        }
+        lastAktuellReloadTokenHandled.current = aktuellReloadToken;
+      })
       .catch(() => {
         if (!active) {
           return;

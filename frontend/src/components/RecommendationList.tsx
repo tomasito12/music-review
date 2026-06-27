@@ -188,13 +188,7 @@ export function RecommendationList({
 
       <div className={`results-body${isReloading ? " results-reloading" : ""}`}>
       {highlights !== undefined && highlights.length > 0 && (
-        <section
-          aria-label="Top-Fundstücke"
-          className="personal-recommendations"
-        >
-          <h2 className="top-fundstuecke-heading">Top-Fundstücke</h2>
-          <RecommendationHighlights highlights={highlights} showSaveAction />
-        </section>
+        <RecommendationHighlights highlights={highlights} showSaveAction />
       )}
 
       <section

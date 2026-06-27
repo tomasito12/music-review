@@ -125,6 +125,7 @@ describe("loadArchiveRecommendations", () => {
               rank: 1,
               artist: "Alpha",
               album: "First",
+              artist_mbid: "mbid-alpha",
               year: 2024,
               release_date: "2024-05-01",
               rating: 8,
@@ -152,6 +153,7 @@ describe("loadArchiveRecommendations", () => {
     expect(result.total).toBe(1);
     expect(result.recommendations[0]).toMatchObject({
       artist: "Alpha",
+      artistMbid: "mbid-alpha",
       fitPercent: 81,
       fitLabel: "Sehr passend",
       source: "entdecken",

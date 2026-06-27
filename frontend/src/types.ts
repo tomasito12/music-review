@@ -36,6 +36,7 @@ export interface Recommendation {
   reviewUrl: string;
   tags: RecommendationTag[];
   source: RecommendationSource;
+  artistMbid?: string;
 }
 
 export interface RecommendationHighlight {

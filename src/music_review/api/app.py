@@ -4,20 +4,26 @@ from __future__ import annotations
 
 import random
 import sqlite3
-from collections.abc import Mapping, Sequence
+from collections.abc import Callable, Mapping, Sequence
 from datetime import UTC, datetime
 from typing import Any, Literal
 
-from fastapi import Depends, FastAPI, Header, HTTPException, status
+from fastapi import Depends, FastAPI, Header, HTTPException, Query, status
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import FileResponse
 
 from music_review.api.dependencies import (
     CorpusProvider,
+    get_artist_image_service,
     get_corpus_provider,
     get_optional_user_db,
     get_user_db,
 )
 from music_review.api.schemas import (
+    ArtistImageBatchResult,
+    ArtistImageResponse,
+    ArtistImagesBatchRequest,
+    ArtistImagesBatchResponse,
     AuthLoginRequest,
     AuthRegisterRequest,
     AuthTokenResponse,
@@ -28,6 +34,8 @@ from music_review.api.schemas import (
     RecommendationRequest,
     TasteProfileResponse,
 )
+from music_review.application.artist_image_models import ArtistImageRecord
+from music_review.application.artist_image_service import ArtistImageService
 from music_review.application.community_tags import community_tags_from_entries
 from music_review.application.models import (
     CommunityMatch,
@@ -70,6 +78,7 @@ from music_review.domain.models import Review
 CORPUS_PROVIDER_DEPENDENCY = Depends(get_corpus_provider)
 USER_DB_DEPENDENCY = Depends(get_user_db)
 OPTIONAL_USER_DB_DEPENDENCY = Depends(get_optional_user_db)
+ARTIST_IMAGE_SERVICE_DEPENDENCY = Depends(get_artist_image_service)
 AUTHORIZATION_HEADER = Header(default=None)
 
 
@@ -125,6 +134,63 @@ def create_app() -> FastAPI:
             if item.get("id")
         }
         return tuple(sorted(options, key=lambda option: option.label.casefold()))
+
+    @app.get("/v1/artists/{artist_mbid}/image", response_model=ArtistImageResponse)
+    def artist_image(
+        artist_mbid: str,
+        artist_name: str | None = Query(default=None),
+        service: ArtistImageService = ARTIST_IMAGE_SERVICE_DEPENDENCY,
+    ) -> ArtistImageResponse:
+        """Return a licensed artist thumbnail for highlight cards."""
+        record = service.lookup(artist_mbid, artist_name=artist_name)
+        return _artist_image_response_or_404(service, record)
+
+    @app.get("/v1/artists/{artist_mbid}/image/file")
+    def artist_image_file(
+        artist_mbid: str,
+        service: ArtistImageService = ARTIST_IMAGE_SERVICE_DEPENDENCY,
+    ) -> FileResponse:
+        """Return a locally cached artist thumbnail JPG."""
+        record = service.cached_record(artist_mbid)
+        if record is None or record.status != "ok":
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail="No local artist image file is available.",
+            )
+        local_path = service.resolve_local_file_path(record)
+        if local_path is None or not local_path.is_file():
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail="No local artist image file is available.",
+            )
+        return FileResponse(
+            local_path,
+            media_type="image/jpeg",
+            headers={"Cache-Control": "public, max-age=86400"},
+        )
+
+    @app.post("/v1/artists/images", response_model=ArtistImagesBatchResponse)
+    def artist_images_batch(
+        request: ArtistImagesBatchRequest,
+        service: ArtistImageService = ARTIST_IMAGE_SERVICE_DEPENDENCY,
+    ) -> ArtistImagesBatchResponse:
+        """Return licensed thumbnails for multiple highlight artists in one request."""
+        records = service.lookup_batch(
+            [(item.artist_mbid, item.artist_name) for item in request.artists],
+        )
+        items = tuple(
+            ArtistImageBatchResult(
+                artist_mbid=item.artist_mbid,
+                image=_artist_image_response(
+                    service,
+                    records[item.artist_mbid.strip()],
+                )
+                if item.artist_mbid.strip() in records
+                else None,
+            )
+            for item in request.artists
+        )
+        return ArtistImagesBatchResponse(items=items)
 
     @app.post(
         "/v1/auth/register",
@@ -215,6 +281,7 @@ def create_app() -> FastAPI:
             limit=request.limit,
             offset=request.offset,
             reviews_by_id=_reviews_by_id(provider.reviews()),
+            artist_mbid_for_review=provider.artist_mbid_for_review,
         )
 
     @app.post("/v1/recommendations/new-reviews", response_model=RecommendationSet)
@@ -232,6 +299,7 @@ def create_app() -> FastAPI:
             rows=rows,
             limit=request.limit,
             offset=request.offset,
+            artist_mbid_for_review=provider.artist_mbid_for_review,
         )
 
     @app.post("/v1/playlists/export", response_model=PlaylistExport)
@@ -262,6 +330,38 @@ def create_app() -> FastAPI:
 
 
 app = create_app()
+
+
+def _artist_image_response(
+    service: ArtistImageService,
+    record: ArtistImageRecord,
+) -> ArtistImageResponse | None:
+    """Map one ok record into an API response."""
+    thumbnail_url = service.public_thumbnail_url(record)
+    if record.status != "ok" or not thumbnail_url:
+        return None
+    return ArtistImageResponse(
+        artist_mbid=record.artist_mbid,
+        artist_name=record.artist_name,
+        thumbnail_url=thumbnail_url,
+        attribution_text=record.attribution_text or "",
+        license=record.license or "",
+        source_url=record.source_url or "",
+    )
+
+
+def _artist_image_response_or_404(
+    service: ArtistImageService,
+    record: ArtistImageRecord,
+) -> ArtistImageResponse:
+    """Map one ok record or raise 404."""
+    response = _artist_image_response(service, record)
+    if response is None:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="No licensed artist image is available.",
+        )
+    return response
 
 
 def _archive_rows(
@@ -359,6 +459,7 @@ def _recommendation_set(
     limit: int,
     offset: int,
     reviews_by_id: Mapping[int, Review] | None = None,
+    artist_mbid_for_review: Callable[[int], str | None] | None = None,
 ) -> RecommendationSet:
     """Map raw service rows into a paginated recommendation response."""
     total = len(rows)
@@ -375,6 +476,10 @@ def _recommendation_set(
                 row,
                 source=source,
                 fallback_review=_fallback_review(row, reviews_by_id),
+                artist_mbid=_artist_mbid_for_row(
+                    row,
+                    artist_mbid_for_review=artist_mbid_for_review,
+                ),
             )
             for index, row in enumerate(page_rows)
         ),
@@ -387,6 +492,7 @@ def _recommendation_from_row(
     *,
     source: RecommendationSource,
     fallback_review: Review | None = None,
+    artist_mbid: str | None = None,
 ) -> Recommendation:
     """Map one raw row into an API recommendation item."""
     review = row.get("review")
@@ -436,6 +542,7 @@ def _recommendation_from_row(
         has_tracks=has_tracks,
         matched_tags=_matched_tags(row),
         explanation_signals=_explanation_signals(row),
+        artist_mbid=artist_mbid,
     )
 
 
@@ -683,6 +790,24 @@ def _reviews_from_archive_rows(
 def _reviews_by_id(reviews: Sequence[Review]) -> dict[int, Review]:
     """Return reviews keyed by integer review id."""
     return {int(review.id): review for review in reviews}
+
+
+def _artist_mbid_for_row(
+    row: Mapping[str, Any],
+    *,
+    artist_mbid_for_review: Callable[[int], str | None] | None,
+) -> str | None:
+    """Resolve artist MBID for one recommendation row."""
+    if artist_mbid_for_review is None:
+        return None
+    review_id = _optional_int(row.get("review_id"))
+    if review_id is None:
+        review = row.get("review")
+        if isinstance(review, Review):
+            review_id = int(review.id)
+    if review_id is None:
+        return None
+    return artist_mbid_for_review(review_id)
 
 
 def _fallback_review(

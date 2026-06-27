@@ -77,6 +77,13 @@ describe("buildAktuellBriefing", () => {
 
     expect(briefing.kicker).toBe("Schön, dass du zurück bist");
   });
+
+  it("uses shown count when API total is temporarily zero", () => {
+    const briefing = buildAktuellBriefing(0, 8, "Letzte 4 Update-Runden");
+
+    expect(briefing.title).toContain("8 neue Rezensionen");
+    expect(briefing.title).not.toContain("keine sicheren Treffer");
+  });
 });
 
 describe("buildAktuellHighlights", () => {

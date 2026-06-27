@@ -287,27 +287,27 @@ Bei Empfehlungs-Response optional `artist_mbid` mitliefern (neues Feld an `Recom
 
 ### Phase 1 – Backend-Service + API (2–3 Tage)
 
-- [ ] `artist_image_store.py` + `artist_image_service.py`
-- [ ] `GET /v1/artists/{mbid}/image` + Tests in `tests/music_review/api/test_app.py`
-- [ ] Negative Cache + TTL
-- [ ] `artist_mbid` auf `Recommendation` (optional review-basiert befüllt)
+- [x] `artist_image_store.py` + `artist_image_service.py`
+- [x] `GET /v1/artists/{mbid}/image` + Tests in `tests/music_review/api/test_app.py`
+- [x] Negative Cache + TTL
+- [x] `artist_mbid` auf `Recommendation` (optional review-basiert befüllt)
 
 **Akzeptanz:** Zweiter Request für gleichen MBID ohne externe API-Calls.
 
 ### Phase 2 – Frontend Highlight (1–2 Tage)
 
-- [ ] `useArtistImage` + `ArtistImage` in `RecommendationHighlights`
-- [ ] Visual-Test `aktuell-redesign.png` mit gemocktem Image-Endpunkt
-- [ ] Fallback-Layout ohne Bild getestet
+- [x] `useArtistImage` + `ArtistImage` in `RecommendationHighlights`
+- [x] Visual-Test `aktuell-redesign.png` mit gemocktem Image-Endpunkt
+- [x] Fallback-Layout ohne Bild getestet
 
 **Akzeptanz:** Aktuell-Referenzscreen zeigt 1–3 Bilder; keine Layout-Sprünge ohne Bild.
 
 ### Phase 3 – Härtung (optional)
 
-- [ ] Batch-Endpunkt für 3 MBIDs
-- [ ] Lokaler Datei-Cache + `/image/file`
-- [ ] CLI `--review-id` / `--artist-name` für manuelle Nachpflege
-- [ ] Eintrag in `update-db` **nicht** standardmäßig; optional `--fetch-artist-images` Flag
+- [x] Batch-Endpunkt für 3 MBIDs
+- [x] Lokaler Datei-Cache + `/image/file`
+- [x] CLI `--review-id` / `--artist-name` für manuelle Nachpflege
+- [x] Eintrag in `update-db` **nicht** standardmäßig; optional `--fetch-artist-images` Flag
 
 ---
 

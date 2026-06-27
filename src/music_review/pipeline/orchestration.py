@@ -55,6 +55,8 @@ class PipelineConfig:
     max_id: int | None = None
     exit_if_no_new_reviews: bool = False
     verbose: bool = False
+    fetch_artist_images: bool = False
+    fetch_artist_images_limit: int = 25
 
 
 def run_module(module: str, args: list[str]) -> bool:
@@ -132,9 +134,14 @@ def run_enrichment_steps(
 
     if config.skip_dq:
         logger.info("Pipeline enrichment complete (DQ skipped).")
-        return 0
+        exit_code = 0
+    else:
+        exit_code = run_data_quality(config)
 
-    return run_data_quality(config)
+    if exit_code != 0 or not config.fetch_artist_images:
+        return exit_code
+
+    return run_artist_image_fetch(config)
 
 
 def run_graph_and_label_steps(config: PipelineConfig) -> bool:
@@ -167,6 +174,35 @@ def run_graph_and_label_steps(config: PipelineConfig) -> bool:
         ):
             logger.warning("community-broad-categories failed; continuing.")
     return True
+
+
+def run_artist_image_fetch(config: PipelineConfig) -> int:
+    """Fetch missing artist images for unique metadata artists."""
+    from music_review.application.artist_image_batch import (
+        fetch_missing_artist_images,
+        unique_artists_from_metadata,
+    )
+    from music_review.application.artist_image_service import (
+        default_artist_image_service,
+    )
+
+    metadata_path = (
+        config.metadata_imputed_path
+        if config.metadata_imputed_path.is_file()
+        else config.metadata_path
+    )
+    artists = unique_artists_from_metadata(metadata_path)
+    if not artists:
+        logger.info("No artist MBIDs found for artist image fetch.")
+        return 0
+
+    service = default_artist_image_service()
+    fetch_missing_artist_images(
+        service,
+        artists,
+        limit=config.fetch_artist_images_limit,
+    )
+    return 0
 
 
 def run_data_quality(config: PipelineConfig) -> int:
@@ -288,6 +324,8 @@ def pipeline_config_from_namespace(args: argparse.Namespace) -> PipelineConfig:
         max_id=getattr(args, "max_id", None),
         exit_if_no_new_reviews=bool(getattr(args, "exit_if_no_new_reviews", False)),
         verbose=bool(getattr(args, "verbose", False)),
+        fetch_artist_images=bool(getattr(args, "fetch_artist_images", False)),
+        fetch_artist_images_limit=int(getattr(args, "fetch_artist_images_limit", 25)),
     )
 
 

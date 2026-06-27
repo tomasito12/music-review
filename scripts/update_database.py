@@ -131,6 +131,21 @@ def main() -> int:
         default=DATA_PIPELINE_HEALTH_REPORT,
         help="Path for the DQ JSON report (default: %(default)s).",
     )
+    parser.add_argument(
+        "--fetch-artist-images",
+        action="store_true",
+        help=(
+            "After enrichment, resolve missing artist images for unique "
+            "artist MBIDs in metadata (not enabled by default)."
+        ),
+    )
+    parser.add_argument(
+        "--fetch-artist-images-limit",
+        type=int,
+        default=25,
+        metavar="N",
+        help="Max artist image lookups per run with --fetch-artist-images.",
+    )
     args = parser.parse_args()
     config = pipeline_config_from_namespace(args)
 

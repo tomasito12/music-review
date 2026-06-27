@@ -27,6 +27,7 @@ class ArtistImageRecord:
     source_url: str | None = None
     attribution_text: str | None = None
     reason: str | None = None
+    local_path: str | None = None
 
     def to_dict(self) -> dict[str, Any]:
         """Return a JSON-serializable dict for JSONL storage."""
@@ -47,6 +48,7 @@ class ArtistImageRecord:
             "source_url",
             "attribution_text",
             "reason",
+            "local_path",
         )
         for key in optional_fields:
             value = getattr(self, key)
@@ -74,6 +76,7 @@ class ArtistImageRecord:
             source_url=_optional_str(payload.get("source_url")),
             attribution_text=_optional_str(payload.get("attribution_text")),
             reason=_optional_str(payload.get("reason")),
+            local_path=_optional_str(payload.get("local_path")),
         )
 
 

@@ -9,6 +9,7 @@ import pytest
 from music_review.api.dependencies import (
     CachedCorpusProvider,
     FileCorpusProvider,
+    _artist_mbid_from_metadata,
     get_corpus_provider,
     reset_corpus_provider_cache,
 )
@@ -99,3 +100,17 @@ def test_get_corpus_provider_returns_singleton_instance() -> None:
     first = get_corpus_provider()
     second = get_corpus_provider()
     assert first is second
+
+
+def test_artist_mbid_from_metadata_returns_trimmed_value() -> None:
+    """Metadata lookup returns a trimmed artist MBID when present."""
+    metadata = {
+        1: {"artist_mbid": "  mbid-1  "},
+        2: {"artist_mbid": ""},
+        3: {"artist": "No MBID"},
+    }
+
+    assert _artist_mbid_from_metadata(metadata, 1) == "mbid-1"
+    assert _artist_mbid_from_metadata(metadata, 2) is None
+    assert _artist_mbid_from_metadata(metadata, 3) is None
+    assert _artist_mbid_from_metadata(metadata, 99) is None

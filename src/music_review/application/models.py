@@ -309,6 +309,7 @@ class Recommendation(ApiModel):
     has_tracks: bool = False
     matched_tags: tuple[CommunityMatch, ...] = ()
     explanation_signals: ExplanationSignals = Field(default_factory=ExplanationSignals)
+    artist_mbid: str | None = None
 
 
 class RecommendationSet(ApiModel):
