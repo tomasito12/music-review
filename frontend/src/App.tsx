@@ -48,6 +48,15 @@ import {
   shouldLandOnAktuell,
   syncBrowserPath,
 } from "./lib/initialRoute";
+import type {
+  ProfileReturnRoute,
+  ProfileSetupMode,
+} from "./lib/profileReturnNavigation";
+import {
+  resolveProfileFinishRoute,
+  startInitialProfileSetup,
+  startProfileEdit,
+} from "./lib/profileReturnNavigation";
 import { resolveProfileSaveBannerState } from "./lib/unsavedProfileBanner";
 import type { TemporaryTasteProfile } from "./lib/plattenradarApi";
 import type {
@@ -79,6 +88,10 @@ export function App(): ReactElement {
     () => readProfileSession(),
   );
   const [profileEditStep, setProfileEditStep] = useState<SetupStep | undefined>();
+  const [profileSetupMode, setProfileSetupMode] =
+    useState<ProfileSetupMode>("initial");
+  const [profileReturnRoute, setProfileReturnRoute] =
+    useState<ProfileReturnRoute | null>(null);
   const [archiveRecommendations, setArchiveRecommendations] = useState<
     Recommendation[] | null
   >(null);
@@ -343,9 +356,34 @@ export function App(): ReactElement {
     };
   }, [aktuellRecommendations, loadAktuellPage, route, temporaryProfile]);
 
-  function navigate(nextRoute: AppRoute): void {
+  function setAppRoute(nextRoute: AppRoute): void {
     setRoute(nextRoute);
     window.history.pushState({}, "", nextRoute === "willkommen" ? "/" : `/${nextRoute}`);
+  }
+
+  function navigate(nextRoute: AppRoute): void {
+    if (nextRoute === "musikprofil" && route !== "musikprofil") {
+      const editState = startProfileEdit(route, profileReturnRoute);
+      setProfileSetupMode(editState.mode);
+      setProfileReturnRoute(editState.returnRoute);
+    }
+    setAppRoute(nextRoute);
+  }
+
+  function openInitialProfileSetup(): void {
+    const setupState = startInitialProfileSetup();
+    setProfileSetupMode(setupState.mode);
+    setProfileReturnRoute(setupState.returnRoute);
+    setProfileEditStep(undefined);
+    setAppRoute("musikprofil");
+  }
+
+  function openProfileEditor(step?: SetupStep): void {
+    const editState = startProfileEdit(route, profileReturnRoute);
+    setProfileSetupMode(editState.mode);
+    setProfileReturnRoute(editState.returnRoute);
+    setProfileEditStep(step);
+    setAppRoute("musikprofil");
   }
 
   function createPlaylist(source: RecommendationSource): void {
@@ -480,7 +518,15 @@ export function App(): ReactElement {
     setAktuellRecommendations(null);
     setAktuellTotal(0);
     setArchiveError(null);
-    navigate("entdecken");
+    setAktuellError(null);
+    const destination = resolveProfileFinishRoute({
+      mode: profileSetupMode,
+      returnRoute: profileReturnRoute,
+      isAuthenticated,
+    });
+    setProfileSetupMode("initial");
+    setProfileReturnRoute(null);
+    navigate(destination);
   }
 
   async function loadMoreArchiveRecommendations(): Promise<void> {
@@ -535,13 +581,11 @@ export function App(): ReactElement {
   }
 
   function adjustFilters(): void {
-    setProfileEditStep("filters");
-    navigate("musikprofil");
+    openProfileEditor("filters");
   }
 
   function editProfile(): void {
-    setProfileEditStep(undefined);
-    navigate("musikprofil");
+    openProfileEditor();
   }
 
   function retryArchiveLoad(): void {
@@ -605,7 +649,7 @@ export function App(): ReactElement {
       {route === "willkommen" && (
         <WelcomeScreen
           onLoginClick={openLogin}
-          onStartSetup={() => navigate("musikprofil")}
+          onStartSetup={openInitialProfileSetup}
         />
       )}
       {route === "aktuell" && (
