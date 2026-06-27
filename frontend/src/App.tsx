@@ -58,8 +58,14 @@ import {
   startInitialProfileSetup,
   startProfileEdit,
 } from "./lib/profileReturnNavigation";
+import {
+  buildProfileSessionFromPreset,
+  buildUpdatedProfileSession,
+  type ProfileSessionUpdate,
+} from "./lib/resultProfileUpdate";
+import { useResultsFilterOptions } from "./lib/useResultsFilterOptions";
 import { resolveProfileSaveBannerState } from "./lib/unsavedProfileBanner";
-import type { TemporaryTasteProfile } from "./lib/plattenradarApi";
+import type { TasteFilterSettings, TastePreset, TemporaryTasteProfile } from "./lib/plattenradarApi";
 import type {
   AppRoute,
   Recommendation,
@@ -134,6 +140,10 @@ export function App(): ReactElement {
     savedMessage: profileChangesSavedMessage,
     errorMessage: profileChangesError,
   });
+
+  const resultsFilterOptionsEnabled =
+    (route === "aktuell" || route === "entdecken") && temporaryProfile !== null;
+  const resultsFilterOptions = useResultsFilterOptions(resultsFilterOptionsEnabled);
 
   const apiClient = useCallback(
     () => new ApiClient({ token: authSession?.accessToken }),
@@ -566,6 +576,40 @@ export function App(): ReactElement {
     navigate(destination);
   }
 
+  function applyResultProfileUpdate(update: ProfileSessionUpdate): void {
+    if (profileSession === null) {
+      return;
+    }
+    const next = buildUpdatedProfileSession(profileSession, update);
+    writeProfileSession(next);
+    setProfileSession(next);
+    invalidateRecommendationResults();
+  }
+
+  function handleResultPresetSelect(preset: TastePreset): void {
+    if (profileSession === null) {
+      return;
+    }
+    const next = buildProfileSessionFromPreset(profileSession, preset);
+    writeProfileSession(next);
+    setProfileSession(next);
+    invalidateRecommendationResults();
+  }
+
+  function handleResultFilterSettingsChange(settings: TasteFilterSettings): void {
+    applyResultProfileUpdate({ filterSettings: settings });
+  }
+
+  function handleResultCommunityWeightsChange(
+    weights: Record<string, number>,
+  ): void {
+    applyResultProfileUpdate({ communityWeightsRaw: weights });
+  }
+
+  function openProfileOverview(): void {
+    navigate("musikprofil");
+  }
+
   async function loadMoreArchiveRecommendations(): Promise<void> {
     if (temporaryProfile === null || archiveRecommendations === null) {
       return;
@@ -615,10 +659,6 @@ export function App(): ReactElement {
     setAktuellRecommendations(null);
     setAktuellTotal(0);
     setAktuellError(null);
-  }
-
-  function adjustFilters(): void {
-    openProfileEditor("filters");
   }
 
   function editProfile(): void {
@@ -693,21 +733,32 @@ export function App(): ReactElement {
         <AktuellDiscoverPage
           canLoadMore={canLoadMoreAktuell}
           error={aktuellError}
+          filterCommunities={resultsFilterOptions.communities}
+          filterError={resultsFilterOptions.error}
+          filterLoading={resultsFilterOptions.loading}
+          filterPresets={resultsFilterOptions.presets}
           filterSummary={aktuellFilterSummary}
+          hasSavedProfileReference={lastSavedProfile !== null}
           highlights={
             aktuellRecommendations !== null
               ? buildAktuellHighlights(aktuellRecommendations)
               : []
           }
+          isAuthenticated={isAuthenticated}
           isLoading={aktuellLoading}
           isLoadingMore={aktuellLoadingMore}
-          onAdjustFilters={adjustFilters}
+          isReloading={aktuellLoading && aktuellRecommendations === null}
           onCreatePlaylist={createPlaylist}
           onEditProfile={editProfile}
+          onFilterCommunityWeightsChange={handleResultCommunityWeightsChange}
+          onFilterSettingsChange={handleResultFilterSettingsChange}
           onLoadMore={loadMoreAktuellRecommendations}
+          onOpenProfileOverview={openProfileOverview}
+          onPresetSelect={handleResultPresetSelect}
           onRetry={retryAktuellLoad}
           onUpdateRoundsChange={handleUpdateRoundsChange}
           profileExists={temporaryProfile !== null}
+          profileSession={profileSession}
           recommendations={aktuellRecommendations}
           total={aktuellTotal}
           updateRounds={updateRounds}
@@ -718,15 +769,26 @@ export function App(): ReactElement {
         <ArchiveDiscoverPage
           canLoadMore={canLoadMoreArchive}
           error={archiveError}
+          filterCommunities={resultsFilterOptions.communities}
+          filterError={resultsFilterOptions.error}
+          filterLoading={resultsFilterOptions.loading}
+          filterPresets={resultsFilterOptions.presets}
           filterSummary={archiveFilterSummary}
+          hasSavedProfileReference={lastSavedProfile !== null}
+          isAuthenticated={isAuthenticated}
           isLoading={archiveLoading}
           isLoadingMore={archiveLoadingMore}
-          onAdjustFilters={adjustFilters}
+          isReloading={archiveLoading && archiveRecommendations === null}
           onCreatePlaylist={createPlaylist}
           onEditProfile={editProfile}
+          onFilterCommunityWeightsChange={handleResultCommunityWeightsChange}
+          onFilterSettingsChange={handleResultFilterSettingsChange}
           onLoadMore={loadMoreArchiveRecommendations}
+          onOpenProfileOverview={openProfileOverview}
+          onPresetSelect={handleResultPresetSelect}
           onRetry={retryArchiveLoad}
           profileExists={temporaryProfile !== null}
+          profileSession={profileSession}
           recommendations={archiveRecommendations}
           savePrompt={savePromptSlot}
           total={archiveTotal}
@@ -801,17 +863,28 @@ export function App(): ReactElement {
 interface AktuellDiscoverPageProps {
   canLoadMore: boolean;
   error: string | null;
+  filterCommunities: ReturnType<typeof useResultsFilterOptions>["communities"];
+  filterError: string | null;
+  filterLoading: boolean;
+  filterPresets: ReturnType<typeof useResultsFilterOptions>["presets"];
   filterSummary?: string[];
+  hasSavedProfileReference: boolean;
   highlights: ReturnType<typeof buildAktuellHighlights>;
+  isAuthenticated: boolean;
   isLoading: boolean;
   isLoadingMore: boolean;
-  onAdjustFilters: () => void;
+  isReloading: boolean;
   onCreatePlaylist: (source: RecommendationSource) => void;
   onEditProfile: () => void;
+  onFilterCommunityWeightsChange: (weights: Record<string, number>) => void;
+  onFilterSettingsChange: (settings: TasteFilterSettings) => void;
   onLoadMore: () => void;
+  onOpenProfileOverview: () => void;
+  onPresetSelect: (preset: TastePreset) => void;
   onRetry: () => void;
   onUpdateRoundsChange: (value: string) => void;
   profileExists: boolean;
+  profileSession: ProfileSetupResult | null;
   recommendations: Recommendation[] | null;
   total: number;
   updateRounds: string;
@@ -821,17 +894,28 @@ interface AktuellDiscoverPageProps {
 function AktuellDiscoverPage({
   canLoadMore,
   error,
+  filterCommunities,
+  filterError,
+  filterLoading,
+  filterPresets,
   filterSummary,
+  hasSavedProfileReference,
   highlights,
+  isAuthenticated,
   isLoading,
   isLoadingMore,
-  onAdjustFilters,
+  isReloading,
   onCreatePlaylist,
   onEditProfile,
+  onFilterCommunityWeightsChange,
+  onFilterSettingsChange,
   onLoadMore,
+  onOpenProfileOverview,
+  onPresetSelect,
   onRetry,
   onUpdateRoundsChange,
   profileExists,
+  profileSession,
   recommendations,
   total,
   updateRounds,
@@ -853,7 +937,7 @@ function AktuellDiscoverPage({
     );
   }
 
-  if (isLoading) {
+  if (isLoading && recommendations === null && !isReloading) {
     return (
       <section className="empty-results">
         <p className="eyebrow">Aktuell</p>
@@ -887,14 +971,25 @@ function AktuellDiscoverPage({
       )}
       <RecommendationList
         canLoadMore={canLoadMore}
+        filterCommunities={filterCommunities}
+        filterError={filterError}
+        filterLoading={filterLoading}
+        filterPresets={filterPresets}
         filterSummary={filterSummary}
+        hasSavedProfileReference={hasSavedProfileReference}
         highlights={highlights}
+        isAuthenticated={isAuthenticated}
+        isReloading={isReloading}
         loadingMore={isLoadingMore}
         message={`${total} neue Rezensionen im gewählten Zeitraum. ${loadedCount} werden gerade angezeigt.`}
-        onAdjustFilters={onAdjustFilters}
         onCreatePlaylist={onCreatePlaylist}
+        onEditProfile={onOpenProfileOverview}
+        onFilterCommunityWeightsChange={onFilterCommunityWeightsChange}
+        onFilterSettingsChange={onFilterSettingsChange}
         onLoadMore={onLoadMore}
+        onPresetSelect={onPresetSelect}
         onUpdateRoundsChange={onUpdateRoundsChange}
+        profileSession={profileSession}
         recommendations={recommendations ?? []}
         source="aktuell"
         title="Neue Rezensionen für dich"
@@ -909,15 +1004,26 @@ function AktuellDiscoverPage({
 interface ArchiveDiscoverPageProps {
   canLoadMore: boolean;
   error: string | null;
+  filterCommunities: ReturnType<typeof useResultsFilterOptions>["communities"];
+  filterError: string | null;
+  filterLoading: boolean;
+  filterPresets: ReturnType<typeof useResultsFilterOptions>["presets"];
   filterSummary?: string[];
+  hasSavedProfileReference: boolean;
+  isAuthenticated: boolean;
   isLoading: boolean;
   isLoadingMore: boolean;
-  onAdjustFilters: () => void;
+  isReloading: boolean;
   onCreatePlaylist: (source: RecommendationSource) => void;
   onEditProfile: () => void;
+  onFilterCommunityWeightsChange: (weights: Record<string, number>) => void;
+  onFilterSettingsChange: (settings: TasteFilterSettings) => void;
   onLoadMore: () => void;
+  onOpenProfileOverview: () => void;
+  onPresetSelect: (preset: TastePreset) => void;
   onRetry: () => void;
   profileExists: boolean;
+  profileSession: ProfileSetupResult | null;
   recommendations: Recommendation[] | null;
   savePrompt: ReactElement | null;
   total: number;
@@ -926,15 +1032,26 @@ interface ArchiveDiscoverPageProps {
 function ArchiveDiscoverPage({
   canLoadMore,
   error,
+  filterCommunities,
+  filterError,
+  filterLoading,
+  filterPresets,
   filterSummary,
+  hasSavedProfileReference,
+  isAuthenticated,
   isLoading,
   isLoadingMore,
-  onAdjustFilters,
+  isReloading,
   onCreatePlaylist,
   onEditProfile,
+  onFilterCommunityWeightsChange,
+  onFilterSettingsChange,
   onLoadMore,
+  onOpenProfileOverview,
+  onPresetSelect,
   onRetry,
   profileExists,
+  profileSession,
   recommendations,
   savePrompt,
   total,
@@ -952,7 +1069,7 @@ function ArchiveDiscoverPage({
     );
   }
 
-  if (isLoading) {
+  if (isLoading && recommendations === null && !isReloading) {
     return (
       <section className="empty-results">
         <p className="eyebrow">Entdecken</p>
@@ -986,12 +1103,23 @@ function ArchiveDiscoverPage({
       )}
       <RecommendationList
         canLoadMore={canLoadMore}
+        filterCommunities={filterCommunities}
+        filterError={filterError}
+        filterLoading={filterLoading}
+        filterPresets={filterPresets}
         filterSummary={filterSummary}
+        hasSavedProfileReference={hasSavedProfileReference}
+        isAuthenticated={isAuthenticated}
+        isReloading={isReloading}
         loadingMore={isLoadingMore}
         message={`${total} Alben passen zu deinen Einstellungen. ${loadedCount} werden gerade angezeigt.`}
-        onAdjustFilters={onAdjustFilters}
         onCreatePlaylist={onCreatePlaylist}
+        onEditProfile={onOpenProfileOverview}
+        onFilterCommunityWeightsChange={onFilterCommunityWeightsChange}
+        onFilterSettingsChange={onFilterSettingsChange}
         onLoadMore={onLoadMore}
+        onPresetSelect={onPresetSelect}
+        profileSession={profileSession}
         recommendations={recommendations ?? []}
         savePrompt={savePrompt}
         source="entdecken"

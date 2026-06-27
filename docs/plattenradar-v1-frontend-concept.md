@@ -619,10 +619,8 @@ Possible `Musikprofil` page structure:
 
 **Umsetzung (Shell):** Route `musikprofil` zeigt für Nutzer mit bestehendem Profil
 zuerst `ProfileOverviewPage` (drei Summary-Karten). Bearbeiten öffnet weiterhin
-`ProfileSetupShell` im passenden Schritt; Erst-Setup und Shortcuts (z. B.
-`Filter anpassen` von Aktuell) überspringen die Übersicht. Abschluss aus der
-Übersicht ohne Return-Route bleibt auf `musikprofil`; Shortcuts und Erst-Setup
-nutzen die bestehende Return-/Entdecken-Navigation.
+`ProfileSetupShell` im passenden Schritt; Erst-Setup nutzt die Return-/
+Entdecken-Navigation.
 
 ### Result-Screen Filter Changes
 
@@ -640,6 +638,12 @@ Recommended v1 behavior:
 - Mark unsaved changes clearly but calmly.
 - Allow users to apply changes to refresh the list.
 - Offer explicit save only after changes produce a useful state.
+
+**Umsetzung (Shell):** Auf `Aktuell` und `Entdecken` steuert `ResultsFilterPanel`
+Presets (`PresetPillBar`) und `TasteFilterControls` inline. Änderungen
+aktualisieren `profileSession` sofort und laden die Liste neu;
+Speichern/Verwerfen bleibt im globalen Banner. Stilrichtungen nur über
+Musikprofil.
 
 Example states:
 

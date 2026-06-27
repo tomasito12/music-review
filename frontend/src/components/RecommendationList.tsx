@@ -6,9 +6,12 @@ import type {
   RecommendationSource,
   UpdateSummary,
 } from "../types";
+import type { TasteCommunityOption, TasteFilterSettings, TastePreset } from "../lib/plattenradarApi";
+import type { ProfileSetupResult } from "../lib/profileSessionStorage";
 
 import { RecommendationCard } from "./RecommendationCard";
 import { RecommendationHighlights } from "./RecommendationHighlights";
+import { ResultsFilterPanel } from "./ResultsFilterPanel";
 
 interface RecommendationListProps {
   title: string;
@@ -23,10 +26,21 @@ interface RecommendationListProps {
   savePrompt?: ReactElement | null;
   updateRoundOptions?: ReadonlyArray<{ value: string; label: string }>;
   updateRounds?: string;
-  onAdjustFilters?: () => void;
   onCreatePlaylist: (source: RecommendationSource) => void;
   onLoadMore?: () => void;
   onUpdateRoundsChange?: (value: string) => void;
+  filterCommunities?: TasteCommunityOption[];
+  filterError?: string | null;
+  filterLoading?: boolean;
+  filterPresets?: TastePreset[];
+  hasSavedProfileReference?: boolean;
+  isAuthenticated?: boolean;
+  isReloading?: boolean;
+  onEditProfile?: () => void;
+  onFilterCommunityWeightsChange?: (weights: Record<string, number>) => void;
+  onFilterSettingsChange?: (settings: TasteFilterSettings) => void;
+  onPresetSelect?: (preset: TastePreset) => void;
+  profileSession?: ProfileSetupResult | null;
 }
 
 export function RecommendationList({
@@ -42,11 +56,29 @@ export function RecommendationList({
   savePrompt = null,
   updateRoundOptions,
   updateRounds = "4",
-  onAdjustFilters,
   onCreatePlaylist,
   onLoadMore,
   onUpdateRoundsChange,
+  filterCommunities = [],
+  filterError = null,
+  filterLoading = false,
+  filterPresets = [],
+  hasSavedProfileReference = false,
+  isAuthenticated = false,
+  isReloading = false,
+  onEditProfile,
+  onFilterCommunityWeightsChange,
+  onFilterSettingsChange,
+  onPresetSelect,
+  profileSession = null,
 }: RecommendationListProps): ReactElement {
+  const showFilterPanel =
+    profileSession !== null &&
+    onPresetSelect !== undefined &&
+    onFilterSettingsChange !== undefined &&
+    onFilterCommunityWeightsChange !== undefined &&
+    onEditProfile !== undefined;
+
   return (
     <section className="results-page">
       <div className="results-header">
@@ -66,34 +98,46 @@ export function RecommendationList({
 
       {savePrompt}
 
-      <div className="results-toolbar">
-        {source === "aktuell" && updateRoundOptions !== undefined && (
-          <label className="range-control">
-            Zeitraum
-            <select
-              onChange={(event) => onUpdateRoundsChange?.(event.target.value)}
-              value={updateRounds}
-            >
-              {updateRoundOptions.map((option) => (
-                <option key={option.value} value={option.value}>
-                  {option.label}
-                </option>
-              ))}
-            </select>
-          </label>
-        )}
-        <div className="filter-summary" aria-label="Aktuelle Filter">
-          {(filterSummary ?? ["Ausgewogen", "Stilpassung sichtbar"]).map((chip) => (
-            <span key={chip}>{chip}</span>
-          ))}
-          <div className="filter-summary-actions">
-            {onAdjustFilters !== undefined && (
-              <button onClick={onAdjustFilters} type="button">
-                Filter anpassen
-              </button>
-            )}
+      <div className="results-filter-region">
+        <div className="results-toolbar">
+          {source === "aktuell" && updateRoundOptions !== undefined && (
+            <label className="range-control">
+              Zeitraum
+              <select
+                onChange={(event) => onUpdateRoundsChange?.(event.target.value)}
+                value={updateRounds}
+              >
+                {updateRoundOptions.map((option) => (
+                  <option key={option.value} value={option.value}>
+                    {option.label}
+                  </option>
+                ))}
+              </select>
+            </label>
+          )}
+          <div className="filter-summary" aria-label="Aktuelle Filter">
+            {(filterSummary ?? ["Ausgewogen", "Stilpassung sichtbar"]).map((chip) => (
+              <span key={chip}>{chip}</span>
+            ))}
           </div>
         </div>
+
+        {showFilterPanel && (
+          <ResultsFilterPanel
+            communities={filterCommunities}
+            error={filterError}
+            hasSavedProfileReference={hasSavedProfileReference}
+            isAuthenticated={isAuthenticated}
+            isReloading={isReloading}
+            loading={filterLoading}
+            onCommunityWeightsChange={onFilterCommunityWeightsChange}
+            onEditProfile={onEditProfile}
+            onFilterSettingsChange={onFilterSettingsChange}
+            onPresetSelect={onPresetSelect}
+            presets={filterPresets}
+            profileSession={profileSession}
+          />
+        )}
       </div>
 
       {(updateSummary !== undefined || (highlights !== undefined && highlights.length > 0)) && (
