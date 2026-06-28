@@ -5,6 +5,7 @@ from __future__ import annotations
 import argparse
 import logging
 import os
+import shutil
 import subprocess
 import sys
 import time
@@ -17,6 +18,7 @@ ROOT = Path(__file__).resolve().parents[1]
 FRONTEND = ROOT / "frontend"
 API_URL = "http://127.0.0.1:8010/health"
 FRONTEND_URL = "http://127.0.0.1:5173/"
+PNPM_VERSION = "10.12.1"
 
 
 def main() -> None:
@@ -35,7 +37,6 @@ def main() -> None:
     frontend_env["VITE_API_BASE_URL"] = "http://127.0.0.1:8010"
     frontend = subprocess.Popen(
         [
-            "corepack",
             "pnpm",
             "dev",
             "--host",
@@ -49,10 +50,10 @@ def main() -> None:
 
     exit_code = 1
     try:
+        _ensure_pnpm()
         _wait_for_url(API_URL)
         _wait_for_url(FRONTEND_URL)
         playwright_cmd = [
-            "corepack",
             "pnpm",
             "exec",
             "playwright",
@@ -73,6 +74,17 @@ def main() -> None:
         _terminate(api)
 
     raise SystemExit(exit_code)
+
+
+def _ensure_pnpm() -> None:
+    """Activate the pinned pnpm version when it is not already on PATH."""
+    if shutil.which("pnpm") is not None:
+        return
+    subprocess.run(["corepack", "enable"], check=True)
+    subprocess.run(
+        ["corepack", "prepare", f"pnpm@{PNPM_VERSION}", "--activate"],
+        check=True,
+    )
 
 
 def _parse_args() -> argparse.Namespace:
