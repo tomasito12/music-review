@@ -80,6 +80,9 @@ services:
       - .env
     environment:
       MUSIC_REVIEW_PROJECT_ROOT: /app
+      USER_AGENT_APP: Plattenradar
+      USER_AGENT_VERSION: "1.0"
+      USER_AGENT_CONTACT: https://github.com/tomasito12/music-review
     volumes:
       - ./data:/app/data
     command:
@@ -89,6 +92,22 @@ services:
         "music_review.pipeline.enrichment.fetch_metadata",
         "--update",
       ]
+
+  music-review-update-db:
+    profiles:
+      - jobs
+    build:
+      context: .
+    env_file:
+      - .env
+    environment:
+      MUSIC_REVIEW_PROJECT_ROOT: /app
+      USER_AGENT_APP: Plattenradar
+      USER_AGENT_VERSION: "1.0"
+      USER_AGENT_CONTACT: https://github.com/tomasito12/music-review
+    volumes:
+      - ./data:/app/data
+    command: ["python", "scripts/update_database.py", "-v"]
 
 volumes:
   caddy_data:

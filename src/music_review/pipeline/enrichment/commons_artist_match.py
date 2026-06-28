@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import html
 import re
+import unicodedata
 from typing import Any
 
 _MATCH_NORMALIZE_RE = re.compile(r"[^a-z0-9]+")
@@ -174,12 +175,88 @@ def record_matches_artist_name(
     )
 
 
+_LATIN_FOLD_MAP = str.maketrans(
+    {
+        "\u0131": "i",  # Turkish dotless i
+        "\u0130": "i",  # Turkish dotted I
+        "\u00ef": "i",  # i diaeresis
+        "\u00f6": "o",
+        "\u00fc": "u",
+        "\u00e4": "a",
+        "\u00e5": "a",
+        "\u00e6": "ae",
+        "\u00f8": "o",
+        "\u00df": "ss",
+        "\u0142": "l",
+        "\u00f1": "n",
+        "\u00e7": "c",
+    },
+)
+
+
+def normalize_musicbrainz_name(value: str) -> str:
+    """Normalize artist names for conservative MusicBrainz equivalence checks."""
+    text = value.casefold().translate(_LATIN_FOLD_MAP)
+    text = unicodedata.normalize("NFKD", text)
+    text = "".join(char for char in text if not unicodedata.combining(char))
+    for source, target in (
+        ("\u2019", "'"),
+        ("\u2018", "'"),
+        ("\u2010", "-"),
+        ("\u2011", "-"),
+        ("\u2012", "-"),
+        ("\u2013", "-"),
+        ("\u2014", "-"),
+        ("&", " and "),
+        ("+", " and "),
+        ("/", " and "),
+    ):
+        text = text.replace(source, target)
+    return _MATCH_NORMALIZE_RE.sub(" ", text).strip()
+
+
+def _musicbrainz_core_tokens(normalized_name: str) -> str:
+    """Drop connector stopwords so ``and``/``&`` spellings compare equal."""
+    tokens = [
+        token
+        for token in normalized_name.split()
+        if token not in _SUBSTANTIVE_STOPWORDS
+    ]
+    return " ".join(tokens)
+
+
+def _musicbrainz_name_equivalence_variants(normalized_name: str) -> set[str]:
+    """Return normalized MusicBrainz name phrases that should count as equivalent."""
+    if not normalized_name:
+        return set()
+
+    variants = {normalized_name, _musicbrainz_core_tokens(normalized_name)}
+    without_the = _strip_leading_the(normalized_name)
+    if without_the:
+        variants.add(without_the)
+        variants.add(f"the {without_the}")
+        variants.add(_musicbrainz_core_tokens(without_the))
+    return {variant for variant in variants if variant}
+
+
 def musicbrainz_name_matches_requested(requested_name: str, resolved_name: str) -> bool:
     """Return whether a MusicBrainz artist name fits the requested lookup name."""
-    return artist_name_in_text(
-        requested_name,
+    requested = normalize_musicbrainz_name(requested_name)
+    resolved = normalize_musicbrainz_name(resolved_name)
+    if not requested or not resolved:
+        return False
+
+    requested_variants = _musicbrainz_name_equivalence_variants(requested)
+    resolved_variants = _musicbrainz_name_equivalence_variants(resolved)
+    if requested_variants.intersection(resolved_variants):
+        return True
+
+    # Commons-style phrase checks catch alias-like inclusions without suffix
+    # collisions that fire on the artist's own multi-word name.
+    return artist_name_in_text(requested_name, resolved_name) or artist_name_in_text(
         resolved_name,
-    ) or artist_name_in_text(resolved_name, requested_name)
+        requested_name,
+    )
 
 
 _SHORT_ARTIST_NAME_MAX_LEN = 4

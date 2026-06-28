@@ -34,7 +34,25 @@ hatch run python -m music_review.pipeline.enrichment.reference_imputation
 
 ## GitHub Actions (production server)
 
-Use the **Metadata refresh** workflow (`workflow_dispatch`) to pull the selected branch on the server and start a **detached** Docker job. The workflow returns as soon as the container has started; it does not wait for the refresh to finish.
+All long-running jobs use the **`production`** GitHub environment (repository
+`Settings -> Environments -> production`) with deploy secrets from
+`deploy/README.md`.
+
+### MusicBrainz metadata refresh (recommended after matching fixes)
+
+Use the **Metadata refresh** workflow when you want to re-run
+`fetch_metadata --update` for every review (what you started locally with
+`--update`). The workflow pulls the selected branch on the server and starts a
+**detached** Docker container. It returns as soon as the container has started;
+it does not wait for the refresh to finish.
+
+**GitHub UI:** Actions -> **Metadata refresh** -> Run workflow
+
+**CLI:**
+
+```bash
+gh workflow run "Metadata refresh" --field branch=main --field mode=update
+```
 
 | Input | Default | Meaning |
 |-------|---------|---------|
@@ -45,7 +63,31 @@ Monitor on the server:
 
 ```bash
 docker logs -f music-review-metadata-refresh
+# or locally:
+./scripts/server.sh logs metadata
 ```
+
+### Full database update (scrape + graph + optional metadata refresh)
+
+Use the **Update database** workflow for `hatch run update-db` on the server
+(scraper, metadata, imputation, graph, DQ). Enable `metadata_update=true` to
+include a full MusicBrainz re-fetch in that run.
+
+```bash
+gh workflow run "Update database" --field branch=main
+gh workflow run "Update database" \
+  --field branch=main \
+  --field metadata_update=true \
+  --field skip_reviews=true
+```
+
+Monitor: `docker logs -f music-review-update-db` or `./scripts/server.sh logs update-db`
+
+### Hourly incremental update
+
+The **Deploy** workflow with `run_update=true` runs the hourly production job
+(scrape new reviews + incremental metadata only). Cron on the server does the
+same every hour.
 
 Or start manually:
 

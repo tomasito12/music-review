@@ -61,6 +61,25 @@ METADATA_REFRESH_MODE=overwrite ./scripts/start_metadata_refresh.sh
 
 See `docs/metadata-refresh.md` for details.
 
+## Full database update (long-running)
+
+Use the **Update database** GitHub Actions workflow to run `update_database.py`
+on the server (scrape, metadata, imputation, graph, DQ). Optional inputs:
+`metadata_update`, `skip_reviews`, `skip_graph_affinities`, `recluster_communities`.
+
+```bash
+gh workflow run "Update database" --field branch=main
+```
+
+Monitor with `docker logs -f music-review-update-db` or
+`./scripts/server.sh logs update-db`.
+
+Manual start on the server:
+
+```bash
+UPDATE_DB_METADATA_UPDATE=true ./scripts/start_update_db.sh
+```
+
 ## Server operations (SSH)
 
 Local helper: `./scripts/server.sh` (configure via `.env.server` from `.env.server.example`).
@@ -72,5 +91,6 @@ Local helper: `./scripts/server.sh` (configure via `.env.server` from `.env.serv
 | `./scripts/server.sh install-cron` | Apply `deploy/production.crontab` on server |
 | `./scripts/server.sh start-artist-image-batch` | Detached image batch |
 | `./scripts/server.sh start-metadata-refresh` | Detached metadata refresh |
+| `./scripts/server.sh start-update-db` | Detached full database update |
 
 Cron schedule lives in **`deploy/production.crontab`** and is reapplied on every GitHub **Deploy** run via `scripts/install_production_cron.sh`.

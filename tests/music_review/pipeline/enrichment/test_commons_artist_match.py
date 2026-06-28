@@ -131,3 +131,28 @@ def test_musicbrainz_name_matches_requested_rejects_obvious_mismatches() -> None
         "The Black Angels",
     )
     assert musicbrainz_name_matches_requested("The Beatles", "Beatles")
+
+
+def test_musicbrainz_name_matches_requested_accepts_common_spelling_variants() -> None:
+    """MusicBrainz lookups should accept benign punctuation and spelling variants."""
+    assert musicbrainz_name_matches_requested(
+        "Belle & Sebastian",
+        "Belle and Sebastian",
+    )
+    assert musicbrainz_name_matches_requested(
+        "King Gizzard & The Lizard Wizard",
+        "King Gizzard & the Lizard Wizard",
+    )
+    assert musicbrainz_name_matches_requested(
+        "Roy Bianco & Die Abbrunzati Boys",
+        "Roy Bianco & Die Abbrunzati Boys",
+    )
+    assert musicbrainz_name_matches_requested(
+        "Clap Your Hands Say Yeah",
+        "Clap Your Hands Say Yeah",
+    )
+    assert musicbrainz_name_matches_requested(
+        "Altin Gün",
+        "Alt\u0131n G\u00fcn",
+    )
+    assert musicbrainz_name_matches_requested("Maximo Park", "Maxïmo Park")

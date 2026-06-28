@@ -24,6 +24,7 @@ HOURLY_CRON_MARKER="music-review-managed"
 LOG_UPDATE="logs/hourly-update.log"
 CONTAINER_BATCH="music-review-artist-image-batch"
 CONTAINER_METADATA="music-review-metadata-refresh"
+CONTAINER_UPDATE_DB="music-review-update-db"
 
 usage() {
   cat <<'USAGE'
@@ -32,7 +33,7 @@ Usage:
 
 Read-only:
   status                 Docker, cron, latest review id, data mtimes
-  logs update|batch|metadata [LINES]
+  logs update|batch|metadata|update-db [LINES]
   ssh                    Open an interactive SSH session
   exec <remote command>  Run one shell command on the server
 
@@ -44,6 +45,7 @@ Write (production changes):
                          Start detached artist-image batch on the server
   start-metadata-refresh [overwrite]
                          Start detached metadata refresh on the server
+  start-update-db        Start detached full database update on the server
   compose <args...>      Run docker compose on the server (e.g. compose ps)
 
 Options:
@@ -62,6 +64,7 @@ GitHub Actions (preferred for code deploy):
   gh workflow run Deploy --field branch=main --field run_update=true
   gh workflow run "Artist image batch"
   gh workflow run "Metadata refresh"
+  gh workflow run "Update database"
 USAGE
 }
 
@@ -150,25 +153,35 @@ PY
 cmd_logs() {
   local target="${1:-update}"
   local lines="${2:-40}"
-  local log_file
+  local log_file=""
+  local container_name=""
   case "$target" in
     update) log_file="$LOG_UPDATE" ;;
-    batch) log_file="logs/artist-image-batch.log" ;;
-    metadata) log_file="logs/metadata-refresh.log" ;;
+    batch)
+      log_file="logs/artist-image-batch.log"
+      container_name="$CONTAINER_BATCH"
+      ;;
+    metadata)
+      log_file="logs/metadata-refresh.log"
+      container_name="$CONTAINER_METADATA"
+      ;;
+    update-db)
+      container_name="$CONTAINER_UPDATE_DB"
+      ;;
     *)
-      fail "Unknown log target: $target (use update, batch, or metadata)"
+      fail "Unknown log target: $target (use update, batch, metadata, or update-db)"
       ;;
   esac
   run_ssh "bash -lc $(printf '%q' "
     cd '$SERVER_PATH'
-    if docker ps --format '{{.Names}}' | grep -qx '$CONTAINER_BATCH'; then
-      echo '=== docker logs $CONTAINER_BATCH (last $lines) ==='
-      docker logs --tail '$lines' '$CONTAINER_BATCH' 2>&1 || true
+    if [[ -n '${container_name}' ]] && docker ps --format '{{.Names}}' | grep -qx '${container_name}'; then
+      echo '=== docker logs ${container_name} (last $lines) ==='
+      docker logs --tail '$lines' '${container_name}' 2>&1 || true
     fi
-    if [[ -f '$log_file' ]]; then
+    if [[ -n '$log_file' && -f '$log_file' ]]; then
       echo '=== file $log_file (last $lines) ==='
       tail -n '$lines' '$log_file'
-    else
+    elif [[ -n '$log_file' ]]; then
       echo '(no log file at $log_file)'
     fi
   ")"
@@ -267,6 +280,10 @@ main() {
         else
           run_remote_script "start_metadata_refresh.sh"
         fi
+        exit 0
+        ;;
+      start-update-db)
+        run_remote_script "start_update_db.sh"
         exit 0
         ;;
       compose)

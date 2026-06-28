@@ -8,7 +8,7 @@ on:
         required: true
         default: main
       mode:
-        description: How to refresh MusicBrainz metadata
+        description: update re-fetches every review; overwrite deletes metadata.jsonl first
         required: true
         default: update
         type: choice
@@ -27,7 +27,7 @@ jobs:
   trigger:
     name: Start refresh on server
     runs-on: ubuntu-latest
-    timeout-minutes: 10
+    timeout-minutes: 15
     environment: production
 
     steps:
@@ -60,3 +60,13 @@ jobs:
           DEPLOY_PATH: ${{ secrets.DEPLOY_PATH }}
           DEPLOY_BRANCH: ${{ inputs.branch }}
           METADATA_REFRESH_MODE: ${{ inputs.mode }}
+
+      - name: Verify container started
+        run: |
+          ssh -p "${DEPLOY_PORT}" "${DEPLOY_USER}@${DEPLOY_HOST}" \
+            "docker ps --filter name=^music-review-metadata-refresh$ --format 'status={{.Status}}'"
+        env:
+          DEPLOY_HOST: ${{ secrets.DEPLOY_HOST }}
+          DEPLOY_PORT: ${{ secrets.DEPLOY_PORT || '22' }}
+          DEPLOY_USER: ${{ secrets.DEPLOY_USER }}
+          DEPLOY_PATH: ${{ secrets.DEPLOY_PATH }}

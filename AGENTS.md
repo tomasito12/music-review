@@ -60,6 +60,7 @@ Music Review is a Python 3.12+ CLI-based data pipeline that scrapes album review
 | Artist image batch prefetch | `hatch run artist-image-batch --missing-only --all -v` (also `--revalidate`, `--queue name|mbid|all`, `--limit N`, `--download`; GitHub workflow **Artist image batch** for detached server run; see `docs/artist-image-batch.md`) |
 | Hourly production update | `hatch run prod-update` (or `docker compose run --rm music-review-update`) — scrapes new reviews, enriches metadata/graph, then prefetches Wikimedia artist images for **that review batch only** (`--no-fetch-artist-images` to disable; set `ARTIST_IMAGE_DOWNLOAD=true` for JPGs) |
 | Metadata refresh (MusicBrainz) | `hatch run python -m music_review.pipeline.enrichment.fetch_metadata --update` then `artist_genres` + `reference_imputation`; GitHub workflow **Metadata refresh** or `./scripts/start_metadata_refresh.sh` for detached server run; see `docs/metadata-refresh.md` |
+| Full database update (server) | GitHub workflow **Update database** or `./scripts/start_update_db.sh`; see `deploy/README.md` |
 | React frontend dev server | `hatch run frontend` (after `hatch run frontend-install`) |
 | Frontend unit tests | `hatch run frontend-test` |
 | Frontend UI screenshots | `hatch run frontend-screenshot` (mock/manual) or `hatch run frontend-screenshot-live` (CI reference regression; after `hatch run frontend-playwright-install`) |
@@ -67,7 +68,7 @@ Music Review is a Python 3.12+ CLI-based data pipeline that scrapes album review
 
 ### Production server
 
-Use **`./scripts/server.sh`** for SSH operations against the production host (see `.env.server.example`). Read-only: `status`, `logs`. Write: `prod-update`, `install-hourly-cron`, `start-artist-image-batch`, `start-metadata-refresh`. Prefer GitHub **Deploy** / **Artist image batch** / **Metadata refresh** workflows when no local SSH key is available. Agent skill: `.cursor/skills/music-review-server/SKILL.md`.
+Use **`./scripts/server.sh`** for SSH operations against the production host (see `.env.server.example`). Read-only: `status`, `logs`. Write: `prod-update`, `install-hourly-cron`, `start-artist-image-batch`, `start-metadata-refresh`, `start-update-db`. Prefer GitHub **Deploy** / **Artist image batch** / **Metadata refresh** / **Update database** workflows when no local SSH key is available. Agent skill: `.cursor/skills/music-review-server/SKILL.md`.
 
 | Task | Command |
 |------|---------|

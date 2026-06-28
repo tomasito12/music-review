@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+from typing import Any
+
 import requests
 
 from music_review.pipeline.enrichment import musicbrainz_client as mb
@@ -254,3 +256,44 @@ def test_fetch_album_genres_maps_tags(monkeypatch) -> None:
     genres = mb.fetch_album_genres("a", "b")
     assert "hip_hop" in genres
     assert "metal" in genres
+
+
+def test_album_title_search_variants_strips_parentheticals_and_ellipsis() -> None:
+    """Album search variants remove noisy suffixes from plattentests titles."""
+    variants = mb._album_title_search_variants(
+        "Father of all ... (Deluxe)",
+    )
+    assert variants[0] == "Father of all (Deluxe)"
+    assert "Father of all" in variants
+
+
+def test_search_release_groups_tries_album_only_fallback(monkeypatch) -> None:
+    """Release-group search falls back to album-only lookup when artist+album misses."""
+    queries: list[str] = []
+
+    def fake_query(query: str, limit: int) -> list[dict[str, Any]]:
+        queries.append(query)
+        if query == 'release:"Monument"':
+            return [
+                {
+                    "id": "rg1",
+                    "title": "Monument",
+                    "primary-type": "Album",
+                    "score": "90",
+                    "artist-credit": [
+                        {
+                            "name": "Molchat Doma",
+                            "artist": {"id": "artist-1", "name": "Molchat Doma"},
+                        },
+                    ],
+                },
+            ]
+        return []
+
+    monkeypatch.setattr(mb, "_search_release_groups_query", fake_query)
+
+    groups = mb.search_release_groups("Molchat Doma", "Monument", limit=5)
+
+    assert len(groups) == 1
+    assert groups[0]["id"] == "rg1"
+    assert 'release:"Monument"' in queries

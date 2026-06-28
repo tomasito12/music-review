@@ -289,6 +289,7 @@ def _navigation_pages() -> list[Any]:
         st.Page("pages/2_Entdecken.py", title="Entdecken"),
         st.Page("pages/6_Recommendations_Flow.py", title="Empfehlungen"),
         st.Page("pages/8_Neueste_Rezensionen.py", title="Neueste Rezensionen"),
+        st.Page("pages/7_Score_Lab.py", title="Score Lab"),
         _playlist_hub_nav_page(),
     ]
     if session_taste_setup_complete():
