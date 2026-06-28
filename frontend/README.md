@@ -29,7 +29,9 @@ First-time setup for visual capture:
 
 ```bash
 pnpm playwright:install
-pnpm screenshot
+pnpm screenshot          # mock/manual captures -> frontend/screenshots/
+pnpm screenshot:live     # live API regression vs frontend/tests/visual/reference/
+pnpm screenshot:update   # refresh committed reference PNGs after layout changes
 ```
 
 Or from the repo root:
@@ -37,10 +39,13 @@ Or from the repo root:
 ```bash
 hatch run frontend-playwright-install
 hatch run frontend-screenshot
+hatch run frontend-screenshot-live
 ```
 
-PNG files land in `frontend/screenshots/` (gitignored). Playwright starts the
-dev server automatically unless one is already running on port 5173.
+Manual PNG exports land in `frontend/screenshots/` (gitignored). Committed
+reference screenshots for CI live against `frontend/tests/visual/reference/`.
+Playwright starts the dev server and visual fixture API automatically unless
+servers are already running locally.
 
 ## Local full-stack
 

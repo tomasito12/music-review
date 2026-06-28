@@ -62,7 +62,7 @@ Music Review is a Python 3.12+ CLI-based data pipeline that scrapes album review
 | Metadata refresh (MusicBrainz) | `hatch run python -m music_review.pipeline.enrichment.fetch_metadata --update` then `artist_genres` + `reference_imputation`; GitHub workflow **Metadata refresh** or `./scripts/start_metadata_refresh.sh` for detached server run; see `docs/metadata-refresh.md` |
 | React frontend dev server | `hatch run frontend` (after `hatch run frontend-install`) |
 | Frontend unit tests | `hatch run frontend-test` |
-| Frontend UI screenshots | `hatch run frontend-screenshot` (after `hatch run frontend-playwright-install`) |
+| Frontend UI screenshots | `hatch run frontend-screenshot` (mock/manual) or `hatch run frontend-screenshot-live` (CI reference regression; after `hatch run frontend-playwright-install`) |
 | Install pre-commit hooks | `hatch run pre-commit install` |
 
 ### Streamlit UI (German copy)

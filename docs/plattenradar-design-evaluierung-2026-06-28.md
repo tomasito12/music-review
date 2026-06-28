@@ -345,9 +345,66 @@ Designsicht **blockierend**, bevor weiter „kosmetisch“ verfeinert wird.
 
 ### 8. Design-Ops (P2)
 
-- Playwright-Screenshots mit **Live-API** und Profil in CI (nicht nur Mock)
-- Referenzscreenshots für Aktuell + Entdecken + Mobile pflegen
-- Kurzes Kapitel in diesem Doc bei größeren Layout-Sprüngen aktualisieren
+- Playwright-Screenshots mit **Live-API** und Profil in CI (nicht nur Mock) — umgesetzt
+- Referenzscreenshots für Aktuell + Entdecken + Mobile pflegen — umgesetzt
+- Kurzes Kapitel in diesem Doc bei größeren Layout-Sprüngen aktualisieren — siehe unten
+
+---
+
+## Design-Ops: Screenshot-Referenzen (Stand 2026-06-28)
+
+### Ziel
+
+Layout-Regressionen auf **Aktuell**, **Entdecken** und **Mobile** früh erkennen — mit
+echter API-Anbindung und gesetztem temporären Musikprofil, nicht nur gerouteten Mocks.
+
+### Was läuft in CI
+
+Job `visual-screenshots` in `.github/workflows/ci.yml`:
+
+1. Startet die deterministische Visual-API (`scripts/visual_api_server.py`, Port `8010`)
+2. Startet das Frontend mit `VITE_API_BASE_URL=http://127.0.0.1:8010`
+3. Führt `frontend/tests/visual/live-screenshots.spec.ts` aus
+4. Vergleicht gegen eingecheckte Referenz-PNGs unter `frontend/tests/visual/reference/`
+
+Abgedeckte Screens:
+
+| Referenzdatei | Route | Viewport |
+|---------------|-------|----------|
+| `aktuell-live-desktop.png` | `/aktuell` | Desktop 1280×900 |
+| `aktuell-live-mobile.png` | `/aktuell` | Mobile 390×844 |
+| `entdecken-live-desktop.png` | `/entdecken` | Desktop 1280×900 |
+| `entdecken-live-mobile.png` | `/entdecken` | Mobile 390×844 |
+
+Das Profil entspricht dem üblichen temporären Setup (`C001`–`C003`, Score-Filter ab
+0.4). Die Fixture-API liefert genug Archiv- und Neuheiten-Daten sowie zwei
+Künstlerfotos (The Notwist, Big Thief); ein Highlight bleibt bewusst text-only.
+
+### Lokale Befehle
+
+```bash
+hatch run frontend-playwright-install
+hatch run frontend-screenshot-live
+```
+
+Referenzbilder nach Layout-Änderungen bewusst aktualisieren:
+
+```bash
+cd frontend && pnpm screenshot:update
+```
+
+Manuelle Mock-Screenshots (Willkommen, Playlists, Redesign-Mock) bleiben unter
+`hatch run frontend-screenshot` in `frontend/screenshots/` (gitignored).
+
+### Wann dieses Kapitel aktualisieren
+
+- Neues Highlight- oder Ranking-Layout auf Aktuell/Entdecken
+- Mobile-Navigation oder erste Bildschirmhöhe geändert
+- Foto-Rhythmus oder Kartenvarianten (text-only vs. Foto-Kachel) angepasst
+- Bewusst andere Fixture-Daten für stabilere Screenshots
+
+Dann: Referenz-PNGs regenerieren, kurzen Absatz „Was sich geändert hat“ hier
+ergänzen, Datum im Kapiteltitel anpassen.
 
 ---
 
