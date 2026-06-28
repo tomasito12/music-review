@@ -1,0 +1,34 @@
+{
+  "query": {
+    "pages": {
+      "123": {
+        "pageid": 123,
+        "title": "File:Example.jpg",
+        "imageinfo": [
+          {
+            "url": "https://upload.wikimedia.org/wikipedia/commons/1/1a/Example.jpg",
+            "thumburl": "https://upload.wikimedia.org/wikipedia/commons/thumb/1/1a/Example.jpg/400px-Example.jpg",
+            "extmetadata": {
+              "LicenseShortName": {
+                "value": "CC BY 2.0",
+                "source": "commons-desc-page"
+              },
+              "LicenseUrl": {
+                "value": "https://creativecommons.org/licenses/by/2.0",
+                "source": "commons-desc-page"
+              },
+              "Artist": {
+                "value": "<a href=\"//commons.wikimedia.org/wiki/User:Example\" class=\"extiw\" title=\"commons:User:Example\">User:Example</a>",
+                "source": "commons-desc-page"
+              },
+              "ObjectName": {
+                "value": "Example artist portrait",
+                "source": "commons-desc-page"
+              }
+            }
+          }
+        ]
+      }
+    }
+  }
+}

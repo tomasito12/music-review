@@ -3,8 +3,9 @@
 from __future__ import annotations
 
 import json
-from pathlib import Path
 from typing import Any
+
+from tests.fixture_paths import fixture_path
 
 from music_review.pipeline.enrichment.commons_client import (
     find_commons_image_by_artist_name,
@@ -31,7 +32,7 @@ def _music_imageinfo(
 
 def test_parse_commons_image_info_builds_attribution() -> None:
     """Commons imageinfo is parsed into URLs and attribution."""
-    fixture = Path("tests/fixtures/commons/imageinfo_cc_by.json")
+    fixture = fixture_path("commons", "imageinfo_cc_by.json")
     payload = json.loads(fixture.read_text(encoding="utf-8"))
     imageinfo = payload["query"]["pages"]["123"]["imageinfo"][0]
 
@@ -62,7 +63,7 @@ def test_find_commons_image_by_artist_name_returns_best_licensed_match(
     monkeypatch,
 ) -> None:
     """Commons search tries ranked candidates until one passes license checks."""
-    fixture = Path("tests/fixtures/commons/imageinfo_cc_by.json")
+    fixture = fixture_path("commons", "imageinfo_cc_by.json")
     payload = json.loads(fixture.read_text(encoding="utf-8"))
     imageinfo = payload["query"]["pages"]["123"]["imageinfo"][0]
 
@@ -104,7 +105,7 @@ def test_find_commons_image_by_artist_name_rejects_homonym_filename(
     monkeypatch,
 ) -> None:
     """Short artist names must not match longer Commons homonyms."""
-    fixture = Path("tests/fixtures/commons/imageinfo_cc_by.json")
+    fixture = fixture_path("commons", "imageinfo_cc_by.json")
     payload = json.loads(fixture.read_text(encoding="utf-8"))
     imageinfo = payload["query"]["pages"]["123"]["imageinfo"][0]
 

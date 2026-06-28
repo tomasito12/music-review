@@ -35,6 +35,7 @@ logs/
 *.csv
 *.json
 !frontend/**/*.json
+!tests/fixtures/**/*.json
 
 # ChromaDB
 chroma_db/

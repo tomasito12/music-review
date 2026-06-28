@@ -1,0 +1,25 @@
+{
+  "entities": {
+    "Q42": {
+      "id": "Q42",
+      "type": "item",
+      "claims": {
+        "P18": [
+          {
+            "mainsnak": {
+              "snaktype": "value",
+              "property": "P18",
+              "datavalue": {
+                "type": "string",
+                "value": "Douglas Adams portrait cropped.jpg"
+              },
+              "datatype": "commonsMedia"
+            },
+            "type": "statement",
+            "rank": "preferred"
+          }
+        ]
+      }
+    }
+  }
+}
