@@ -59,3 +59,17 @@ METADATA_REFRESH_MODE=overwrite ./scripts/start_metadata_refresh.sh
 ```
 
 See `docs/metadata-refresh.md` for details.
+
+## Server operations (SSH)
+
+Local helper: `./scripts/server.sh` (configure via `.env.server` from `.env.server.example`).
+
+| Command | Purpose |
+|---------|---------|
+| `./scripts/server.sh status` | Cron, Docker, max review id |
+| `./scripts/server.sh prod-update` | Scrape + enrich new reviews |
+| `./scripts/server.sh install-hourly-cron` | Enable hourly prod-update |
+| `./scripts/server.sh start-artist-image-batch` | Detached image batch |
+| `./scripts/server.sh start-metadata-refresh` | Detached metadata refresh |
+
+Agent playbook: `.cursor/skills/music-review-server/SKILL.md`. Data sync: `./sync_data.sh` (gitignored locally).

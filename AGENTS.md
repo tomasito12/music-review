@@ -65,6 +65,18 @@ Music Review is a Python 3.12+ CLI-based data pipeline that scrapes album review
 | Frontend UI screenshots | `hatch run frontend-screenshot` (mock/manual) or `hatch run frontend-screenshot-live` (CI reference regression; after `hatch run frontend-playwright-install`) |
 | Install pre-commit hooks | `hatch run pre-commit install` |
 
+### Production server
+
+Use **`./scripts/server.sh`** for SSH operations against the production host (see `.env.server.example`). Read-only: `status`, `logs`. Write: `prod-update`, `install-hourly-cron`, `start-artist-image-batch`, `start-metadata-refresh`. Prefer GitHub **Deploy** / **Artist image batch** / **Metadata refresh** workflows when no local SSH key is available. Agent skill: `.cursor/skills/music-review-server/SKILL.md`.
+
+| Task | Command |
+|------|---------|
+| Server status (cron, reviews, Docker) | `./scripts/server.sh status` |
+| Hourly scrape log | `./scripts/server.sh logs update` |
+| Scrape new reviews on server now | `./scripts/server.sh prod-update` |
+| Install hourly cron on server | `./scripts/server.sh install-hourly-cron` |
+| Sync `data/` with server | `./sync_data.sh pull` or `push` |
+
 ### Streamlit UI (German copy)
 
 User-visible German text in `pages/` and `streamlit_app.py` uses standard orthography (**ä, ö, ü**, **ß**), not ASCII substitutes like `ae`/`oe`/`ue` for those sounds. See `.cursor/rules/german-umlauts-frontend.mdc`.
