@@ -4,19 +4,26 @@ from __future__ import annotations
 
 import random
 import sqlite3
-from collections.abc import Mapping, Sequence
+from collections.abc import Callable, Mapping, Sequence
 from datetime import UTC, datetime
 from typing import Any, Literal
 
-from fastapi import Depends, FastAPI, Header, HTTPException, status
+from fastapi import Depends, FastAPI, Header, HTTPException, Query, status
+from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import FileResponse
 
 from music_review.api.dependencies import (
     CorpusProvider,
+    get_artist_image_service,
     get_corpus_provider,
     get_optional_user_db,
     get_user_db,
 )
 from music_review.api.schemas import (
+    ArtistImageBatchResult,
+    ArtistImageResponse,
+    ArtistImagesBatchRequest,
+    ArtistImagesBatchResponse,
     AuthLoginRequest,
     AuthRegisterRequest,
     AuthTokenResponse,
@@ -27,6 +34,10 @@ from music_review.api.schemas import (
     RecommendationRequest,
     TasteProfileResponse,
 )
+from music_review.application.artist_image_lookup import artist_image_lookup_key
+from music_review.application.artist_image_models import ArtistImageRecord
+from music_review.application.artist_image_service import ArtistImageService
+from music_review.application.community_tags import community_tags_from_entries
 from music_review.application.models import (
     CommunityMatch,
     ExplanationSignals,
@@ -34,6 +45,7 @@ from music_review.application.models import (
     Recommendation,
     RecommendationSet,
     RecommendationSource,
+    TasteCommunity,
     TasteProfile,
 )
 from music_review.application.newest_reviews_service import (
@@ -50,6 +62,7 @@ from music_review.application.presets import (
 from music_review.application.recommendation_service import (
     RecommendationInputs,
     RecommendationService,
+    selected_communities_from_profile,
 )
 from music_review.dashboard.user_db import (
     authenticate_user_by_email,
@@ -62,10 +75,12 @@ from music_review.dashboard.user_db import (
     validate_session_token,
 )
 from music_review.domain.models import Review
+from music_review.text_encoding import repair_plattentests_text
 
 CORPUS_PROVIDER_DEPENDENCY = Depends(get_corpus_provider)
 USER_DB_DEPENDENCY = Depends(get_user_db)
 OPTIONAL_USER_DB_DEPENDENCY = Depends(get_optional_user_db)
+ARTIST_IMAGE_SERVICE_DEPENDENCY = Depends(get_artist_image_service)
 AUTHORIZATION_HEADER = Header(default=None)
 
 
@@ -75,6 +90,13 @@ def create_app() -> FastAPI:
         title="Plattenradar API",
         version="0.1.0",
         description="Private HTTP boundary for Plattenradar v1 clients.",
+    )
+    app.add_middleware(
+        CORSMiddleware,
+        allow_origins=["http://127.0.0.1:5173", "http://127.0.0.1:5174"],
+        allow_credentials=False,
+        allow_methods=["*"],
+        allow_headers=["*"],
     )
 
     @app.get("/health", response_model=HealthResponse)
@@ -91,6 +113,91 @@ def create_app() -> FastAPI:
     def taste_filter_ui() -> TasteFilterUiConfig:
         """Return labels and grouping for the taste filter UI."""
         return get_filter_ui_config()
+
+    @app.get("/v1/taste-communities", response_model=tuple[TasteCommunity, ...])
+    def taste_communities(
+        provider: CorpusProvider = CORPUS_PROVIDER_DEPENDENCY,
+    ) -> tuple[TasteCommunity, ...]:
+        """Return readable communities that can be selected for a taste profile."""
+        labels = provider.genre_labels()
+        _category_names, category_map = provider.broad_categories()
+        options = {
+            TasteCommunity(
+                id=str(item["id"]),
+                label=_community_label(
+                    str(item["id"]),
+                    genre_labels=labels,
+                    community=item,
+                ),
+                broad_categories=tuple(category_map.get(str(item["id"]), ())),
+                example_artists=_community_example_artists(item),
+            )
+            for item in provider.communities()
+            if item.get("id")
+        }
+        return tuple(sorted(options, key=lambda option: option.label.casefold()))
+
+    @app.get("/v1/artists/{artist_mbid}/image", response_model=ArtistImageResponse)
+    def artist_image(
+        artist_mbid: str,
+        artist_name: str | None = Query(default=None),
+        service: ArtistImageService = ARTIST_IMAGE_SERVICE_DEPENDENCY,
+    ) -> ArtistImageResponse:
+        """Return a licensed artist thumbnail for highlight cards."""
+        record = service.lookup(artist_mbid, artist_name=artist_name)
+        return _artist_image_response_or_404(service, record)
+
+    @app.get("/v1/artists/{artist_mbid}/image/file")
+    def artist_image_file(
+        artist_mbid: str,
+        service: ArtistImageService = ARTIST_IMAGE_SERVICE_DEPENDENCY,
+    ) -> FileResponse:
+        """Return a locally cached artist thumbnail JPG."""
+        record = service.cached_record(artist_mbid)
+        if record is None or record.status != "ok":
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail="No local artist image file is available.",
+            )
+        local_path = service.resolve_local_file_path(record)
+        if local_path is None or not local_path.is_file():
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail="No local artist image file is available.",
+            )
+        return FileResponse(
+            local_path,
+            media_type="image/jpeg",
+            headers={"Cache-Control": "public, max-age=86400"},
+        )
+
+    @app.post("/v1/artists/images", response_model=ArtistImagesBatchResponse)
+    def artist_images_batch(
+        request: ArtistImagesBatchRequest,
+        service: ArtistImageService = ARTIST_IMAGE_SERVICE_DEPENDENCY,
+    ) -> ArtistImagesBatchResponse:
+        """Return licensed thumbnails for multiple highlight artists in one request."""
+        records = service.lookup_batch(
+            [(item.artist_mbid, item.artist_name) for item in request.artists],
+            cached_only=not getattr(service, "resolve_on_demand", True),
+        )
+        items = tuple(
+            ArtistImageBatchResult(
+                artist_mbid=lookup_key,
+                image=_artist_image_response(service, records[lookup_key])
+                if lookup_key in records
+                else None,
+            )
+            for item in request.artists
+            for lookup_key in (
+                artist_image_lookup_key(
+                    item.artist_mbid,
+                    artist_name=item.artist_name,
+                ),
+            )
+            if lookup_key
+        )
+        return ArtistImagesBatchResponse(items=items)
 
     @app.post(
         "/v1/auth/register",
@@ -181,6 +288,7 @@ def create_app() -> FastAPI:
             limit=request.limit,
             offset=request.offset,
             reviews_by_id=_reviews_by_id(provider.reviews()),
+            artist_mbid_for_review=provider.artist_mbid_for_review,
         )
 
     @app.post("/v1/recommendations/new-reviews", response_model=RecommendationSet)
@@ -198,6 +306,7 @@ def create_app() -> FastAPI:
             rows=rows,
             limit=request.limit,
             offset=request.offset,
+            artist_mbid_for_review=provider.artist_mbid_for_review,
         )
 
     @app.post("/v1/playlists/export", response_model=PlaylistExport)
@@ -228,6 +337,38 @@ def create_app() -> FastAPI:
 
 
 app = create_app()
+
+
+def _artist_image_response(
+    service: ArtistImageService,
+    record: ArtistImageRecord,
+) -> ArtistImageResponse | None:
+    """Map one ok record into an API response."""
+    thumbnail_url = service.public_thumbnail_url(record)
+    if record.status != "ok" or not thumbnail_url:
+        return None
+    return ArtistImageResponse(
+        artist_mbid=record.artist_mbid,
+        artist_name=record.artist_name,
+        thumbnail_url=thumbnail_url,
+        attribution_text=record.attribution_text or "",
+        license=record.license or "",
+        source_url=record.source_url or "",
+    )
+
+
+def _artist_image_response_or_404(
+    service: ArtistImageService,
+    record: ArtistImageRecord,
+) -> ArtistImageResponse:
+    """Map one ok record or raise 404."""
+    response = _artist_image_response(service, record)
+    if response is None:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="No licensed artist image is available.",
+        )
+    return response
 
 
 def _archive_rows(
@@ -273,12 +414,14 @@ def _new_review_rows(
     rows = NewestReviewsService(inputs).compute_ranked_rows(profile)
     if rows is None:
         rows = [_unranked_new_review_row(review) for review in newest]
+    selected_comms = selected_communities_from_profile(profile)
     return [
         _with_new_review_card_fields(
             row,
             affinity_by_review_id=affinity_by_id,
             genre_labels=genre_labels,
             comm_by_id=comm_by_id,
+            selected_community_ids=selected_comms,
         )
         for row in rows
     ]
@@ -291,9 +434,11 @@ def _playlist_candidates(
 ) -> tuple[list[Review], list[dict[str, object]] | None]:
     """Return reviews and optional ranking rows for playlist generation."""
     if request.source == "new_reviews":
+        # Recommendation request ``limit`` is only for pagination; the playlist
+        # pool size comes from ``newest_count``. Keep ``limit`` within schema bounds.
         new_request = NewReviewsRecommendationRequest(
             profile=profile,
-            limit=request.newest_count,
+            limit=min(request.newest_count, 100),
             offset=0,
             newest_count=request.newest_count,
         )
@@ -302,7 +447,7 @@ def _playlist_candidates(
 
     archive_request = RecommendationRequest(
         profile=profile,
-        limit=request.archive_limit,
+        limit=min(request.archive_limit, 100),
         offset=0,
     )
     rows = _archive_rows(provider, archive_request, profile)[: request.archive_limit]
@@ -321,6 +466,7 @@ def _recommendation_set(
     limit: int,
     offset: int,
     reviews_by_id: Mapping[int, Review] | None = None,
+    artist_mbid_for_review: Callable[[int], str | None] | None = None,
 ) -> RecommendationSet:
     """Map raw service rows into a paginated recommendation response."""
     total = len(rows)
@@ -337,6 +483,10 @@ def _recommendation_set(
                 row,
                 source=source,
                 fallback_review=_fallback_review(row, reviews_by_id),
+                artist_mbid=_artist_mbid_for_row(
+                    row,
+                    artist_mbid_for_review=artist_mbid_for_review,
+                ),
             )
             for index, row in enumerate(page_rows)
         ),
@@ -349,6 +499,7 @@ def _recommendation_from_row(
     *,
     source: RecommendationSource,
     fallback_review: Review | None = None,
+    artist_mbid: str | None = None,
 ) -> Recommendation:
     """Map one raw row into an API recommendation item."""
     review = row.get("review")
@@ -376,7 +527,7 @@ def _recommendation_from_row(
         year = _optional_int(row.get("year"))
         release_date = _optional_str(row.get("release_date"))
         rating = _optional_float(row.get("rating"))
-        text = str(row.get("text", ""))
+        text = repair_plattentests_text(str(row.get("text", "")))
         review_id = int(row.get("review_id", 0))
     overall = float(row.get("overall_score", 0.0))
     return Recommendation(
@@ -398,6 +549,7 @@ def _recommendation_from_row(
         has_tracks=has_tracks,
         matched_tags=_matched_tags(row),
         explanation_signals=_explanation_signals(row),
+        artist_mbid=artist_mbid,
     )
 
 
@@ -430,19 +582,23 @@ def _matched_tags(row: Mapping[str, Any]) -> tuple[CommunityMatch, ...]:
     if not isinstance(top, list):
         return ()
     tags: list[CommunityMatch] = []
-    for item in top[:3]:
+    for item in top:
         if not isinstance(item, Mapping):
             continue
         community_id = _optional_str(item.get("id"))
         label = _optional_str(item.get("label"))
         if not community_id or not label:
             continue
+        affinity = max(
+            0.0,
+            float(item.get("affinity", item.get("score", 0.0)) or 0.0),
+        )
         tags.append(
             CommunityMatch(
                 id=community_id,
                 label=label,
-                affinity=max(0.0, float(item.get("affinity", 0.0) or 0.0)),
-                matched=True,
+                affinity=affinity,
+                matched=bool(item.get("matched", False)),
             ),
         )
     return tuple(tags)
@@ -533,6 +689,7 @@ def _with_new_review_card_fields(
     affinity_by_review_id: Mapping[int, Mapping[str, Any]],
     genre_labels: Mapping[str, str],
     comm_by_id: Mapping[str, Mapping[str, Any]],
+    selected_community_ids: set[str] | frozenset[str] | None = None,
 ) -> dict[str, Any]:
     """Add card-facing fields that newest ranking rows do not own."""
     copied = dict(row)
@@ -546,6 +703,7 @@ def _with_new_review_card_fields(
         affinity_by_review_id.get(review_id),
         genre_labels=genre_labels,
         comm_by_id=comm_by_id,
+        selected_community_ids=selected_community_ids,
     )
     return copied
 
@@ -555,8 +713,24 @@ def _top_communities_from_affinity(
     *,
     genre_labels: Mapping[str, str],
     comm_by_id: Mapping[str, Mapping[str, Any]],
+    selected_community_ids: set[str] | frozenset[str] | None = None,
 ) -> list[dict[str, object]]:
-    """Return the top affinity tags in the same shape as archive rows."""
+    """Return affinity tags in the same shape as archive rows."""
+    return community_tags_from_entries(
+        _affinity_entries(affinity),
+        label_for_id=lambda community_id: _community_label(
+            community_id,
+            genre_labels=genre_labels,
+            community=comm_by_id.get(community_id),
+        ),
+        selected_community_ids=selected_community_ids,
+    )
+
+
+def _affinity_entries(
+    affinity: Mapping[str, Any] | None,
+) -> list[Mapping[str, object]]:
+    """Extract ranked community affinity entries for one review."""
     if affinity is None:
         return []
     communities = affinity.get("communities")
@@ -565,23 +739,7 @@ def _top_communities_from_affinity(
     entries = communities.get("res_10")
     if not isinstance(entries, list):
         return []
-    top_entries = sorted(
-        (entry for entry in entries if isinstance(entry, Mapping)),
-        key=lambda entry: float(entry.get("score", 0.0) or 0.0),
-        reverse=True,
-    )[:3]
-    return [
-        {
-            "id": str(entry.get("id")),
-            "label": _community_label(
-                str(entry.get("id")),
-                genre_labels=genre_labels,
-                community=comm_by_id.get(str(entry.get("id"))),
-            ),
-            "affinity": float(entry.get("score", 0.0) or 0.0),
-        }
-        for entry in top_entries
-    ]
+    return [entry for entry in entries if isinstance(entry, Mapping)]
 
 
 def _community_label(
@@ -597,6 +755,26 @@ def _community_label(
     if community is not None and community.get("centroid"):
         return str(community["centroid"])
     return "Stil-Cluster"
+
+
+def _community_example_artists(
+    community: Mapping[str, Any],
+    *,
+    limit: int = 6,
+) -> tuple[str, ...]:
+    """Return up to six example artists for compact profile detail captions."""
+    top = community.get("top_artists")
+    if not isinstance(top, list):
+        return ()
+    names: list[str] = []
+    for raw in top:
+        text = str(raw).strip()
+        if not text:
+            continue
+        names.append(text)
+        if len(names) >= limit:
+            break
+    return tuple(names)
 
 
 def _reviews_from_archive_rows(
@@ -619,6 +797,24 @@ def _reviews_from_archive_rows(
 def _reviews_by_id(reviews: Sequence[Review]) -> dict[int, Review]:
     """Return reviews keyed by integer review id."""
     return {int(review.id): review for review in reviews}
+
+
+def _artist_mbid_for_row(
+    row: Mapping[str, Any],
+    *,
+    artist_mbid_for_review: Callable[[int], str | None] | None,
+) -> str | None:
+    """Resolve artist MBID for one recommendation row."""
+    if artist_mbid_for_review is None:
+        return None
+    review_id = _optional_int(row.get("review_id"))
+    if review_id is None:
+        review = row.get("review")
+        if isinstance(review, Review):
+            review_id = int(review.id)
+    if review_id is None:
+        return None
+    return artist_mbid_for_review(review_id)
 
 
 def _fallback_review(

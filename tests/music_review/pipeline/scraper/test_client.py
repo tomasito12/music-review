@@ -20,6 +20,7 @@ def _mock_response(status_code: int, text: str = "") -> MagicMock:
     resp = MagicMock()
     resp.status_code = status_code
     resp.text = text
+    resp.content = text.encode("cp1252")
     resp.raise_for_status = MagicMock()
     if status_code >= 400:
         resp.raise_for_status.side_effect = httpx.HTTPStatusError(
@@ -89,6 +90,19 @@ def test_fetch_html_returns_none_on_array_is_empty() -> None:
     )
     try:
         assert client.fetch_html(21411) is None
+    finally:
+        client.close()
+
+
+def test_fetch_html_decodes_cp1252_punctuation() -> None:
+    """fetch_html decodes Windows-1252 punctuation from the site payload."""
+    client = ScraperClient(max_retries=0)
+    client._client = MagicMock()
+    response = _mock_response(200)
+    response.content = b"globalen Hit \x96 sogar"
+    client._client.get.return_value = response
+    try:
+        assert client.fetch_html(44) == "globalen Hit \u2013 sogar"
     finally:
         client.close()
 

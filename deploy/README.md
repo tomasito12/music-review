@@ -31,3 +31,15 @@ The workflow verifies lint/tests first, then deploys over SSH:
 3. Restart `music-review` and `caddy`.
 4. Optionally run `music-review-update`.
 5. Check the local Streamlit health endpoint in the container.
+
+## Artist image batch (long-running)
+
+Use the **Artist image batch** GitHub Actions workflow to start a detached job on
+the server. The workflow exits after the container starts; monitor with
+`docker logs -f music-review-artist-image-batch`.
+
+Manual start on the server:
+
+```bash
+./scripts/start_artist_image_batch.sh
+```

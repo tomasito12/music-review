@@ -43,6 +43,30 @@ services:
       - ./data:/app/data
     command: ["python", "-m", "music_review.pipeline.production_update", "-v"]
 
+  music-review-artist-images:
+    profiles:
+      - jobs
+    build:
+      context: .
+    env_file:
+      - .env
+    environment:
+      MUSIC_REVIEW_PROJECT_ROOT: /app
+      ARTIST_IMAGE_DOWNLOAD: "true"
+      ARTIST_IMAGE_RESOLVE_ON_DEMAND: "false"
+    volumes:
+      - ./data:/app/data
+    command:
+      [
+        "python",
+        "-m",
+        "music_review.pipeline.enrichment.artist_image_batch_cli",
+        "--missing-only",
+        "--all",
+        "--download",
+        "-v",
+      ]
+
 volumes:
   caddy_data:
   caddy_config:

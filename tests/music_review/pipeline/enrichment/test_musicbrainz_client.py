@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import requests
+
 from music_review.pipeline.enrichment import musicbrainz_client as mb
 
 
@@ -53,12 +55,139 @@ def test_extract_tag_names_normalizes_values() -> None:
     assert tags == ["indie rock", "post-rock"]
 
 
+def test_select_best_artist_prefers_exact_name_match() -> None:
+    """An exact artist-name match wins over a higher-scored homonym."""
+    best = mb._select_best_artist(
+        [
+            {"id": "wrong", "name": "Josh Ritter", "score": "100"},
+            {"id": "right", "name": "Josh.", "score": "42"},
+        ],
+        preferred_name="Josh.",
+    )
+    assert best is not None
+    assert best["id"] == "right"
+
+
+def test_extract_artist_mbid_from_release_group_reads_credit() -> None:
+    """Release-group search hits expose the credited artist MBID."""
+    mbid = mb.extract_artist_mbid_from_release_group(
+        {
+            "artist-credit": [
+                {
+                    "name": "Josh.",
+                    "artist": {
+                        "id": "dd3f09d1-9cd3-42d6-b711-3b1ca52d5266",
+                        "name": "Josh.",
+                    },
+                },
+            ],
+        },
+    )
+    assert mbid == "dd3f09d1-9cd3-42d6-b711-3b1ca52d5266"
+
+
+def test_select_best_release_group_prefers_matching_artist_credit() -> None:
+    """A release group whose credit matches the review artist wins over first album."""
+    best = mb._select_best_release_group(
+        [
+            {
+                "id": "wrong",
+                "primary-type": "Album",
+                "score": "100",
+                "artist-credit": [
+                    {
+                        "name": "The Black Angels",
+                        "artist": {"id": "black", "name": "The Black Angels"},
+                    },
+                ],
+            },
+            {
+                "id": "right",
+                "primary-type": "Album",
+                "score": "42",
+                "artist-credit": [
+                    {
+                        "name": "Temple of Angels",
+                        "artist": {"id": "toa", "name": "Temple of Angels"},
+                    },
+                ],
+            },
+        ],
+        preferred_artist="Temple of Angels",
+    )
+    assert best is not None
+    assert best["id"] == "right"
+
+
+def test_release_group_artist_mbid_rejects_mismatched_credit() -> None:
+    """Credited artist MBID is omitted when the credit name does not match."""
+    release_group = {
+        "artist-credit": [
+            {
+                "name": "Nancy Wilson",
+                "artist": {
+                    "id": "f597eafc-4dc5-4bc4-a019-a5035a3c8502",
+                    "name": "Nancy Wilson",
+                },
+            },
+        ],
+    }
+    assert (
+        mb._release_group_artist_mbid(
+            release_group,
+            preferred_artist="Sue",
+        )
+        is None
+    )
+
+
+def test_fetch_artist_info_rejects_ambiguous_name_match(monkeypatch) -> None:
+    """A high-scoring homonym is rejected when the resolved name does not match."""
+    monkeypatch.setattr(
+        mb,
+        "_search_artists",
+        lambda **_: (
+            [
+                {
+                    "id": "f597eafc-4dc5-4bc4-a019-a5035a3c8502",
+                    "name": "Nancy Wilson",
+                    "score": "100",
+                },
+            ],
+            False,
+        ),
+    )
+    monkeypatch.setattr(
+        mb,
+        "_lookup_artist_with_tags",
+        lambda _mbid: {
+            "id": "f597eafc-4dc5-4bc4-a019-a5035a3c8502",
+            "name": "Nancy Wilson",
+            "tags": [],
+            "relations": [],
+        },
+    )
+    assert mb.fetch_artist_info("Sue") is None
+
+
 def test_fetch_album_tags_happy_path(monkeypatch) -> None:
     """fetch_album_tags builds ExternalGenreInfo from mocked lookups."""
     monkeypatch.setattr(
         mb,
         "search_release_groups",
-        lambda **_: [{"id": "rg1", "title": "T", "primary-type": "Album"}],
+        lambda **_: [
+            {
+                "id": "rg1",
+                "title": "T",
+                "primary-type": "Album",
+                "artist-credit": [
+                    {
+                        "name": "Artist",
+                        "artist": {"id": "artist-1", "name": "Artist"},
+                    },
+                ],
+            },
+        ],
     )
     monkeypatch.setattr(
         mb,
@@ -68,13 +197,46 @@ def test_fetch_album_tags_happy_path(monkeypatch) -> None:
     info = mb.fetch_album_tags("Artist", "Album")
     assert info is not None
     assert info.mbid == "rg1"
+    assert info.artist_mbid == "artist-1"
     assert info.tags == ["indie rock"]
 
 
 def test_fetch_artist_info_returns_none_when_no_candidates(monkeypatch) -> None:
     """No search results yields None."""
-    monkeypatch.setattr(mb, "_search_artists", lambda **_: [])
+    monkeypatch.setattr(mb, "_search_artists", lambda **_: ([], False))
     assert mb.fetch_artist_info("unknown") is None
+
+
+def test_fetch_artist_info_returns_none_when_search_fails(monkeypatch) -> None:
+    """Transient MusicBrainz failures yield None without a not-found log."""
+    monkeypatch.setattr(mb, "_search_artists", lambda **_: ([], True))
+    assert mb.fetch_artist_info("Sibylle Kefer") is None
+
+
+def test_get_retries_transient_ssl_errors(monkeypatch) -> None:
+    """Transient SSL failures are retried before surfacing an error."""
+    calls = {"count": 0}
+
+    class FakeSSLError(requests.exceptions.ConnectionError):
+        """Test-only connection error standing in for an SSL failure."""
+
+    def fake_get(*_args, **_kwargs):
+        calls["count"] += 1
+        if calls["count"] < 3:
+            raise FakeSSLError("ssl eof")
+        response = requests.Response()
+        response.status_code = 200
+        response._content = b'{"artists": []}'
+        return response
+
+    monkeypatch.setattr(mb.requests, "get", fake_get)
+    monkeypatch.setattr(mb, "_sleep_backoff", lambda _attempt: None)
+    monkeypatch.setattr(mb, "_sleep_if_needed", lambda: None)
+
+    payload = mb._get("/artist", {"query": "Sibylle Kefer", "fmt": "json", "limit": 5})
+
+    assert calls["count"] == 3
+    assert payload == {"artists": []}
 
 
 def test_fetch_album_genres_maps_tags(monkeypatch) -> None:

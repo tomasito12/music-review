@@ -117,7 +117,8 @@ class ScraperClient:
                     return None
 
                 response.raise_for_status()
-                text = response.text
+                # Site declares ISO-8859-1 but uses Windows-1252 punctuation.
+                text = response.content.decode("cp1252")
                 # Non-existent IDs return 200 with "Error: Array is empty" on the site.
                 if text and "array is empty" in text.lower():
                     logger.info(

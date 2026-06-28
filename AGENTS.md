@@ -49,12 +49,18 @@ Music Review is a Python 3.12+ CLI-based data pipeline that scrapes album review
 | Run tests with coverage | `hatch run test:cov` |
 | Run individual tools | `hatch run lint:check`, `hatch run lint:format`, `hatch run lint:typing` |
 | Run scraper | `hatch run python -m music_review.pipeline.scraper.cli -v run --start-id 1 --end-id 10` |
-| Update full DB + graph + affinities + DQ | `hatch run update-db` — rebuilds reference graph; **incremental** community IDs from `community_memberships.jsonl` (stable `C00x` + genre labels); `-- --recluster-communities` for full Louvain (then rerun `community-genre-labels`); `album_community_affinities.jsonl` (res 10); after the run writes `data/pipeline_health_report.json` unless `-- --skip-dq`; `-- --dq-strict` fails on warnings; `-- --dq-output PATH` |
+| Update full DB + graph + affinities + DQ | `hatch run update-db` — rebuilds reference graph; **incremental** community IDs from `community_memberships.jsonl` (stable `C00x` + genre labels); `-- --recluster-communities` for full Louvain (then rerun `community-genre-labels`); `album_community_affinities.jsonl` (res 10); after the run writes `data/pipeline_health_report.json` unless `-- --skip-dq`; `-- --dq-strict` fails on warnings; `-- --dq-output PATH`; optional `-- --fetch-artist-images` (+ `--fetch-artist-images-limit N`) |
 | Data-quality report (manual) | `hatch run dq-report` — optional `--expect-graph-artifacts`, `--strict`, `--reviews`, `--metadata-imputed`, `--output` |
 | Same as update-db | `hatch run full-data-update` (alias) |
 | Artist reference graph | `hatch run graph-build` — GraphML from `data/reviews.jsonl`; add `--export-communities 10` (+ `--export-album-affinities`) for communities; default `--communities-mode incremental` (stable IDs), `--communities-mode louvain` to recluster |
 | Community LLM labels | `hatch run community-genre-labels` — `--only-missing` merges with existing JSON and only labels new `community_id` values |
 | Streamlit dashboard | `hatch run dashboard` (browse reviews by artist/album) |
+| FastAPI (Plattenradar v1) | `hatch run api` |
+| Artist image spike CLI | `hatch run artist-image-cli --mbid MBID --artist-name "Name" -v` (also `--review-id ID`, `--sample N`; `ARTIST_IMAGE_DOWNLOAD=true` stores JPGs under `data/artist_images/`) |
+| Artist image batch prefetch | `hatch run artist-image-batch --missing-only --all -v` (also `--revalidate`, `--queue name|mbid|all`, `--limit N`, `--download`; GitHub workflow **Artist image batch** for detached server run; see `docs/artist-image-batch.md`) |
+| React frontend dev server | `hatch run frontend` (after `hatch run frontend-install`) |
+| Frontend unit tests | `hatch run frontend-test` |
+| Frontend UI screenshots | `hatch run frontend-screenshot` (after `hatch run frontend-playwright-install`) |
 | Install pre-commit hooks | `hatch run pre-commit install` |
 
 ### Streamlit UI (German copy)

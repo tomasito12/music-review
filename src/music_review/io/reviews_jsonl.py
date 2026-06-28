@@ -10,6 +10,7 @@ from typing import Any
 
 from music_review.domain.models import Review, Track
 from music_review.io.jsonl import iter_jsonl_objects
+from music_review.text_encoding import repair_plattentests_text
 
 
 def _parse_date(value: str | None) -> date | None:
@@ -42,17 +43,23 @@ def _track_to_raw(track: Track) -> dict[str, Any]:
     }
 
 
+def _repair_optional_text(value: str | None) -> str | None:
+    if value is None:
+        return None
+    return repair_plattentests_text(value)
+
+
 def review_from_raw(raw: dict[str, Any]) -> Review:
     """Convert a raw JSON dict into a Review instance."""
     return Review(
         id=int(raw["id"]),
         url=raw["url"],
-        artist=raw["artist"],
-        album=raw["album"],
-        text=raw["text"],
-        title=raw.get("title"),
-        author=raw.get("author"),
-        labels=list(raw.get("labels", [])),
+        artist=repair_plattentests_text(raw["artist"]),
+        album=repair_plattentests_text(raw["album"]),
+        text=repair_plattentests_text(raw["text"]),
+        title=_repair_optional_text(raw.get("title")),
+        author=_repair_optional_text(raw.get("author")),
+        labels=[repair_plattentests_text(label) for label in raw.get("labels", [])],
         release_date=_parse_date(raw.get("release_date")),
         release_year=raw.get("release_year"),
         rating=raw.get("rating"),

@@ -98,6 +98,73 @@ hatch run dashboard
 
 Then open the URL shown in the terminal (default: http://localhost:8501). Select an **artist**, then an **album**, to view the full review text plus metadata (rating, labels, release, tracklist, highlights, references) and MusicBrainz data (genres, artist MBID, etc.) when available. Data paths are resolved from the project root, so run from any directory.
 
+## Frontend Shell
+
+The React/Vite frontend for Plattenradar lives in `frontend/`. It talks to the
+FastAPI API (`hatch run api`, default `http://127.0.0.1:8000`).
+
+### Prerequisites
+
+Install Node.js **22.12+** and enable Corepack once (ships with Node):
+
+```bash
+corepack enable
+```
+
+The repo pins the Node version in `.node-version` and pnpm in
+`frontend/package.json` (`packageManager`). If Corepack reports a pnpm version
+mismatch, run once:
+
+```bash
+corepack prepare pnpm@10.12.1 --activate
+```
+
+On macOS with Homebrew, Node 22 is available as `brew install node@22`; add
+`/opt/homebrew/opt/node@22/bin` to your `PATH` if `node` is not found.
+
+### Local full-stack workflow
+
+Terminal 1 — API:
+
+```bash
+hatch run api
+```
+
+Terminal 2 — React dev server:
+
+```bash
+hatch run frontend-install   # first time only
+hatch run frontend
+```
+
+Open http://127.0.0.1:5173.
+
+### Frontend commands (via Hatch)
+
+| Task | Command |
+|------|---------|
+| Install dependencies | `hatch run frontend-install` |
+| Install Playwright Chromium | `hatch run frontend-playwright-install` |
+| Dev server | `hatch run frontend` |
+| Unit tests | `hatch run frontend-test` |
+| Production build | `hatch run frontend-build` |
+| UI screenshots | `hatch run frontend-screenshot` |
+
+Screenshots are written to `frontend/screenshots/` (PNG files are gitignored).
+
+Equivalent direct commands from `frontend/`:
+
+```bash
+pnpm install
+pnpm dev
+pnpm test
+pnpm build
+pnpm screenshot
+```
+
+`Entdecken` loads real archive recommendations when the API and local `data/`
+artifacts are available. `Aktuell` is still mocked in the shell.
+
 ## Updating data
 
 ### One command (full update)

@@ -12,6 +12,10 @@ dist/
 .venv
 venv/
 env/
+node_modules/
+frontend/screenshots/*.png
+frontend/playwright-report/
+frontend/test-results/
 
 # IDE / editor
 .vscode/
@@ -24,10 +28,14 @@ Thumbs.db
 
 # Data (adapt to your project)
 data/
+!frontend/src/data/
+!frontend/src/data/**
 tmp/
 logs/
 *.csv
 *.json
+!frontend/**/*.json
+!tests/fixtures/**/*.json
 
 # ChromaDB
 chroma_db/

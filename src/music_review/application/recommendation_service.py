@@ -8,6 +8,7 @@ from collections.abc import Mapping, Sequence
 from dataclasses import dataclass, field
 from typing import Any
 
+from music_review.application.community_tags import community_tags_from_entries
 from music_review.application.models import TasteProfile
 from music_review.config import (
     RECOMMENDATION_DEFAULT_COMMUNITY_WEIGHT_RAW,
@@ -210,11 +211,6 @@ class RecommendationService:
             profile.community_weights_raw,
         )
         meta = self.inputs.metadata.get(review_id_val) or {}
-        top_entries = sorted(
-            entries_any,
-            key=lambda e: float(e.get("score", 0.0)),
-            reverse=True,
-        )[:3]
         return {
             "review_id": review_id_val,
             "artist": review.artist,
@@ -231,18 +227,15 @@ class RecommendationService:
             "labels": _format_record_labels(meta.get("labels"), review.labels),
             "url": review.url,
             "text": review.text,
-            "top_communities": [
-                {
-                    "id": str(entry.get("id")),
-                    "label": _community_display_label(
-                        str(entry.get("id")),
-                        self.inputs.genre_labels,
-                        comm_by_id.get(str(entry.get("id"))),
-                    ),
-                    "affinity": float(entry.get("score", 0.0)),
-                }
-                for entry in top_entries
-            ],
+            "top_communities": community_tags_from_entries(
+                entries_any,
+                label_for_id=lambda community_id: _community_display_label(
+                    community_id,
+                    self.inputs.genre_labels,
+                    comm_by_id.get(community_id),
+                ),
+                selected_community_ids=selected_comms,
+            ),
         }
 
 

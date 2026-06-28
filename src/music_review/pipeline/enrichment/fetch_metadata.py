@@ -14,10 +14,14 @@ from music_review.io.jsonl import (
     load_ids_from_jsonl,
     load_jsonl_as_map,
 )
+from music_review.pipeline.enrichment.commons_artist_match import (
+    musicbrainz_name_matches_requested,
+)
 from music_review.pipeline.enrichment.genre_regex import GENRE_REGEX
 from music_review.pipeline.enrichment.musicbrainz_client import (
     fetch_album_tags,
     fetch_artist_info,
+    fetch_artist_info_by_mbid,
 )
 
 logger = logging.getLogger(__name__)
@@ -280,7 +284,21 @@ def fetch_metadata_for_review(
         raw_tags = info.tags
         genres = map_tags_to_genres_regex(raw_tags)
 
-        artist_info = fetch_artist_info(info.artist)
+        if info.artist_mbid:
+            artist_info = fetch_artist_info_by_mbid(info.artist_mbid)
+            if artist_info is not None and not musicbrainz_name_matches_requested(
+                artist,
+                artist_info.name,
+            ):
+                logger.info(
+                    "Rejected MusicBrainz artist %s for review artist %s",
+                    artist_info.name,
+                    artist,
+                )
+                artist_info = None
+        else:
+            artist_info = fetch_artist_info(artist)
+
         if artist_info is None:
             artist_mbid = None
             artist_country = None
@@ -294,7 +312,6 @@ def fetch_metadata_for_review(
             artist_type = artist_info.artist_type
             artist_disambiguation = artist_info.disambiguation
             artist_tags = list(artist_info.tags)
-            # this is where Paul / John / Ringo etc. land:
             artist_members = list(artist_info.members)
 
     return AlbumMetadata(

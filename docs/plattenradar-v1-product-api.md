@@ -145,15 +145,22 @@ Reine UI-Zustände wie aufgeklappte Panels, aktuelle Seitennummern oder lokale W
 
 V1-Presets:
 
-| Preset | `score_min` | Rating | Gewichtung | Besonderheit |
-| --- | ---: | --- | --- | --- |
-| Treffsicher | 0.50 | 6-10 | 0.60 / 0.20 / 0.20 | strenge Stilpassung, Breite neutral |
-| Ausgewogen | 0.40 | 6-10 | 0.50 / 0.25 / 0.25 | Default |
-| Entdeckerisch | 0.25 | 6-10 | 0.50 / 0.25 / 0.25 | stilistisch offener, kein Zufall |
-| Kritikerlieblinge | 0.40 | 8-10 | 0.35 / 0.45 / 0.20 | Wertung wichtiger |
-| Vielschichtig | 0.40 | 6-10 | 0.45 / 0.20 / 0.35 | `crossover = 0.75` |
+Alle Presets teilen dieselben Filtergrenzen (`score_min = 0.40`, Rating 6–10).
+Der Unterschied liegt in der **Gewichtung des Gesamtscores** (alpha/beta/gamma)
+und ggf. der Stil-Präferenz (`community_spectrum_crossover`).
 
-Presets setzen einmal konkrete Reglerwerte. Sobald der Nutzer Werte manuell ändert, ist das Profil benutzerdefiniert. Gespeichert werden die Werte, nicht zwingend der aktive Preset.
+| Preset | Filter | Gewichtung alpha / beta / gamma | Besonderheit |
+| --- | --- | --- | --- |
+| Treffsicher | 0.40 / 6–10 | 0.70 / 0.20 / 0.10 | Stilrichtung in der Sortierung am wichtigsten |
+| Ausgewogen | 0.40 / 6–10 | 0.50 / 0.25 / 0.25 | Default |
+| Entdeckerisch | 0.40 / 6–10 | 0.30 / 0.30 / 0.40 | Stilrichtung in der Sortierung lockerer |
+| Kritikerlieblinge | 0.40 / 6–10 | 0.30 / 0.50 / 0.20 | Wertung in der Sortierung wichtiger |
+| Vielschichtig | 0.40 / 6–10 | 0.35 / 0.15 / 0.50 | `crossover = 0.75` |
+
+Presets setzen einmal konkrete Gewichtungswerte. Filtergrenzen wie Stilpassung
+und Mindest-Wertung bleiben unverändert, sofern der Nutzer sie nicht manuell
+anpasst. Sobald Werte manuell geändert werden, ist das Profil benutzerdefiniert.
+Gespeichert werden die Werte, nicht zwingend der aktive Preset.
 
 ### Empfehlungserklärungen
 
@@ -657,6 +664,10 @@ Noch nicht gebaut:
 - `POST /v1/taste-profiles/{profile_id}/make-default`
 - `GET /v1/reviews/{review_id}`
 - optional: `GET /v1/reviews?query=&artist=&year_min=&year_max=`
+- Favoriten (nur für eingeloggte Nutzer, siehe Abschnitt **Album-Favoriten (Zukunft)**):
+  - `GET /v1/me/favorites`
+  - `PUT /v1/me/favorites/{review_id}`
+  - `DELETE /v1/me/favorites/{review_id}`
 
 Spätere Profilregeln:
 
@@ -962,6 +973,62 @@ V1-Arbeitshypothese:
 
 > Gespeichert wird zunächst das fachliche Geschmacksprofil, nicht zwingend jede generierte Empfehlungshistorie.
 
+### Album-Favoriten (Zukunft)
+
+Nutzer sollen Alben aus Empfehlungslisten als **Favoriten** markieren können. Die Favoriten gehören zum **Nutzerkonto** und werden **dauerhaft im Profil** gespeichert — nicht nur in der aktuellen Browser-Session.
+
+Zweck:
+
+- interessante Fundstücke festhalten, ohne sofort eine Playlist zu erzeugen,
+- persönliche Sammlung über Zeit aufbauen,
+- spätere Playlist-Funktionen mit echter Nutzerintention verbinden.
+
+V1-Status:
+
+> Nicht Teil von v1. Die Spezifikation hält die Richtung fest, damit API, Datenmodell und UI sie nicht verbauen.
+
+Produktverhalten (Zielbild):
+
+- Favorit markieren ist nur für **eingeloggte Nutzer** sinnvoll; Gäste sehen höchstens einen Hinweis zum Speichern/Anmelden.
+- Ein Favorit bezieht sich auf ein **Album bzw. eine Rezension** (`review_id` als stabiler Schlüssel).
+- Favoriten werden **pro Nutzer** gespeichert, unabhängig vom aktuellen Geschmacksprofil-Entwurf.
+- In der UI reicht zunächst eine dezente Aktion auf der Empfehlungskarte (z. B. „Merken“ / „Favorit“).
+- Später kann es eine eigene Übersicht geben (z. B. unter Konto oder eigener Bereich „Favoriten“).
+
+Datenmodell (Arbeitshypothese):
+
+```json
+{
+  "review_id": 12345,
+  "artist": "Beispielkünstler",
+  "album": "Beispielalbum",
+  "saved_at": "2026-06-26T12:00:00Z",
+  "source": "archive"
+}
+```
+
+`source` dokumentiert optional, ob das Album aus `archive`, `new_reviews` oder einer anderen Liste gemerkt wurde.
+
+API-Richtung (später):
+
+- `GET /v1/me/favorites` — Liste der gemerkten Alben
+- `PUT /v1/me/favorites/{review_id}` — Album merken (idempotent)
+- `DELETE /v1/me/favorites/{review_id}` — Merken aufheben
+
+Spätere Playlist-Anbindung:
+
+- Nutzer können eine Playlist **aus ihren Favoriten** erzeugen, nicht nur aus dem aktuellen Empfehlungs-Pool.
+- Mögliche Erweiterung von `POST /v1/playlists/export`:
+  - `source: "favorites"` oder zusätzlicher Parameter `use_favorites: true`
+  - optional Filter: nur Favoriten der letzten X Wochen, nur aus `Aktuell`, nur aus `Entdecken`
+- Die bestehende Export-Pipeline (Track-Auswahl, TXT/CSV) kann wiederverwendet werden; die **Quelle** wechselt von berechneten Empfehlungen zu gespeicherten Favoriten.
+
+Architektur-Hinweise:
+
+- Favoriten sind **Nutzerdaten**, kein Teil von `TasteProfile`.
+- Empfehlungskarten sollten `review_id` zuverlässig liefern, damit Favoriten stabil sind.
+- Das Frontend sollte die Aktion visuell vorsehen, auch wenn die API erst später kommt.
+
 ### Automatische Playlist-Zustellung
 
 Playlist-Zustellung ist ein wichtiges Zukunftsfeature, muss aber nicht vollständig in v1 umgesetzt sein. Es soll architektonisch mitgedacht werden.
@@ -1010,6 +1077,7 @@ Das schafft Transparenz und schützt vor falschen Erwartungen.
 - Der Flow nach dem Geschmacksprofil ist die zentrale UX-Entscheidung.
 - Gespeicherte Profildaten müssen aus der bestehenden Empfehlungslogik abgeleitet werden.
 - Playlist-Zustellung soll als späterer Job/Export mitgedacht werden.
+- Album-Favoriten für eingeloggte Nutzer spezifizieren und später an Playlist-Export anbinden (siehe **Album-Favoriten (Zukunft)**).
 - Ein erstes Playlistformat kann Text oder CSV sein.
 - Wöchentliche Empfehlungsläufe brauchen eine Qualitäts- oder Fit-Einschätzung pro Nutzerprofil.
 
@@ -2312,7 +2380,9 @@ Spätere Ressourcen können sein:
 
 - `PlaylistSubscription`,
 - `EmailDelivery`,
-- `ScheduledPlaylistRun`.
+- `ScheduledPlaylistRun`,
+- `FavoriteAlbum` / `UserFavoriteReview` (siehe **Album-Favoriten (Zukunft)**),
+- `PlaylistExport` mit Quelle `favorites`.
 
 Diese Ressourcen gehören nicht zur v1-Pflicht-API, können aber als spätere Erweiterung im Dokument erwähnt bleiben.
 
@@ -2967,27 +3037,27 @@ Interne Bedeutung:
 
 | Preset | `score_min` | `score_max` | `rating_min` | `rating_max` | `alpha` | `beta` | `gamma` | `crossover` | `sort_mode` | `serendipity` |
 | --- | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | --- | ---: |
-| Treffsicher | 0.50 | 1.00 | 6 | 10 | 0.60 | 0.20 | 0.20 | 0.50 | deterministic | 0.00 |
+| Treffsicher | 0.40 | 1.00 | 6 | 10 | 0.70 | 0.20 | 0.10 | 0.50 | deterministic | 0.00 |
 | Ausgewogen | 0.40 | 1.00 | 6 | 10 | 0.50 | 0.25 | 0.25 | 0.50 | deterministic | 0.00 |
-| Entdeckerisch | 0.25 | 1.00 | 6 | 10 | 0.50 | 0.25 | 0.25 | 0.50 | deterministic | 0.00 |
-| Kritikerlieblinge | 0.40 | 1.00 | 8 | 10 | 0.35 | 0.45 | 0.20 | 0.50 | deterministic | 0.00 |
-| Vielschichtig | 0.40 | 1.00 | 6 | 10 | 0.45 | 0.20 | 0.35 | 0.75 | deterministic | 0.00 |
+| Entdeckerisch | 0.40 | 1.00 | 6 | 10 | 0.30 | 0.30 | 0.40 | 0.50 | deterministic | 0.00 |
+| Kritikerlieblinge | 0.40 | 1.00 | 6 | 10 | 0.30 | 0.50 | 0.20 | 0.50 | deterministic | 0.00 |
+| Vielschichtig | 0.40 | 1.00 | 6 | 10 | 0.35 | 0.15 | 0.50 | 0.75 | deterministic | 0.00 |
 
 Begründung:
 
-- **Treffsicher** setzt die höchste Stilpassungs-Untergrenze und gewichtet Stilpassung am stärksten. `crossover` bleibt neutral, damit stilreine Alben nicht automatisch bevorzugt werden.
-- **Ausgewogen** entspricht am ehesten der fachlichen Default-Idee, aber mit Rating-Minimum 6 statt dem bisherigen UI-Default 7.
-- **Entdeckerisch** senkt vor allem die Stilpassungs-Untergrenze deutlich; es aktiviert keine Zufallsmischung.
-- **Kritikerlieblinge** setzt Rating-Minimum 8 und gibt der Wertung das höchste Gewicht, ohne Stilpassung unwichtig zu machen.
+- **Treffsicher** gewichtet die Stilpassung in der Sortierung am stärksten (`alpha` hoch). Filtergrenzen bleiben wie bei Ausgewogen.
+- **Ausgewogen** entspricht der fachlichen Default-Idee mit ausgewogener Gewichtung.
+- **Entdeckerisch** senkt `alpha` und erhöht `gamma`, damit die Rangliste weniger strikt nach einzelnen Musikrichtungen sortiert.
+- **Kritikerlieblinge** gibt der Wertung das höchste Gewicht (`beta`), ohne ein hartes Rating-Minimum zu setzen.
 - **Vielschichtig** setzt `crossover` auf "Eher Breite" und erhöht `gamma`, damit Alben profitieren, die mehrere gewählte Stilrichtungen zugleich berühren.
 
 Kalibrierungsfragen:
 
-- Liefert `score_min = 0.50` bei Treffsicher genug Treffer und bleibt trotzdem streng?
-- Ist `score_min = 0.25` für Entdeckerisch offen genug, ohne beliebig zu wirken?
-- Ist Rating-Minimum 6 als allgemeine Untergrenze passend, obwohl der bisherige UI-Default 7 war?
+- Ist `alpha = 0.70` bei Treffsicher spürbar strenger als Ausgewogen, ohne die Liste zu leeren?
+- Ist `alpha = 0.30` für Entdeckerisch offen genug in der Sortierung, ohne beliebig zu wirken?
+- Ist Rating-Minimum 6 als gemeinsame Filter-Untergrenze passend?
 - Soll Vielschichtig `crossover = 0.75` oder direkt `1.0` verwenden?
-- Soll Kritikerlieblinge `beta = 0.45` oder noch stärker Richtung Wertung gehen?
+- Soll Kritikerlieblinge `beta = 0.50` oder noch stärker Richtung Wertung gehen?
 
 ### Preset-Konfiguration als JSON-Skizze
 
@@ -2997,15 +3067,15 @@ Kalibrierungsfragen:
     "id": "precise",
     "label": "Treffsicher",
     "subtitle": "Nah an deinem Profil",
-    "description": "Strenge Stilpassung, ohne stilreine Alben unfair zu bevorzugen.",
+    "description": "Sortiert stärker danach, wie genau Alben zu deinen gewählten Musikrichtungen passen.",
     "filter_settings": {
-      "score_min": 0.5,
+      "score_min": 0.4,
       "score_max": 1.0,
       "rating_min": 6,
       "rating_max": 10,
-      "overall_weight_alpha": 0.6,
+      "overall_weight_alpha": 0.7,
       "overall_weight_beta": 0.2,
-      "overall_weight_gamma": 0.2,
+      "overall_weight_gamma": 0.1,
       "community_spectrum_crossover": 0.5,
       "sort_mode": "deterministic",
       "serendipity": 0.0
@@ -3033,15 +3103,15 @@ Kalibrierungsfragen:
     "id": "exploratory",
     "label": "Entdeckerisch",
     "subtitle": "Mehr angrenzende Stile",
-    "description": "Öffnet die Auswahl für Alben, die etwas weiter von deinem Profil entfernt liegen.",
+    "description": "Sortiert weniger strikt nach einzelnen Musikrichtungen und öffnet die Rangliste für angrenzende Fundstücke.",
     "filter_settings": {
-      "score_min": 0.25,
+      "score_min": 0.4,
       "score_max": 1.0,
       "rating_min": 6,
       "rating_max": 10,
-      "overall_weight_alpha": 0.5,
-      "overall_weight_beta": 0.25,
-      "overall_weight_gamma": 0.25,
+      "overall_weight_alpha": 0.3,
+      "overall_weight_beta": 0.3,
+      "overall_weight_gamma": 0.4,
       "community_spectrum_crossover": 0.5,
       "sort_mode": "deterministic",
       "serendipity": 0.0
@@ -3051,14 +3121,14 @@ Kalibrierungsfragen:
     "id": "critics",
     "label": "Kritikerlieblinge",
     "subtitle": "Höher bewertete Alben zuerst",
-    "description": "Bevorzugt Alben mit starken plattentests.de-Wertungen.",
+    "description": "Hebt die plattentests.de-Wertung in der Sortierung stärker hervor.",
     "filter_settings": {
       "score_min": 0.4,
       "score_max": 1.0,
-      "rating_min": 8,
+      "rating_min": 6,
       "rating_max": 10,
-      "overall_weight_alpha": 0.35,
-      "overall_weight_beta": 0.45,
+      "overall_weight_alpha": 0.3,
+      "overall_weight_beta": 0.5,
       "overall_weight_gamma": 0.2,
       "community_spectrum_crossover": 0.5,
       "sort_mode": "deterministic",
@@ -3075,9 +3145,9 @@ Kalibrierungsfragen:
       "score_max": 1.0,
       "rating_min": 6,
       "rating_max": 10,
-      "overall_weight_alpha": 0.45,
-      "overall_weight_beta": 0.2,
-      "overall_weight_gamma": 0.35,
+      "overall_weight_alpha": 0.35,
+      "overall_weight_beta": 0.15,
+      "overall_weight_gamma": 0.5,
       "community_spectrum_crossover": 0.75,
       "sort_mode": "deterministic",
       "serendipity": 0.0

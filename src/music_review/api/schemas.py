@@ -84,3 +84,40 @@ class TasteProfileResponse(ApiModel):
     """Stored taste profile response for the current user."""
 
     profile: TasteProfile | None = None
+
+
+class ArtistImageResponse(ApiModel):
+    """Licensed artist thumbnail metadata for highlight cards."""
+
+    artist_mbid: str
+    artist_name: str
+    thumbnail_url: str
+    attribution_text: str
+    license: str
+    source_url: str
+
+
+class ArtistImageLookupItem(ApiModel):
+    """One artist to resolve in a batch image request."""
+
+    artist_mbid: str
+    artist_name: str | None = None
+
+
+class ArtistImagesBatchRequest(ApiModel):
+    """Batch request for highlight artist thumbnails."""
+
+    artists: tuple[ArtistImageLookupItem, ...] = Field(min_length=1, max_length=10)
+
+
+class ArtistImageBatchResult(ApiModel):
+    """One batch lookup result, with null image when unavailable."""
+
+    artist_mbid: str
+    image: ArtistImageResponse | None = None
+
+
+class ArtistImagesBatchResponse(ApiModel):
+    """Batch response for highlight artist thumbnails."""
+
+    items: tuple[ArtistImageBatchResult, ...]

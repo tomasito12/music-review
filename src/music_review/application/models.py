@@ -273,6 +273,21 @@ class CommunityMatch(ApiModel):
     matched: bool = True
 
 
+class TasteCommunity(ApiModel):
+    """One selectable music-style community for the profile setup."""
+
+    id: str
+    label: str
+    broad_categories: tuple[str, ...] = ()
+    example_artists: tuple[str, ...] = ()
+
+    @field_validator("broad_categories", "example_artists", mode="before")
+    @classmethod
+    def _normalize_string_tuples(cls, value: Any) -> tuple[str, ...]:
+        """Normalize string tuple fields."""
+        return _str_tuple(value)
+
+
 class Recommendation(ApiModel):
     """One ranked album recommendation for a taste profile."""
 
@@ -294,6 +309,7 @@ class Recommendation(ApiModel):
     has_tracks: bool = False
     matched_tags: tuple[CommunityMatch, ...] = ()
     explanation_signals: ExplanationSignals = Field(default_factory=ExplanationSignals)
+    artist_mbid: str | None = None
 
 
 class RecommendationSet(ApiModel):
