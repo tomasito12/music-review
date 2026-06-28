@@ -152,6 +152,8 @@ def test_preference_ranked_rows_contains_display_keys() -> None:
         assert "rating_norm" in row
         assert "purity_norm" in row
         assert "breadth_norm" in row
+        assert "purity_raw" in row
+        assert "breadth_raw" in row
         assert "alpha" in row and "beta" in row and "gamma" in row
 
 

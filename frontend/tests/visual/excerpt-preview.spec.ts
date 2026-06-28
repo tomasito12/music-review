@@ -205,6 +205,7 @@ function recommendation(
     overall_score: 0.82,
     labels: "Demo Label",
     text_excerpt: longExcerpt,
+    text_excerpt_continues: true,
     url: "https://www.plattentests.de/",
     source: "archive",
     matched_tags: [

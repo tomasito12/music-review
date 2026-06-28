@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from "react";
 
-import { ApiClient } from "./apiClient";
+import { useApiClient } from "./apiClientContext";
 import { loadArtistImagesBatch, type ArtistImageData } from "./artistImageApi";
 import { artistImageLookupKey } from "./artistImageLookupKey";
 import {
@@ -26,6 +26,7 @@ function recommendationLookupKey(recommendation: Recommendation): string {
 export function useEntdeckenPhotoSlots(
   recommendations: Recommendation[],
 ): UseEntdeckenPhotoSlotsResult {
+  const apiClient = useApiClient();
   const [imagesByLookupKey, setImagesByLookupKey] = useState<
     Map<string, ArtistImageData | null>
   >(new Map());
@@ -62,7 +63,7 @@ export function useEntdeckenPhotoSlots(
     const claimedRanks = new Set<number>();
 
     async function resolvePhotoSlots(): Promise<void> {
-      const client = new ApiClient();
+      const client = apiClient();
 
       for (const candidates of slotGroups) {
         if (!active) {
@@ -142,7 +143,7 @@ export function useEntdeckenPhotoSlots(
     return () => {
       active = false;
     };
-  }, [recommendationSignature, recommendations]);
+  }, [apiClient, recommendationSignature, recommendations]);
 
   return {
     imagesByLookupKey,

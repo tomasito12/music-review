@@ -45,6 +45,14 @@ def download_thumbnail(thumbnail_url: str, dest_path: Path) -> bool:
             timeout=DEFAULT_DOWNLOAD_TIMEOUT_SECONDS,
         )
         response.raise_for_status()
+    except requests.HTTPError as exc:
+        status = exc.response.status_code if exc.response is not None else "unknown"
+        logger.warning(
+            "Failed to download artist thumbnail from %s (HTTP %s)",
+            url,
+            status,
+        )
+        return False
     except requests.RequestException:
         logger.warning("Failed to download artist thumbnail from %s", url)
         return False

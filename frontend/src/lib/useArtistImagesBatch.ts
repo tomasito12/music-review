@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
 
-import { ApiClient } from "./apiClient";
+import { useApiClient } from "./apiClientContext";
 import {
   loadArtistImagesBatch,
   type ArtistImageData,
@@ -21,6 +21,7 @@ export interface UseArtistImagesBatchResult {
 export function useArtistImagesBatch(
   artists: ArtistImageLookup[],
 ): UseArtistImagesBatchResult {
+  const apiClient = useApiClient();
   const [imagesByLookupKey, setImagesByLookupKey] = useState<
     Map<string, ArtistImageData | null>
   >(new Map());
@@ -47,7 +48,7 @@ export function useArtistImagesBatch(
 
     async function fetchImages(): Promise<void> {
       try {
-        const results = await loadArtistImagesBatch(new ApiClient(), lookups);
+        const results = await loadArtistImagesBatch(apiClient(), lookups);
         if (!active) {
           return;
         }
@@ -69,7 +70,10 @@ export function useArtistImagesBatch(
     return () => {
       active = false;
     };
-  }, [artists.map((artist) => `${artist.artistMbid ?? ""}:${artist.artistName}`).join("|")]);
+  }, [
+    apiClient,
+    artists.map((artist) => `${artist.artistMbid ?? ""}:${artist.artistName}`).join("|"),
+  ]);
 
   return { imagesByLookupKey, loading };
 }

@@ -16,6 +16,8 @@
     "preview": "vite preview --host 127.0.0.1",
     "test": "vitest run",
     "screenshot": "playwright test",
+    "screenshot:live": "playwright test --project=live",
+    "screenshot:update": "playwright test --project=live --update-snapshots",
     "playwright:install": "playwright install chromium"
   },
   "dependencies": {

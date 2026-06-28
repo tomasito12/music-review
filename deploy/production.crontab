@@ -1,0 +1,8 @@
+# Managed production cron for music-review (Infrastructure as Code).
+# Placeholder __DEPLOY_PATH__ is replaced by scripts/install_production_cron.sh.
+# Do not edit crontab manually on the server; change this file and redeploy.
+#
+# music-review-managed-begin
+# Hourly scrape + metadata enrichment for new plattentests.de reviews.
+0 * * * * cd __DEPLOY_PATH__ && mkdir -p logs && docker compose --profile jobs run --rm music-review-update >> logs/hourly-update.log 2>&1
+# music-review-managed-end

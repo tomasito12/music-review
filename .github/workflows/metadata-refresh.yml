@@ -1,0 +1,72 @@
+name: Metadata refresh
+
+on:
+  workflow_dispatch:
+    inputs:
+      branch:
+        description: Branch to pull on the server before starting the job
+        required: true
+        default: main
+      mode:
+        description: update re-fetches every review; overwrite deletes metadata.jsonl first
+        required: true
+        default: update
+        type: choice
+        options:
+          - update
+          - overwrite
+
+permissions:
+  contents: read
+
+concurrency:
+  group: metadata-refresh-trigger
+  cancel-in-progress: false
+
+jobs:
+  trigger:
+    name: Start refresh on server
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    environment: production
+
+    steps:
+      - name: Start ssh-agent
+        uses: webfactory/ssh-agent@v0.9.0
+        with:
+          ssh-private-key: ${{ secrets.DEPLOY_SSH_KEY }}
+
+      - name: Trust deploy host
+        run: |
+          mkdir -p ~/.ssh
+          ssh-keyscan -p "${DEPLOY_PORT}" "${DEPLOY_HOST}" >> ~/.ssh/known_hosts
+        env:
+          DEPLOY_HOST: ${{ secrets.DEPLOY_HOST }}
+          DEPLOY_PORT: ${{ secrets.DEPLOY_PORT || '22' }}
+
+      - name: Pull branch and start detached metadata refresh
+        run: |
+          ssh -p "${DEPLOY_PORT}" "${DEPLOY_USER}@${DEPLOY_HOST}" \
+            "cd '${DEPLOY_PATH}' \
+            && git fetch --prune origin \
+            && git checkout '${DEPLOY_BRANCH}' \
+            && git pull --ff-only origin '${DEPLOY_BRANCH}' \
+            && chmod +x scripts/start_metadata_refresh.sh \
+            && METADATA_REFRESH_MODE='${METADATA_REFRESH_MODE}' scripts/start_metadata_refresh.sh"
+        env:
+          DEPLOY_HOST: ${{ secrets.DEPLOY_HOST }}
+          DEPLOY_PORT: ${{ secrets.DEPLOY_PORT || '22' }}
+          DEPLOY_USER: ${{ secrets.DEPLOY_USER }}
+          DEPLOY_PATH: ${{ secrets.DEPLOY_PATH }}
+          DEPLOY_BRANCH: ${{ inputs.branch }}
+          METADATA_REFRESH_MODE: ${{ inputs.mode }}
+
+      - name: Verify container started
+        run: |
+          ssh -p "${DEPLOY_PORT}" "${DEPLOY_USER}@${DEPLOY_HOST}" \
+            "docker ps --filter name=^music-review-metadata-refresh$ --format 'status={{.Status}}'"
+        env:
+          DEPLOY_HOST: ${{ secrets.DEPLOY_HOST }}
+          DEPLOY_PORT: ${{ secrets.DEPLOY_PORT || '22' }}
+          DEPLOY_USER: ${{ secrets.DEPLOY_USER }}
+          DEPLOY_PATH: ${{ secrets.DEPLOY_PATH }}

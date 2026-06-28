@@ -16,7 +16,7 @@ from music_review.application.artist_image_batch import (
     write_batch_report,
 )
 from music_review.application.artist_image_download import artist_image_download_enabled
-from music_review.application.artist_image_service import default_artist_image_service
+from music_review.application.artist_image_service import batch_artist_image_service
 from music_review.config import resolve_data_path
 from music_review.data_access.paths import (
     DATA_ARTIST_GENRES,
@@ -144,7 +144,7 @@ def main(argv: list[str] | None = None) -> int:
             queue,
         )
 
-    service = default_artist_image_service()
+    service = batch_artist_image_service()
     if args.download and not artist_image_download_enabled():
         logger.warning("Download flag set but ARTIST_IMAGE_DOWNLOAD is still false.")
     service.download_enabled = artist_image_download_enabled()

@@ -10,7 +10,7 @@ import type {
 } from "./playlistExport";
 import { buildPlaylistExportPayload } from "./playlistExport";
 
-import type { Recommendation, RecommendationTag } from "../types";
+import type { Recommendation, RecommendationTag, SavedAlbum } from "../types";
 
 export interface TasteCommunityOption {
   broad_categories: string[];
@@ -116,8 +116,10 @@ interface ApiRecommendation {
   rank: number;
   rating: number | null;
   release_date: string | null;
+  review_id: number;
   source: "archive" | "new_reviews";
   text_excerpt: string;
+  text_excerpt_continues?: boolean;
   url: string | null;
   year: number | null;
 }
@@ -266,6 +268,105 @@ export async function saveTasteProfile(
   return apiProfileToTemporary(response.profile);
 }
 
+interface ApiSavedAlbum {
+  review_id: number;
+  artist: string;
+  album: string;
+  review_url: string;
+  source: "archive" | "new_reviews" | null;
+  saved_at: string;
+}
+
+interface ApiFavoritesListResponse {
+  items: ApiSavedAlbum[];
+}
+
+interface ApiMergeFavoritesResponse {
+  merged_count: number;
+}
+
+export interface SaveFavoritePayload {
+  artist: string;
+  album: string;
+  review_url: string;
+  source: "archive" | "new_reviews" | null;
+}
+
+export interface MergeFavoritePayload extends SaveFavoritePayload {
+  review_id: number;
+  saved_at?: string;
+}
+
+/** Loads saved albums for the authenticated user. */
+export async function fetchFavorites(client: ApiClient): Promise<SavedAlbum[]> {
+  const response = await client.get<ApiFavoritesListResponse>("/v1/me/favorites");
+  return response.items.map(toSavedAlbum);
+}
+
+/** Saves one album for the authenticated user. */
+export async function saveFavorite(
+  client: ApiClient,
+  reviewId: number,
+  payload: SaveFavoritePayload,
+): Promise<SavedAlbum> {
+  const response = await client.put<ApiSavedAlbum>(
+    `/v1/me/favorites/${reviewId}`,
+    payload,
+  );
+  return toSavedAlbum(response);
+}
+
+/** Removes one saved album for the authenticated user. */
+export async function removeFavorite(
+  client: ApiClient,
+  reviewId: number,
+): Promise<void> {
+  await client.delete(`/v1/me/favorites/${reviewId}`);
+}
+
+/** Merges guest favorites into the authenticated user account. */
+export async function mergeFavorites(
+  client: ApiClient,
+  items: MergeFavoritePayload[],
+): Promise<number> {
+  const response = await client.post<ApiMergeFavoritesResponse>(
+    "/v1/me/favorites/merge",
+    { items },
+  );
+  return response.merged_count;
+}
+
+/** Maps a UI recommendation source to the API favorite source value. */
+export function recommendationSourceToApiSource(
+  source: Recommendation["source"],
+): "archive" | "new_reviews" {
+  return source === "aktuell" ? "new_reviews" : "archive";
+}
+
+/** Maps an API favorite source to the UI recommendation source. */
+export function apiSourceToRecommendationSource(
+  source: "archive" | "new_reviews" | null,
+): Recommendation["source"] | null {
+  if (source === "new_reviews") {
+    return "aktuell";
+  }
+  if (source === "archive") {
+    return "entdecken";
+  }
+  return null;
+}
+
+function toSavedAlbum(item: ApiSavedAlbum): SavedAlbum {
+  return {
+    reviewId: item.review_id,
+    artist: item.artist,
+    album: item.album,
+    reviewUrl: item.review_url,
+    source: apiSourceToRecommendationSource(item.source),
+    savedAt: item.saved_at,
+  };
+}
+
 export type { PlaylistExportResult } from "./playlistExport";
 export { buildPlaylistExportPayload } from "./playlistExport";
 
@@ -385,6 +486,7 @@ function toRecommendation(
   const fitPercent = Math.round(item.overall_score * 100);
   return {
     rank: item.rank,
+    reviewId: item.review_id,
     artist: item.artist,
     album: item.album,
     year: item.year ?? 0,
@@ -395,6 +497,7 @@ function toRecommendation(
     releaseDate: item.release_date ?? undefined,
     recordLabel: item.labels || undefined,
     excerpt: item.text_excerpt,
+    excerptContinues: item.text_excerpt_continues ?? false,
     reviewUrl: item.url ?? "https://www.plattentests.de/",
     tags,
     source,

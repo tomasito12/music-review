@@ -20,8 +20,7 @@ export function createExcerptFitChecker(
   measureElement.style.top = "0";
   measureElement.style.visibility = "hidden";
   measureElement.style.pointerEvents = "none";
-  measureElement.style.overflow = "visible";
-  measureElement.style.maxHeight = "none";
+  measureElement.style.overflow = "hidden";
   measureElement.style.height = "auto";
   measureElement.style.flex = "none";
   measureElement.style.margin = "0";
@@ -39,10 +38,15 @@ export function createExcerptFitChecker(
     measureElement.style.whiteSpace = styles.whiteSpace;
     measureElement.style.wordBreak = styles.wordBreak;
     measureElement.style.hyphens = styles.hyphens;
+    measureElement.style.maxHeight = styles.maxHeight;
   };
 
-  const maxContentHeight = (): number => {
+  const allowedHeight = (): number => {
     const styles = window.getComputedStyle(referenceElement);
+    const maxHeight = Number.parseFloat(styles.maxHeight);
+    if (Number.isFinite(maxHeight) && maxHeight > 0) {
+      return maxHeight;
+    }
     const lineHeight = Number.parseFloat(styles.lineHeight);
     if (!Number.isFinite(lineHeight) || lineHeight <= 0) {
       return 0;
@@ -58,12 +62,12 @@ export function createExcerptFitChecker(
     syncMeasureStyles();
     measureElement.textContent = candidate;
 
-    const allowedHeight = maxContentHeight();
-    if (allowedHeight <= 0) {
+    const maxHeight = allowedHeight();
+    if (maxHeight <= 0) {
       return candidate.length === 0;
     }
 
-    return measureElement.scrollHeight <= allowedHeight + 0.5;
+    return measureElement.scrollHeight <= maxHeight + 0.5;
   };
 
   const destroy = (): void => {

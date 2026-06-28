@@ -1,6 +1,9 @@
-# Run the production update once per hour.
-# Replace /path/to/music-review with the repository path on the server.
-0 * * * * cd /path/to/music-review && mkdir -p logs && docker compose run --rm music-review-update >> logs/hourly-update.log 2>&1
-
-# Prefetch artist images overnight (cache + local JPGs).
-0 2 * * * cd /path/to/music-review && mkdir -p logs && ARTIST_IMAGE_DOWNLOAD=true ARTIST_IMAGE_RESOLVE_ON_DEMAND=false hatch run artist-image-batch --missing-only --all -v >> logs/artist-image-batch.log 2>&1
+# Deprecated: use deploy/production.crontab + scripts/install_production_cron.sh
+#
+# Production cron is installed automatically on each GitHub Deploy workflow run.
+# Manual install on the server:
+#   ./scripts/install_production_cron.sh
+# From your laptop:
+#   ./scripts/server.sh install-cron
+#
+# See deploy/production.crontab for the managed schedule (Infrastructure as Code).

@@ -16,7 +16,6 @@ from music_review.application.artist_image_download import (
 )
 from music_review.application.artist_image_lookup import (
     artist_image_lookup_key,
-    is_name_lookup_key,
 )
 from music_review.application.artist_image_models import ArtistImageRecord
 from music_review.application.artist_image_resolver import (
@@ -41,7 +40,7 @@ DEFAULT_NEGATIVE_CACHE_TTL_DAYS = 30
 
 def resolve_on_demand_enabled() -> bool:
     """Return whether API lookups may trigger external image resolution."""
-    return getenv("ARTIST_IMAGE_RESOLVE_ON_DEMAND", "true").lower() == "true"
+    return getenv("ARTIST_IMAGE_RESOLVE_ON_DEMAND", "false").lower() == "true"
 
 
 def negative_cache_ttl_days() -> int:
@@ -158,7 +157,7 @@ class ArtistImageService:
                         artist_name=artist_name,
                     ):
                         logger.debug("Artist image cache hit for %s", mbid)
-                        return self._ensure_local_copy(cached)
+                        return self._restore_resolved_record(cached)
                     logger.warning(
                         "Artist image cache mismatch for %s; re-resolving",
                         mbid,
@@ -235,10 +234,11 @@ class ArtistImageService:
         upsert_artist_image(self.cache_path, _artist_image_alias(record, lookup_key))
 
     def _restore_resolved_record(self, cached: ArtistImageRecord) -> ArtistImageRecord:
-        """Return a usable record for one cache hit."""
-        if is_name_lookup_key(cached.artist_mbid):
-            return cached
-        return self._ensure_local_copy(cached)
+        """Return a cache hit, backfilling a local JPG when download is enabled."""
+        updated = self._ensure_local_copy(cached)
+        if updated.local_path != cached.local_path:
+            upsert_artist_image(self.cache_path, updated)
+        return updated
 
     def _cached_image_matches_artist(
         self,
@@ -343,14 +343,10 @@ class ArtistImageService:
         return is_negative_cache_fresh(record, ttl_days=self.negative_ttl_days)
 
     def public_thumbnail_url(self, record: ArtistImageRecord) -> str | None:
-        """Return the API or remote URL clients should use for the thumbnail."""
-        if record.status != "ok":
+        """Return the API URL for a locally stored thumbnail, if available."""
+        if record.status != "ok" or not self.local_file_exists(record):
             return None
-        if is_name_lookup_key(record.artist_mbid):
-            return record.thumbnail_url
-        if self.local_file_exists(record):
-            return f"/v1/artists/{record.artist_mbid}/image/file"
-        return record.thumbnail_url
+        return f"/v1/artists/{record.artist_mbid}/image/file"
 
     def local_file_exists(self, record: ArtistImageRecord) -> bool:
         """Return whether a local JPG exists for one cached record."""
@@ -391,6 +387,17 @@ def default_artist_image_service() -> ArtistImageService:
         negative_ttl_days=negative_cache_ttl_days(),
         download_enabled=artist_image_download_enabled(),
         resolve_on_demand=resolve_on_demand_enabled(),
+    )
+
+
+def batch_artist_image_service() -> ArtistImageService:
+    """Build an artist image service for offline batch prefetch jobs."""
+    return ArtistImageService(
+        cache_path=artist_images_path(),
+        images_dir=artist_images_dir(),
+        negative_ttl_days=negative_cache_ttl_days(),
+        download_enabled=artist_image_download_enabled(),
+        resolve_on_demand=True,
     )
 
 

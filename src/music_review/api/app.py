@@ -28,10 +28,15 @@ from music_review.api.schemas import (
     AuthRegisterRequest,
     AuthTokenResponse,
     AuthUser,
+    FavoritesListResponse,
     HealthResponse,
+    MergeFavoritesRequest,
+    MergeFavoritesResponse,
     NewReviewsRecommendationRequest,
     PlaylistExportRequest,
     RecommendationRequest,
+    SavedAlbumResponse,
+    SaveFavoriteRequest,
     TasteProfileResponse,
 )
 from music_review.application.artist_image_lookup import artist_image_lookup_key
@@ -65,17 +70,23 @@ from music_review.application.recommendation_service import (
     selected_communities_from_profile,
 )
 from music_review.dashboard.user_db import (
+    UserFavoriteInput,
+    add_user_favorite,
     authenticate_user_by_email,
     create_session_token,
     create_user_with_email,
+    list_user_favorites,
     load_user_email,
     load_user_profile,
+    merge_user_favorites,
     normalize_email,
+    remove_user_favorite,
     save_user_profile,
     validate_session_token,
 )
 from music_review.domain.models import Review
 from music_review.text_encoding import repair_plattentests_text
+from music_review.text_excerpt import build_text_excerpt
 
 CORPUS_PROVIDER_DEPENDENCY = Depends(get_corpus_provider)
 USER_DB_DEPENDENCY = Depends(get_user_db)
@@ -144,7 +155,7 @@ def create_app() -> FastAPI:
         service: ArtistImageService = ARTIST_IMAGE_SERVICE_DEPENDENCY,
     ) -> ArtistImageResponse:
         """Return a licensed artist thumbnail for highlight cards."""
-        record = service.lookup(artist_mbid, artist_name=artist_name)
+        record = service.lookup_cached_only(artist_mbid, artist_name=artist_name)
         return _artist_image_response_or_404(service, record)
 
     @app.get("/v1/artists/{artist_mbid}/image/file")
@@ -179,7 +190,7 @@ def create_app() -> FastAPI:
         """Return licensed thumbnails for multiple highlight artists in one request."""
         records = service.lookup_batch(
             [(item.artist_mbid, item.artist_name) for item in request.artists],
-            cached_only=not getattr(service, "resolve_on_demand", True),
+            cached_only=True,
         )
         items = tuple(
             ArtistImageBatchResult(
@@ -272,6 +283,89 @@ def create_app() -> FastAPI:
         save_user_profile(conn, slug, profile.to_dict())
         return TasteProfileResponse(profile=profile)
 
+    @app.get("/v1/me/favorites", response_model=FavoritesListResponse)
+    def get_my_favorites(
+        authorization: str | None = AUTHORIZATION_HEADER,
+        conn: sqlite3.Connection = USER_DB_DEPENDENCY,
+    ) -> FavoritesListResponse:
+        """Return saved albums for the current user."""
+        slug = _require_slug(conn, authorization)
+        rows = list_user_favorites(conn, slug)
+        return FavoritesListResponse(
+            items=tuple(_saved_album_response(row) for row in rows),
+        )
+
+    @app.put("/v1/me/favorites/{review_id}", response_model=SavedAlbumResponse)
+    def put_my_favorite(
+        review_id: int,
+        request: SaveFavoriteRequest,
+        provider: CorpusProvider = CORPUS_PROVIDER_DEPENDENCY,
+        authorization: str | None = AUTHORIZATION_HEADER,
+        conn: sqlite3.Connection = USER_DB_DEPENDENCY,
+    ) -> SavedAlbumResponse:
+        """Bookmark one album for the current user."""
+        slug = _require_slug(conn, authorization)
+        _require_review_id(provider, review_id)
+        saved_at = _utc_now_iso()
+        favorite = UserFavoriteInput(
+            review_id=review_id,
+            artist=request.artist,
+            album=request.album,
+            review_url=request.review_url,
+            source=request.source,
+            saved_at=saved_at,
+        )
+        add_user_favorite(conn, slug, favorite)
+        rows = list_user_favorites(conn, slug)
+        for row in rows:
+            if int(row["review_id"]) == review_id:
+                return _saved_album_response(row)
+        return _saved_album_response(
+            {
+                "review_id": review_id,
+                "artist": request.artist,
+                "album": request.album,
+                "review_url": request.review_url,
+                "source": request.source,
+                "saved_at": saved_at,
+            }
+        )
+
+    @app.delete("/v1/me/favorites/{review_id}", status_code=status.HTTP_204_NO_CONTENT)
+    def delete_my_favorite(
+        review_id: int,
+        authorization: str | None = AUTHORIZATION_HEADER,
+        conn: sqlite3.Connection = USER_DB_DEPENDENCY,
+    ) -> None:
+        """Remove one bookmarked album for the current user."""
+        slug = _require_slug(conn, authorization)
+        remove_user_favorite(conn, slug, review_id)
+
+    @app.post("/v1/me/favorites/merge", response_model=MergeFavoritesResponse)
+    def merge_my_favorites(
+        request: MergeFavoritesRequest,
+        provider: CorpusProvider = CORPUS_PROVIDER_DEPENDENCY,
+        authorization: str | None = AUTHORIZATION_HEADER,
+        conn: sqlite3.Connection = USER_DB_DEPENDENCY,
+    ) -> MergeFavoritesResponse:
+        """Merge guest favorites into the current user account."""
+        slug = _require_slug(conn, authorization)
+        items: list[UserFavoriteInput] = []
+        for item in request.items:
+            if _review_exists(provider, item.review_id):
+                items.append(
+                    UserFavoriteInput(
+                        review_id=item.review_id,
+                        artist=item.artist,
+                        album=item.album,
+                        review_url=item.review_url,
+                        source=item.source,
+                        saved_at=item.saved_at,
+                    )
+                )
+        merged_count = merge_user_favorites(conn, slug, items)
+        return MergeFavoritesResponse(merged_count=merged_count)
+
     @app.post("/v1/recommendations/archive", response_model=RecommendationSet)
     def archive_recommendations(
         request: RecommendationRequest,
@@ -343,9 +437,11 @@ def _artist_image_response(
     service: ArtistImageService,
     record: ArtistImageRecord,
 ) -> ArtistImageResponse | None:
-    """Map one ok record into an API response."""
+    """Map one ok record with a local thumbnail into an API response."""
+    if record.status != "ok" or not service.local_file_exists(record):
+        return None
     thumbnail_url = service.public_thumbnail_url(record)
-    if record.status != "ok" or not thumbnail_url:
+    if not thumbnail_url:
         return None
     return ArtistImageResponse(
         artist_mbid=record.artist_mbid,
@@ -518,6 +614,7 @@ def _recommendation_from_row(
         release_date = review.release_date.isoformat() if review.release_date else None
         rating = review.rating
         text = review.text
+        text_excerpt, text_excerpt_continues = build_text_excerpt(text)
         review_id = int(review.id)
         has_tracks = bool(review.tracklist)
     else:
@@ -527,7 +624,9 @@ def _recommendation_from_row(
         year = _optional_int(row.get("year"))
         release_date = _optional_str(row.get("release_date"))
         rating = _optional_float(row.get("rating"))
-        text = repair_plattentests_text(str(row.get("text", "")))
+        text_excerpt, text_excerpt_continues = build_text_excerpt(
+            repair_plattentests_text(str(row.get("text", ""))),
+        )
         review_id = int(row.get("review_id", 0))
     overall = float(row.get("overall_score", 0.0))
     return Recommendation(
@@ -543,7 +642,8 @@ def _recommendation_from_row(
         rating=rating,
         rating_effective=_optional_float(row.get("rating_effective")),
         labels=str(row.get("labels", "")),
-        text_excerpt=text[:300],
+        text_excerpt=text_excerpt,
+        text_excerpt_continues=text_excerpt_continues,
         score_display=_score_display(overall),
         playlist_available=has_tracks,
         has_tracks=has_tracks,
@@ -671,6 +771,41 @@ def _require_slug(conn: sqlite3.Connection, authorization: str | None) -> str:
             detail="Invalid or expired bearer token.",
         )
     return slug
+
+
+def _utc_now_iso() -> str:
+    """Return the current UTC timestamp in API ISO format."""
+    return datetime.now(UTC).replace(microsecond=0).isoformat().replace("+00:00", "Z")
+
+
+def _review_exists(provider: CorpusProvider, review_id: int) -> bool:
+    """Return whether the review id exists in the corpus."""
+    return _reviews_by_id(provider.reviews()).get(review_id) is not None
+
+
+def _require_review_id(provider: CorpusProvider, review_id: int) -> None:
+    """Raise 404 when the review id is unknown."""
+    if not _review_exists(provider, review_id):
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=f"Review {review_id} was not found.",
+        )
+
+
+def _saved_album_response(row: Mapping[str, Any]) -> SavedAlbumResponse:
+    """Build one favorites API row from a database mapping."""
+    source = row.get("source")
+    parsed_source: RecommendationSource | None = None
+    if source in ("archive", "new_reviews"):
+        parsed_source = source
+    return SavedAlbumResponse(
+        review_id=int(row["review_id"]),
+        artist=str(row["artist"]),
+        album=str(row["album"]),
+        review_url=str(row["review_url"]),
+        source=parsed_source,
+        saved_at=str(row["saved_at"]),
+    )
 
 
 def _unranked_new_review_row(review: Review) -> dict[str, Any]:

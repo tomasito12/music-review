@@ -304,6 +304,7 @@ class Recommendation(ApiModel):
     rating_effective: float | None = None
     labels: str = ""
     text_excerpt: str = ""
+    text_excerpt_continues: bool = False
     score_display: str = ""
     playlist_available: bool = False
     has_tracks: bool = False
@@ -321,6 +322,23 @@ class RecommendationSet(ApiModel):
     offset: int = Field(ge=0)
     items: tuple[Recommendation, ...]
     generated_at: str | None = None
+
+
+class SavedAlbum(ApiModel):
+    """One album bookmark stored on a user account."""
+
+    review_id: int
+    artist: str
+    album: str
+    review_url: str
+    source: RecommendationSource | None = None
+    saved_at: str
+
+
+class SavedAlbumList(ApiModel):
+    """All saved albums for the current user."""
+
+    items: tuple[SavedAlbum, ...]
 
 
 class PlaylistExportItem(ApiModel):

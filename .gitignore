@@ -37,6 +37,10 @@ logs/
 !frontend/**/*.json
 !tests/fixtures/**/*.json
 
+# Local-only operational helpers
+/sync_data.sh
+.env.server
+
 # ChromaDB
 chroma_db/
 

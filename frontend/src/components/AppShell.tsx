@@ -11,6 +11,7 @@ interface AppShellProps {
   profileSaveBanner: ProfileSaveBannerState;
   onDiscardProfileChanges: () => void;
   onSaveProfileChanges: () => void;
+  savedCount?: number;
   userEmail?: string | null;
   userState: UserState;
   onNavigate: (route: AppRoute) => void;
@@ -30,6 +31,7 @@ export function AppShell({
   profileSaveBanner,
   onDiscardProfileChanges,
   onSaveProfileChanges,
+  savedCount = 0,
   userEmail = null,
   userState,
   onNavigate,
@@ -77,6 +79,22 @@ export function AppShell({
                 type="button"
               >
                 {userEmail ?? "Konto"}
+                {savedCount > 0 ? (
+                  <span className="account-button-badge" aria-label={`${savedCount} gemerkte Alben`}>
+                    {savedCount}
+                  </span>
+                ) : null}
+              </button>
+            ) : savedCount > 0 ? (
+              <button
+                className="account-button"
+                onClick={() => onNavigate("konto")}
+                type="button"
+              >
+                Merkliste
+                <span className="account-button-badge" aria-label={`${savedCount} gemerkte Alben`}>
+                  {savedCount}
+                </span>
               </button>
             ) : (
               <button className="account-button" onClick={onLoginClick} type="button">

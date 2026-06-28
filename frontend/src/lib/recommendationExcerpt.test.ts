@@ -44,4 +44,22 @@ describe("buildExcerptPreview", () => {
   it("handles empty input", () => {
     expect(buildExcerptPreview("   ", () => true)).toBe("");
   });
+
+  it("adds a preview marker when the source continues even if the text fits", () => {
+    const preview = buildExcerptPreview("Kurzer aber unvollständiger Auszug", () => true, {
+      continues: true,
+    });
+
+    expect(preview).toBe("Kurzer aber unvollständiger Auszug [...]");
+  });
+
+  it("shortens continued text until the preview marker fits", () => {
+    const preview = buildExcerptPreview(
+      "Alpha Beta Gamma Delta Epsilon Zeta",
+      (candidate) => candidate.length <= "Alpha Beta Gamma [...]".length,
+      { continues: true },
+    );
+
+    expect(preview).toBe("Alpha Beta Gamma [...]");
+  });
 });

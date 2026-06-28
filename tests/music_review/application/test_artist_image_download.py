@@ -56,3 +56,20 @@ def test_download_thumbnail_rejects_non_image_content(
 
     assert download_thumbnail("https://example.com/page.html", dest_path) is False
     assert not dest_path.exists()
+
+
+def test_download_thumbnail_returns_false_on_http_error(
+    tmp_path: Path,
+    monkeypatch,
+) -> None:
+    """HTTP failures are logged and do not raise."""
+    dest_path = local_image_file_path(tmp_path, "mbid-3")
+
+    def _raise_http_error(*_args, **_kwargs):
+        response = SimpleNamespace(status_code=403)
+        raise requests.HTTPError("403 Client Error", response=response)
+
+    monkeypatch.setattr(requests, "get", _raise_http_error)
+
+    assert download_thumbnail("https://example.com/forbidden.jpg", dest_path) is False
+    assert not dest_path.exists()

@@ -17,6 +17,7 @@ import type { Recommendation } from "../types";
 function recommendation(rank: number, artist = `Artist ${rank}`): Recommendation {
   return {
     rank,
+    reviewId: rank,
     artist,
     album: `Album ${rank}`,
     year: 2024,

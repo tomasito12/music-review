@@ -104,6 +104,7 @@ def test_new_reviews_run_enrichment_from_first_new_id(
         _config: orchestration.PipelineConfig,
         *,
         metadata_min_review_id: int | None = None,
+        artist_image_review_ids: frozenset[int] | None = None,
     ) -> int:
         captured["min_id"] = metadata_min_review_id
         return 0
@@ -127,3 +128,18 @@ def test_active_lock_makes_cli_exit_cleanly(
     monkeypatch.setattr(production_update, "build_config", lambda _args: config)
 
     assert production_update.main([]) == 0
+
+
+def test_production_config_fetches_artist_images_by_default() -> None:
+    """Hourly production updates prefetch artist images for new reviews."""
+    from argparse import Namespace
+
+    from music_review.pipeline.orchestration import production_config_from_namespace
+
+    config = production_config_from_namespace(Namespace())
+    assert config.fetch_artist_images is True
+
+    disabled = production_config_from_namespace(
+        Namespace(no_fetch_artist_images=True),
+    )
+    assert disabled.fetch_artist_images is False

@@ -81,6 +81,7 @@ def run_enrichment_steps(
     config: PipelineConfig,
     *,
     metadata_min_review_id: int | None = None,
+    artist_image_review_ids: frozenset[int] | None = None,
 ) -> int:
     """Run metadata, imputation, graph, labels, and optional DQ."""
     fetch_args = [
@@ -141,7 +142,10 @@ def run_enrichment_steps(
     if exit_code != 0 or not config.fetch_artist_images:
         return exit_code
 
-    return run_artist_image_fetch(config)
+    return run_artist_image_fetch(
+        config,
+        artist_image_review_ids=artist_image_review_ids,
+    )
 
 
 def run_graph_and_label_steps(config: PipelineConfig) -> bool:
@@ -176,31 +180,46 @@ def run_graph_and_label_steps(config: PipelineConfig) -> bool:
     return True
 
 
-def run_artist_image_fetch(config: PipelineConfig) -> int:
-    """Fetch missing artist images for unique metadata artists."""
+def run_artist_image_fetch(
+    config: PipelineConfig,
+    *,
+    artist_image_review_ids: frozenset[int] | None = None,
+) -> int:
+    """Fetch missing artist images for artists tied to the current review batch."""
     from music_review.application.artist_image_batch import (
-        fetch_missing_artist_images,
-        unique_artists_from_metadata,
+        artist_targets_from_metadata,
+        run_artist_image_batch,
     )
-    from music_review.application.artist_image_service import (
-        default_artist_image_service,
-    )
+    from music_review.application.artist_image_service import batch_artist_image_service
 
     metadata_path = (
         config.metadata_imputed_path
         if config.metadata_imputed_path.is_file()
         else config.metadata_path
     )
-    artists = unique_artists_from_metadata(metadata_path)
-    if not artists:
-        logger.info("No artist MBIDs found for artist image fetch.")
+    targets = artist_targets_from_metadata(
+        metadata_path,
+        artist_genres_path=config.artist_genres_path,
+        review_ids=artist_image_review_ids,
+    )
+    if not targets:
+        if artist_image_review_ids is not None:
+            logger.info(
+                "No artist targets for image fetch in review batch (%d review(s)).",
+                len(artist_image_review_ids),
+            )
+        else:
+            logger.info("No artist targets found for image fetch.")
         return 0
 
-    service = default_artist_image_service()
-    fetch_missing_artist_images(
+    service = batch_artist_image_service()
+    batch_for_new_reviews = artist_image_review_ids is not None
+    run_artist_image_batch(
         service,
-        artists,
+        targets,
         limit=config.fetch_artist_images_limit,
+        missing_only=True,
+        process_all=batch_for_new_reviews,
     )
     return 0
 
@@ -268,6 +287,7 @@ def run_pipeline_update(
     (direct ``scrape_until_gap`` with optional early exit).
     """
     metadata_min_review_id: int | None = config.metadata_min_review_id
+    artist_image_review_ids: frozenset[int] | None = None
 
     if not config.skip_reviews:
         if scrape_mode == "in_process":
@@ -286,12 +306,14 @@ def run_pipeline_update(
                     max(scraper_result.scraped_ids),
                 )
                 metadata_min_review_id = min(scraper_result.scraped_ids)
+                artist_image_review_ids = frozenset(scraper_result.scraped_ids)
         elif not scrape_via_cli(config):
             return 1
 
     return run_enrichment_steps(
         config,
         metadata_min_review_id=metadata_min_review_id,
+        artist_image_review_ids=artist_image_review_ids,
     )
 
 
@@ -331,7 +353,9 @@ def pipeline_config_from_namespace(args: argparse.Namespace) -> PipelineConfig:
 
 def production_config_from_namespace(args: argparse.Namespace) -> PipelineConfig:
     """Production updater config: in-process scrape with early exit."""
+    no_fetch = bool(getattr(args, "no_fetch_artist_images", False))
     return replace(
         pipeline_config_from_namespace(args),
         exit_if_no_new_reviews=True,
+        fetch_artist_images=not no_fetch,
     )

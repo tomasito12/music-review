@@ -80,6 +80,7 @@ def artist_targets_from_metadata(
     metadata_path: Path,
     *,
     artist_genres_path: Path | None = None,
+    review_ids: frozenset[int] | None = None,
 ) -> list[ArtistImageTarget]:
     """Aggregate unique artist targets with metadata hints from JSONL."""
     if not metadata_path.is_file():
@@ -89,6 +90,11 @@ def artist_targets_from_metadata(
     grouped: dict[str, dict[str, Any]] = {}
 
     for obj in iter_jsonl_objects(metadata_path, log_errors=False):
+        if review_ids is not None:
+            review_id = obj.get("review_id")
+            if not isinstance(review_id, int) or review_id not in review_ids:
+                continue
+
         artist_name = obj.get("artist")
         name = str(artist_name).strip() if artist_name else ""
         if not name:
@@ -247,19 +253,29 @@ def run_artist_image_batch(
 
         if missing_only and not force and cached is not None:
             if cached.status == "ok":
-                report.skipped_cached += 1
-                continue
-            if service.is_negative_cache_fresh(cached):
+                if not _cached_record_needs_local_download(service, cached):
+                    report.skipped_cached += 1
+                    continue
+            elif service.is_negative_cache_fresh(cached):
                 report.skipped_cached += 1
                 continue
 
         report.attempted += 1
-        record = service.lookup(
-            target.artist_mbid or "",
-            artist_name=target.artist_name,
-            force=force,
-            context=target.to_context(),
-        )
+        try:
+            record = service.lookup(
+                target.artist_mbid or "",
+                artist_name=target.artist_name,
+                force=force,
+                context=target.to_context(),
+            )
+        except Exception:
+            logger.exception(
+                "Artist image lookup failed for lookup_key=%s artist=%s",
+                target.lookup_key,
+                target.artist_name,
+            )
+            report.not_found += 1
+            continue
         if record.status == "ok":
             report.resolved_ok += 1
         else:
@@ -272,6 +288,18 @@ def run_artist_image_batch(
         report.to_dict(),
     )
     return report
+
+
+def _cached_record_needs_local_download(
+    service: ArtistImageService,
+    cached: ArtistImageRecord,
+) -> bool:
+    """Return whether a cached ok record still needs a local JPG download."""
+    if cached.status != "ok" or not cached.thumbnail_url:
+        return False
+    if not service.download_enabled:
+        return False
+    return not service.local_file_exists(cached)
 
 
 def write_batch_report(report: ArtistImageBatchReport, report_path: Path) -> None:

@@ -382,14 +382,42 @@ def _sleep_backoff(attempt: int) -> None:
     time.sleep(delay + jitter)
 
 
-def search_release_groups(
-    artist: str,
-    album: str,
-    limit: int = 5,
-) -> list[dict[str, Any]]:
-    """Search MusicBrainz release-groups by artist + album name."""
+def _normalize_search_phrase(value: str) -> str:
+    """Normalize artist/album text before building MusicBrainz search queries."""
+    text = value.strip()
+    text = re.sub(r"\.{2,}", "", text)
+    text = re.sub(r"\s+", " ", text)
+    return text
+
+
+def _album_title_search_variants(album: str) -> list[str]:
+    """Return album-title variants worth trying against MusicBrainz."""
+    variants: list[str] = []
+    base = _normalize_search_phrase(album)
+    if base:
+        variants.append(base)
+
+    without_parenthetical = re.sub(r"\s*\([^)]*\)", "", base).strip()
+    if without_parenthetical and without_parenthetical not in variants:
+        variants.append(without_parenthetical)
+
+    if ":" in base:
+        before_colon = base.split(":", 1)[0].strip()
+        if before_colon and before_colon not in variants:
+            variants.append(before_colon)
+
+    if " - " in base:
+        before_dash = base.split(" - ", 1)[0].strip()
+        if before_dash and before_dash not in variants:
+            variants.append(before_dash)
+
+    return variants
+
+
+def _search_release_groups_query(query: str, limit: int) -> list[dict[str, Any]]:
+    """Run one MusicBrainz release-group search query."""
     params = {
-        "query": f'artist:"{artist}" AND release:"{album}"',
+        "query": query,
         "fmt": "json",
         "limit": limit,
     }
@@ -398,15 +426,51 @@ def search_release_groups(
         data = _get("/release-group", params)
     except requests.RequestException as exc:
         logger.warning(
-            "MusicBrainz search failed for %s - %s: %s",
-            artist,
-            album,
+            "MusicBrainz search failed for query=%s: %s",
+            query,
             exc,
         )
         return []
 
-    # note: JSON uses "release-groups" here (not "release-group-list")
     return list(data.get("release-groups", []))
+
+
+def search_release_groups(
+    artist: str,
+    album: str,
+    limit: int = 5,
+) -> list[dict[str, Any]]:
+    """Search MusicBrainz release-groups by artist + album name."""
+    seen_ids: set[str] = set()
+    collected: list[dict[str, Any]] = []
+
+    def add_groups(groups: Iterable[dict[str, Any]]) -> None:
+        for group in groups:
+            group_id = group.get("id")
+            if not isinstance(group_id, str) or not group_id.strip():
+                continue
+            if group_id in seen_ids:
+                continue
+            seen_ids.add(group_id)
+            collected.append(group)
+
+    for album_variant in _album_title_search_variants(album):
+        query = f'artist:"{artist}" AND release:"{album_variant}"'
+        add_groups(_search_release_groups_query(query, limit=limit))
+        if collected:
+            return collected[:limit]
+
+    for album_variant in _album_title_search_variants(album):
+        add_groups(
+            _search_release_groups_query(
+                f'release:"{album_variant}"',
+                limit=limit * 2,
+            ),
+        )
+        if collected:
+            return collected[:limit]
+
+    return collected[:limit]
 
 
 def _lookup_release_group_with_tags(mbid: str) -> dict[str, Any] | None:

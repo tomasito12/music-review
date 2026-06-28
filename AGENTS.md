@@ -58,10 +58,25 @@ Music Review is a Python 3.12+ CLI-based data pipeline that scrapes album review
 | FastAPI (Plattenradar v1) | `hatch run api` |
 | Artist image spike CLI | `hatch run artist-image-cli --mbid MBID --artist-name "Name" -v` (also `--review-id ID`, `--sample N`; `ARTIST_IMAGE_DOWNLOAD=true` stores JPGs under `data/artist_images/`) |
 | Artist image batch prefetch | `hatch run artist-image-batch --missing-only --all -v` (also `--revalidate`, `--queue name|mbid|all`, `--limit N`, `--download`; GitHub workflow **Artist image batch** for detached server run; see `docs/artist-image-batch.md`) |
+| Hourly production update | `hatch run prod-update` (or `docker compose run --rm music-review-update`) — scrapes new reviews, enriches metadata/graph, then prefetches Wikimedia artist images for **that review batch only** (`--no-fetch-artist-images` to disable; set `ARTIST_IMAGE_DOWNLOAD=true` for JPGs) |
+| Metadata refresh (MusicBrainz) | `hatch run python -m music_review.pipeline.enrichment.fetch_metadata --update` then `artist_genres` + `reference_imputation`; GitHub workflow **Metadata refresh** or `./scripts/start_metadata_refresh.sh` for detached server run; see `docs/metadata-refresh.md` |
+| Full database update (server) | GitHub workflow **Update database** or `./scripts/start_update_db.sh`; see `deploy/README.md` |
 | React frontend dev server | `hatch run frontend` (after `hatch run frontend-install`) |
 | Frontend unit tests | `hatch run frontend-test` |
-| Frontend UI screenshots | `hatch run frontend-screenshot` (after `hatch run frontend-playwright-install`) |
+| Frontend UI screenshots | `hatch run frontend-screenshot` (mock/manual) or `hatch run frontend-screenshot-live` (CI reference regression; after `hatch run frontend-playwright-install`) |
 | Install pre-commit hooks | `hatch run pre-commit install` |
+
+### Production server
+
+Use **`./scripts/server.sh`** for SSH operations against the production host (see `.env.server.example`). Read-only: `status`, `logs`. Write: `prod-update`, `install-hourly-cron`, `start-artist-image-batch`, `start-metadata-refresh`, `start-update-db`. Prefer GitHub **Deploy** / **Artist image batch** / **Metadata refresh** / **Update database** workflows when no local SSH key is available. Agent skill: `.cursor/skills/music-review-server/SKILL.md`.
+
+| Task | Command |
+|------|---------|
+| Server status (cron, reviews, Docker) | `./scripts/server.sh status` |
+| Hourly scrape log | `./scripts/server.sh logs update` |
+| Scrape new reviews on server now | `./scripts/server.sh prod-update` |
+| Install hourly cron on server | `./scripts/server.sh install-cron` (also runs on each Deploy workflow) |
+| Sync `data/` with server | `./sync_data.sh pull` or `push` |
 
 ### Streamlit UI (German copy)
 

@@ -11,6 +11,7 @@ import pytest
 from music_review.application.artist_image_models import ArtistImageRecord, utc_now_iso
 from music_review.application.artist_image_service import (
     ArtistImageService,
+    batch_artist_image_service,
     is_negative_cache_fresh,
 )
 
@@ -368,6 +369,42 @@ def test_lookup_cached_only_never_calls_resolver(tmp_path: Path) -> None:
     resolver.assert_not_called()
 
 
+def test_public_thumbnail_url_requires_local_file(tmp_path: Path) -> None:
+    """API clients only receive URLs for locally stored thumbnails."""
+    cache_path = tmp_path / "artist_images.jsonl"
+    images_dir = tmp_path / "artist_images"
+    service = ArtistImageService(
+        cache_path=cache_path,
+        images_dir=images_dir,
+        negative_ttl_days=30,
+    )
+    remote_only = ArtistImageRecord(
+        artist_mbid="mbid-1",
+        artist_name="Alpha",
+        status="ok",
+        fetched_at=utc_now_iso(),
+        thumbnail_url="https://example.com/thumb.jpg",
+        license="CC BY 4.0",
+        attribution_text="Alpha by User, CC BY 4.0 via Wikimedia Commons",
+        source_url="https://commons.wikimedia.org/wiki/File:Alpha.jpg",
+    )
+
+    assert service.public_thumbnail_url(remote_only) is None
+
+    images_dir.mkdir()
+    (images_dir / "mbid-1.jpg").write_bytes(b"fake-jpeg")
+    local_record = ArtistImageRecord(
+        artist_mbid="mbid-1",
+        artist_name="Alpha",
+        status="ok",
+        fetched_at=utc_now_iso(),
+        thumbnail_url="https://example.com/thumb.jpg",
+        local_path="artist_images/mbid-1.jpg",
+    )
+
+    assert service.public_thumbnail_url(local_record) == "/v1/artists/mbid-1/image/file"
+
+
 def test_lookup_skips_resolver_when_on_demand_disabled(tmp_path: Path) -> None:
     """Lookup uses cache-only mode when resolve_on_demand is false."""
     cache_path = tmp_path / "artist_images.jsonl"
@@ -388,3 +425,12 @@ def test_lookup_skips_resolver_when_on_demand_disabled(tmp_path: Path) -> None:
     assert record.status == "not_found"
     assert record.reason == "cache_miss"
     resolver.assert_not_called()
+
+
+def test_batch_artist_image_service_always_resolves_externally(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Batch prefetch must resolve externally even when on-demand is disabled."""
+    monkeypatch.setenv("ARTIST_IMAGE_RESOLVE_ON_DEMAND", "false")
+    service = batch_artist_image_service()
+    assert service.resolve_on_demand is True

@@ -28,7 +28,7 @@ def test_batch_cli_writes_report(tmp_path: Path, monkeypatch) -> None:
     monkeypatch.setattr(cli, "resolve_data_path", lambda path: path)
     monkeypatch.setattr(
         cli,
-        "default_artist_image_service",
+        "batch_artist_image_service",
         lambda: _NoResolveService(),
     )
 
@@ -71,7 +71,7 @@ def test_batch_cli_process_all_flag(tmp_path: Path, monkeypatch) -> None:
     monkeypatch.setattr(cli, "resolve_data_path", lambda path: path)
     monkeypatch.setattr(
         cli,
-        "default_artist_image_service",
+        "batch_artist_image_service",
         lambda: _NoResolveService(),
     )
     monkeypatch.setattr(cli, "run_artist_image_batch", fake_run)

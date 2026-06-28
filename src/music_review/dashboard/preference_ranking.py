@@ -209,6 +209,8 @@ def _preference_score_rows_sorted(
         item["alpha"] = alpha
         item["beta"] = beta
         item["gamma"] = gamma
+        item["purity_raw"] = float(item["_purity_raw"])
+        item["breadth_raw"] = float(item["_breadth_raw"])
         del item["_s"]
         del item["_purity_raw"]
         del item["_breadth_raw"]
@@ -250,7 +252,8 @@ def preference_ranked_rows(
 
     Each dict includes ``review``, ``review_id``, ``score`` (``S_a``),
     ``overall_score``, ``community_spectrum_norm``, ``rating_norm``,
-    ``purity_norm``, ``breadth_norm``, and ``alpha`` / ``beta`` / ``gamma``.
+    ``purity_raw``, ``breadth_raw``, ``purity_norm``, ``breadth_norm``, and
+    ``alpha`` / ``beta`` / ``gamma``.
     Empty list if ``selected_comms`` is empty.
 
     If ``apply_serendipity`` is False, the list stays sorted by ``overall_score``
