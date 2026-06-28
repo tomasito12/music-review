@@ -157,7 +157,7 @@ class ArtistImageService:
                         artist_name=artist_name,
                     ):
                         logger.debug("Artist image cache hit for %s", mbid)
-                        return self._ensure_local_copy(cached)
+                        return self._restore_resolved_record(cached)
                     logger.warning(
                         "Artist image cache mismatch for %s; re-resolving",
                         mbid,
@@ -234,8 +234,11 @@ class ArtistImageService:
         upsert_artist_image(self.cache_path, _artist_image_alias(record, lookup_key))
 
     def _restore_resolved_record(self, cached: ArtistImageRecord) -> ArtistImageRecord:
-        """Return a usable record for one cache hit."""
-        return cached
+        """Return a cache hit, backfilling a local JPG when download is enabled."""
+        updated = self._ensure_local_copy(cached)
+        if updated.local_path != cached.local_path:
+            upsert_artist_image(self.cache_path, updated)
+        return updated
 
     def _cached_image_matches_artist(
         self,
@@ -384,6 +387,17 @@ def default_artist_image_service() -> ArtistImageService:
         negative_ttl_days=negative_cache_ttl_days(),
         download_enabled=artist_image_download_enabled(),
         resolve_on_demand=resolve_on_demand_enabled(),
+    )
+
+
+def batch_artist_image_service() -> ArtistImageService:
+    """Build an artist image service for offline batch prefetch jobs."""
+    return ArtistImageService(
+        cache_path=artist_images_path(),
+        images_dir=artist_images_dir(),
+        negative_ttl_days=negative_cache_ttl_days(),
+        download_enabled=artist_image_download_enabled(),
+        resolve_on_demand=True,
     )
 
 

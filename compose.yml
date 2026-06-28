@@ -54,7 +54,10 @@ services:
     environment:
       MUSIC_REVIEW_PROJECT_ROOT: /app
       ARTIST_IMAGE_DOWNLOAD: "true"
-      ARTIST_IMAGE_RESOLVE_ON_DEMAND: "false"
+      ARTIST_IMAGE_RESOLVE_ON_DEMAND: "true"
+      USER_AGENT_APP: Plattenradar
+      USER_AGENT_VERSION: "1.0"
+      USER_AGENT_CONTACT: https://github.com/tomasito12/music-review
     volumes:
       - ./data:/app/data
     command:

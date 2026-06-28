@@ -5,6 +5,8 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 from pathlib import Path
 
+import requests
+
 from music_review.application.artist_image_batch import (
     ArtistImageBatchReport,
     ArtistImageTarget,
@@ -204,6 +206,185 @@ def test_run_artist_image_batch_revalidate_downgrades_bad_cache(
     )
 
     assert report.revalidated_downgraded == 1
+
+
+def test_run_artist_image_batch_continues_after_lookup_failure() -> None:
+    """One failed lookup must not abort the whole batch run."""
+
+    class FailingThenOkService:
+        """Service stub that fails once and succeeds on the second target."""
+
+        calls = 0
+
+        def cached_record(self, _lookup_key: str) -> None:
+            return None
+
+        def is_negative_cache_fresh(self, _record) -> bool:
+            return False
+
+        def lookup(self, artist_mbid, *, artist_name=None, force=False, context=None):
+            self.calls += 1
+            if self.calls == 1:
+                raise requests.ReadTimeout("timed out")
+            return ArtistImageRecord(
+                artist_mbid=artist_mbid,
+                artist_name=artist_name or artist_mbid,
+                status="ok",
+                fetched_at=utc_now_iso(),
+            )
+
+    service = FailingThenOkService()
+    targets = [
+        ArtistImageTarget(
+            lookup_key="mbid-1",
+            artist_name="Alpha",
+            artist_mbid="mbid-1",
+            artist_type=None,
+            artist_country=None,
+            artist_disambiguation=None,
+            artist_members=(),
+            main_genres=(),
+            review_count=1,
+        ),
+        ArtistImageTarget(
+            lookup_key="mbid-2",
+            artist_name="Beta",
+            artist_mbid="mbid-2",
+            artist_type=None,
+            artist_country=None,
+            artist_disambiguation=None,
+            artist_members=(),
+            main_genres=(),
+            review_count=1,
+        ),
+    ]
+    report = run_artist_image_batch(service, targets, limit=2, missing_only=True)
+
+    assert report.attempted == 2
+    assert report.resolved_ok == 1
+    assert report.not_found == 1
+
+
+def test_run_artist_image_batch_retries_download_for_cached_ok_without_file() -> None:
+    """Cached ok entries without a local JPG must not be skipped when downloading."""
+
+    @dataclass
+    class BackfillDownloadService:
+        """Stub service with one cached ok record but no on-disk JPG."""
+
+        download_enabled: bool = True
+        lookup_calls: list[str] = field(default_factory=list)
+
+        def cached_record(self, lookup_key: str) -> ArtistImageRecord | None:
+            return ArtistImageRecord(
+                artist_mbid=lookup_key,
+                artist_name="Alpha",
+                status="ok",
+                fetched_at=utc_now_iso(),
+                thumbnail_url="https://example.com/thumb.jpg",
+            )
+
+        def is_negative_cache_fresh(self, _record: ArtistImageRecord) -> bool:
+            return False
+
+        def local_file_exists(self, _record: ArtistImageRecord) -> bool:
+            return False
+
+        def lookup(
+            self,
+            artist_mbid: str,
+            *,
+            artist_name: str | None = None,
+            force: bool = False,
+            context=None,
+        ) -> ArtistImageRecord:
+            self.lookup_calls.append(artist_mbid)
+            return ArtistImageRecord(
+                artist_mbid=artist_mbid,
+                artist_name=artist_name or artist_mbid,
+                status="ok",
+                fetched_at=utc_now_iso(),
+                thumbnail_url="https://example.com/thumb.jpg",
+                local_path=f"artist_images/{artist_mbid}.jpg",
+            )
+
+    service = BackfillDownloadService()
+    targets = [
+        ArtistImageTarget(
+            lookup_key="mbid-1",
+            artist_name="Alpha",
+            artist_mbid="mbid-1",
+            artist_type=None,
+            artist_country=None,
+            artist_disambiguation=None,
+            artist_members=(),
+            main_genres=(),
+            review_count=1,
+        ),
+    ]
+    report = run_artist_image_batch(service, targets, limit=1, missing_only=True)
+
+    assert report.attempted == 1
+    assert report.skipped_cached == 0
+    assert service.lookup_calls == ["mbid-1"]
+
+
+def test_run_artist_image_batch_skips_cached_ok_when_local_file_exists() -> None:
+    """Cached ok entries with an existing JPG should stay skipped."""
+
+    @dataclass
+    class CachedWithLocalFileService:
+        """Stub service whose cached record already has a local JPG."""
+
+        download_enabled: bool = True
+        lookup_calls: list[str] = field(default_factory=list)
+
+        def cached_record(self, lookup_key: str) -> ArtistImageRecord | None:
+            return ArtistImageRecord(
+                artist_mbid=lookup_key,
+                artist_name="Alpha",
+                status="ok",
+                fetched_at=utc_now_iso(),
+                thumbnail_url="https://example.com/thumb.jpg",
+                local_path=f"artist_images/{lookup_key}.jpg",
+            )
+
+        def is_negative_cache_fresh(self, _record: ArtistImageRecord) -> bool:
+            return False
+
+        def local_file_exists(self, _record: ArtistImageRecord) -> bool:
+            return True
+
+        def lookup(
+            self,
+            artist_mbid: str,
+            *,
+            artist_name: str | None = None,
+            force: bool = False,
+            context=None,
+        ) -> ArtistImageRecord:
+            self.lookup_calls.append(artist_mbid)
+            raise AssertionError("lookup should not run for fully cached records")
+
+    service = CachedWithLocalFileService()
+    targets = [
+        ArtistImageTarget(
+            lookup_key="mbid-1",
+            artist_name="Alpha",
+            artist_mbid="mbid-1",
+            artist_type=None,
+            artist_country=None,
+            artist_disambiguation=None,
+            artist_members=(),
+            main_genres=(),
+            review_count=1,
+        ),
+    ]
+    report = run_artist_image_batch(service, targets, limit=1, missing_only=True)
+
+    assert report.attempted == 0
+    assert report.skipped_cached == 1
+    assert service.lookup_calls == []
 
 
 def test_write_batch_report_writes_json(tmp_path: Path) -> None:

@@ -26,6 +26,7 @@ docker compose --profile jobs build music-review-artist-images
 echo "Starting detached artist image batch (queue=${QUEUE})..."
 docker compose --profile jobs run -d \
   --name "$CONTAINER_NAME" \
+  -e ARTIST_IMAGE_RESOLVE_ON_DEMAND=true \
   music-review-artist-images \
   python -m music_review.pipeline.enrichment.artist_image_batch_cli \
     --missing-only \

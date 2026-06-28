@@ -61,10 +61,14 @@ jobs:
     timeout-minutes: 25
     needs:
       - lint-test
+    permissions:
+      contents: write
 
     steps:
       - name: Check out repository
         uses: actions/checkout@v4
+        with:
+          ref: ${{ github.head_ref || github.ref }}
 
       - name: Set up Python
         uses: actions/setup-python@v5
@@ -102,12 +106,27 @@ jobs:
       - name: Regenerate reference screenshots on Linux
         run: hatch run frontend-screenshot-update
 
-      - name: Verify committed reference PNGs match Linux renderer
+      - name: Sync visual reference PNGs
+        env:
+          CAN_PUSH: ${{ github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository }}
         run: |
-          if ! git diff --exit-code -- frontend/tests/visual/reference/; then
-            echo "::error::Visual reference PNGs are stale. Run the 'Update visual screenshots' workflow on GitHub or 'hatch run frontend-screenshot-update-linux' locally, then commit frontend/tests/visual/reference/*.png"
+          if git diff --quiet -- frontend/tests/visual/reference/; then
+            echo "Visual references are up to date."
+            exit 0
+          fi
+          if [ "$CAN_PUSH" != "true" ]; then
+            echo "::error::Visual reference PNGs are stale on a fork PR. Run 'Update visual screenshots' on the base repository branch."
+            git diff --stat -- frontend/tests/visual/reference/
             exit 1
           fi
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add frontend/tests/visual/reference/*.png
+          git commit -m "chore: refresh visual reference screenshots for Linux CI"
+          git push
+
+      - name: Run visual regression tests
+        run: hatch run frontend-screenshot-live
 
   docker-build:
     name: Docker build smoke test

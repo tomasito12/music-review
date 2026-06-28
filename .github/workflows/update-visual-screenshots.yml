@@ -2,6 +2,11 @@ name: Update visual screenshots
 
 on:
   workflow_dispatch:
+    inputs:
+      branch:
+        description: Branch to update (default = current branch)
+        required: false
+        default: ""
 
 permissions:
   contents: write
@@ -15,6 +20,8 @@ jobs:
     steps:
       - name: Check out repository
         uses: actions/checkout@v4
+        with:
+          ref: ${{ inputs.branch || github.ref }}
 
       - name: Set up Python
         uses: actions/setup-python@v5

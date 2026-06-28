@@ -225,7 +225,7 @@ def test_run_artist_image_fetch_scoped_to_review_ids(
         return ArtistImageBatchReport()
 
     monkeypatch.setattr(
-        "music_review.application.artist_image_service.default_artist_image_service",
+        "music_review.application.artist_image_service.batch_artist_image_service",
         lambda: FakeService(),
     )
     monkeypatch.setattr(

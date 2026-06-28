@@ -11,6 +11,7 @@ import pytest
 from music_review.application.artist_image_models import ArtistImageRecord, utc_now_iso
 from music_review.application.artist_image_service import (
     ArtistImageService,
+    batch_artist_image_service,
     is_negative_cache_fresh,
 )
 
@@ -424,3 +425,12 @@ def test_lookup_skips_resolver_when_on_demand_disabled(tmp_path: Path) -> None:
     assert record.status == "not_found"
     assert record.reason == "cache_miss"
     resolver.assert_not_called()
+
+
+def test_batch_artist_image_service_always_resolves_externally(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Batch prefetch must resolve externally even when on-demand is disabled."""
+    monkeypatch.setenv("ARTIST_IMAGE_RESOLVE_ON_DEMAND", "false")
+    service = batch_artist_image_service()
+    assert service.resolve_on_demand is True

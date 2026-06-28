@@ -190,9 +190,7 @@ def run_artist_image_fetch(
         artist_targets_from_metadata,
         run_artist_image_batch,
     )
-    from music_review.application.artist_image_service import (
-        default_artist_image_service,
-    )
+    from music_review.application.artist_image_service import batch_artist_image_service
 
     metadata_path = (
         config.metadata_imputed_path
@@ -214,7 +212,7 @@ def run_artist_image_fetch(
             logger.info("No artist targets found for image fetch.")
         return 0
 
-    service = default_artist_image_service()
+    service = batch_artist_image_service()
     batch_for_new_reviews = artist_image_review_ids is not None
     run_artist_image_batch(
         service,

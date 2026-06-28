@@ -29,7 +29,7 @@ hatch run artist-image-batch --force --limit 25 -v
 
 | Variable | Default | Purpose |
 |----------|---------|---------|
-| `ARTIST_IMAGE_RESOLVE_ON_DEMAND` | `false` | When `true`, non-API callers may still resolve externally; Plattenradar API endpoints always use cache-only reads |
+| `ARTIST_IMAGE_RESOLVE_ON_DEMAND` | `true` in batch jobs | Batch jobs always resolve externally; the API container keeps this `false` |
 | `ARTIST_IMAGE_DOWNLOAD` | `false` | Set `true` to store JPG thumbnails under `data/artist_images/` |
 | `ARTIST_IMAGE_MIN_CONFIDENCE_MBID` | `70` | Minimum score for MBID-backed matches |
 | `ARTIST_IMAGE_MIN_CONFIDENCE_NAME` | `85` | Minimum score for name-only matches |

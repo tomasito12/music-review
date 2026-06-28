@@ -364,8 +364,8 @@ Job `visual-screenshots` in `.github/workflows/ci.yml`:
 
 1. Startet die deterministische Visual-API (`scripts/visual_api_server.py`, Port `8010`)
 2. Startet das Frontend mit `VITE_API_BASE_URL=http://127.0.0.1:8010` via `scripts/run_live_screenshots.py`
-3. Regeneriert Referenz-PNGs auf Linux und prüft per `git diff`, ob die
-   eingecheckten Dateien unter `frontend/tests/visual/reference/` aktuell sind
+3. Regeneriert Referenz-PNGs auf Linux, committet sie bei Abweichung automatisch
+   (gleiches Repo), und führt danach `frontend-screenshot-live` aus
 
 Abgedeckte Screens:
 
@@ -387,17 +387,17 @@ hatch run frontend-playwright-install
 hatch run frontend-screenshot-live
 ```
 
-Referenzbilder nach Layout-Änderungen bewusst aktualisieren (idealerweise auf Linux, wie CI):
+Referenzbilder nach Layout-Änderungen bewusst aktualisieren:
 
 ```bash
-hatch run frontend-screenshot-update-linux   # Docker, gleicher Renderer wie CI
-# oder lokal:
+# Manuell (Actions → "Update visual screenshots") oder lokal mit Docker:
+hatch run frontend-screenshot-update-linux
 hatch run frontend-screenshot-update
 ```
 
-Die Tests erfassen nur den Viewport von `.app-shell` (kein Full-Page), nutzen
-stabilisierte Schriften und maskieren Künstlerfotos. Referenz-PNGs sollten mit
-dem Linux-Skript erzeugt werden, damit macOS und CI übereinstimmen.
+Auf dem Base-Repo committet der CI-Job `visual-screenshots` veraltete PNGs
+automatisch nach. Nach dem ersten grünen Lauf `git pull`, um den Bot-Commit zu
+holen.
 
 Manuelle Mock-Screenshots (Willkommen, Playlists, Redesign-Mock) bleiben unter
 `hatch run frontend-screenshot` in `frontend/screenshots/` (gitignored).
