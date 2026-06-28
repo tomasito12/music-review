@@ -86,6 +86,90 @@ def test_extract_artist_mbid_from_release_group_reads_credit() -> None:
     assert mbid == "dd3f09d1-9cd3-42d6-b711-3b1ca52d5266"
 
 
+def test_select_best_release_group_prefers_matching_artist_credit() -> None:
+    """A release group whose credit matches the review artist wins over first album."""
+    best = mb._select_best_release_group(
+        [
+            {
+                "id": "wrong",
+                "primary-type": "Album",
+                "score": "100",
+                "artist-credit": [
+                    {
+                        "name": "The Black Angels",
+                        "artist": {"id": "black", "name": "The Black Angels"},
+                    },
+                ],
+            },
+            {
+                "id": "right",
+                "primary-type": "Album",
+                "score": "42",
+                "artist-credit": [
+                    {
+                        "name": "Temple of Angels",
+                        "artist": {"id": "toa", "name": "Temple of Angels"},
+                    },
+                ],
+            },
+        ],
+        preferred_artist="Temple of Angels",
+    )
+    assert best is not None
+    assert best["id"] == "right"
+
+
+def test_release_group_artist_mbid_rejects_mismatched_credit() -> None:
+    """Credited artist MBID is omitted when the credit name does not match."""
+    release_group = {
+        "artist-credit": [
+            {
+                "name": "Nancy Wilson",
+                "artist": {
+                    "id": "f597eafc-4dc5-4bc4-a019-a5035a3c8502",
+                    "name": "Nancy Wilson",
+                },
+            },
+        ],
+    }
+    assert (
+        mb._release_group_artist_mbid(
+            release_group,
+            preferred_artist="Sue",
+        )
+        is None
+    )
+
+
+def test_fetch_artist_info_rejects_ambiguous_name_match(monkeypatch) -> None:
+    """A high-scoring homonym is rejected when the resolved name does not match."""
+    monkeypatch.setattr(
+        mb,
+        "_search_artists",
+        lambda **_: (
+            [
+                {
+                    "id": "f597eafc-4dc5-4bc4-a019-a5035a3c8502",
+                    "name": "Nancy Wilson",
+                    "score": "100",
+                },
+            ],
+            False,
+        ),
+    )
+    monkeypatch.setattr(
+        mb,
+        "_lookup_artist_with_tags",
+        lambda _mbid: {
+            "id": "f597eafc-4dc5-4bc4-a019-a5035a3c8502",
+            "name": "Nancy Wilson",
+            "tags": [],
+            "relations": [],
+        },
+    )
+    assert mb.fetch_artist_info("Sue") is None
+
+
 def test_fetch_album_tags_happy_path(monkeypatch) -> None:
     """fetch_album_tags builds ExternalGenreInfo from mocked lookups."""
     monkeypatch.setattr(

@@ -22,6 +22,10 @@ from typing import Any, cast
 import requests
 from urllib3.exceptions import InsecureRequestWarning
 
+from music_review.pipeline.enrichment.commons_artist_match import (
+    musicbrainz_name_matches_requested,
+)
+
 logger = logging.getLogger(__name__)
 
 BASE_URL = "https://musicbrainz.org/ws/2"
@@ -139,6 +143,9 @@ def fetch_artist_info(name: str) -> ArtistInfo | None:
         len(members),
     )
 
+    if not _validate_resolved_artist_name(name, artist_name):
+        return None
+
     return ArtistInfo(
         mbid=mbid,
         name=artist_name,
@@ -148,6 +155,21 @@ def fetch_artist_info(name: str) -> ArtistInfo | None:
         tags=tags,
         members=members,
     )
+
+
+def _validate_resolved_artist_name(
+    requested_name: str,
+    resolved_name: str,
+) -> bool:
+    """Return whether a MusicBrainz artist name matches the requested lookup name."""
+    if musicbrainz_name_matches_requested(requested_name, resolved_name):
+        return True
+    logger.info(
+        "Rejected MusicBrainz artist %s for requested name %s",
+        resolved_name,
+        requested_name,
+    )
+    return False
 
 
 def _search_artists(name: str, limit: int = 5) -> tuple[list[dict[str, Any]], bool]:
@@ -405,17 +427,41 @@ def _lookup_release_group_with_tags(mbid: str) -> dict[str, Any] | None:
 
 def _select_best_release_group(
     release_groups: Iterable[dict[str, Any]],
+    *,
+    preferred_artist: str | None = None,
 ) -> dict[str, Any] | None:
-    """Pick the most likely album candidate (prefer primary-type Album)."""
+    """Pick the most likely album candidate for one review artist/album pair."""
     groups = list(release_groups)
     if not groups:
         return None
 
-    albums = [rg for rg in groups if rg.get("primary-type", "").lower() == "album"]
-    if albums:
-        return albums[0]
+    def rank(release_group: dict[str, Any]) -> tuple[int, int, int]:
+        is_album = 1 if release_group.get("primary-type", "").lower() == "album" else 0
+        artist_match = 0
+        if preferred_artist:
+            credit_name = extract_artist_name_from_release_group(release_group) or ""
+            if musicbrainz_name_matches_requested(preferred_artist, credit_name):
+                artist_match = 2
+        try:
+            score = int(release_group.get("score", 0))
+        except (TypeError, ValueError):
+            score = 0
+        return (artist_match, is_album, score)
 
+    groups.sort(key=rank, reverse=True)
     return groups[0]
+
+
+def _release_group_artist_mbid(
+    release_group: dict[str, Any],
+    *,
+    preferred_artist: str,
+) -> str | None:
+    """Return the credited artist MBID when the credit matches the review artist."""
+    credit_name = extract_artist_name_from_release_group(release_group) or ""
+    if not _validate_resolved_artist_name(preferred_artist, credit_name):
+        return None
+    return extract_artist_mbid_from_release_group(release_group)
 
 
 def fetch_artist_alias_names(mbid: str) -> list[str]:
@@ -541,15 +587,18 @@ def fetch_album_tags(artist: str, album: str) -> ExternalGenreInfo | None:
     3) Lookup that release-group with tags
     """
     release_groups = search_release_groups(artist=artist, album=album, limit=5)
-    best = _select_best_release_group(release_groups)
+    best = _select_best_release_group(release_groups, preferred_artist=artist)
     if best is None:
         logger.info("No release-group found for %s - %s", artist, album)
         return None
 
     mbid = best["id"]
     title = best.get("title", album)
-    credited_artist_mbid = extract_artist_mbid_from_release_group(best)
     credited_artist_name = extract_artist_name_from_release_group(best)
+    credited_artist_mbid = _release_group_artist_mbid(
+        best,
+        preferred_artist=artist,
+    )
 
     detailed = _lookup_release_group_with_tags(mbid)
     if detailed is None:

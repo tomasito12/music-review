@@ -57,6 +57,7 @@ Music Review is a Python 3.12+ CLI-based data pipeline that scrapes album review
 | Streamlit dashboard | `hatch run dashboard` (browse reviews by artist/album) |
 | FastAPI (Plattenradar v1) | `hatch run api` |
 | Artist image spike CLI | `hatch run artist-image-cli --mbid MBID --artist-name "Name" -v` (also `--review-id ID`, `--sample N`; `ARTIST_IMAGE_DOWNLOAD=true` stores JPGs under `data/artist_images/`) |
+| Artist image batch prefetch | `hatch run artist-image-batch --missing-only --all -v` (also `--revalidate`, `--queue name|mbid|all`, `--limit N`, `--download`; GitHub workflow **Artist image batch** for detached server run; see `docs/artist-image-batch.md`) |
 | React frontend dev server | `hatch run frontend` (after `hatch run frontend-install`) |
 | Frontend unit tests | `hatch run frontend-test` |
 | Frontend UI screenshots | `hatch run frontend-screenshot` (after `hatch run frontend-playwright-install`) |

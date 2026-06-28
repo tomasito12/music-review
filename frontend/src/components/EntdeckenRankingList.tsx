@@ -1,13 +1,8 @@
 import { useMemo, type ReactElement, type ReactNode } from "react";
 
 import { artistImageLookupKey } from "../lib/artistImageLookupKey";
-import {
-  buildEntdeckenPhotoTileIndices,
-  entdeckenPhotoLookupRecommendations,
-  entdeckenRecommendationHasPhoto,
-  resolveEntdeckenPhotoRanks,
-} from "../lib/entdeckenPage";
-import { useArtistImagesBatch } from "../lib/useArtistImagesBatch";
+import { buildEntdeckenPhotoTileIndices } from "../lib/entdeckenPage";
+import { useEntdeckenPhotoSlots } from "../lib/useEntdeckenPhotoSlots";
 import type { Recommendation } from "../types";
 
 import { HighlightColumnCard } from "./HighlightColumnCard";
@@ -31,25 +26,8 @@ export function EntdeckenRankingList({
   recommendations,
   showSaveAction = false,
 }: EntdeckenRankingListProps): ReactElement {
-  const photoLookupRecommendations = useMemo(
-    () => entdeckenPhotoLookupRecommendations(recommendations),
-    [recommendations],
-  );
-  const { imagesByLookupKey, loading: imagesLoading } = useArtistImagesBatch(
-    photoLookupRecommendations.map((recommendation) => ({
-      artistMbid: recommendation.artistMbid,
-      artistName: recommendation.artist,
-    })),
-  );
-  const photoRanks = useMemo(
-    () =>
-      imagesLoading
-        ? new Set<number>()
-        : resolveEntdeckenPhotoRanks(recommendations, (recommendation) =>
-            entdeckenRecommendationHasPhoto(recommendation, imagesByLookupKey),
-          ),
-    [imagesByLookupKey, imagesLoading, recommendations],
-  );
+  const { imagesByLookupKey, loadingPhotoRanks, photoRanks } =
+    useEntdeckenPhotoSlots(recommendations);
   const photoTileIndices = useMemo(
     () => buildEntdeckenPhotoTileIndices(recommendations, photoRanks),
     [photoRanks, recommendations],
@@ -63,16 +41,19 @@ export function EntdeckenRankingList({
     recommendation: Recommendation,
     keySuffix: string,
   ): ReactElement {
-    const photoTileIndex = photoTileIndices.get(recommendation.rank);
-    if (photoTileIndex !== undefined) {
-      const lookupKey = artistImageLookupKey({
-        artistMbid: recommendation.artistMbid,
-        artistName: recommendation.artist,
-      });
+    const lookupKey = artistImageLookupKey({
+      artistMbid: recommendation.artistMbid,
+      artistName: recommendation.artist,
+    });
+    const isPhotoRank = photoRanks.has(recommendation.rank);
+    const isLoadingPhoto = loadingPhotoRanks.has(recommendation.rank);
+
+    if (isPhotoRank || isLoadingPhoto) {
+      const photoTileIndex = photoTileIndices.get(recommendation.rank) ?? 0;
       return (
         <HighlightColumnCard
-          image={lookupKey ? imagesByLookupKey.get(lookupKey) ?? null : null}
-          imageLoading={imagesLoading && lookupKey.length > 0}
+          image={isPhotoRank && lookupKey ? imagesByLookupKey.get(lookupKey) ?? null : null}
+          imageLoading={isLoadingPhoto}
           imageOnStart={photoTileIndex % 2 === 0}
           key={`${recommendation.source}-${recommendation.rank}-${keySuffix}`}
           recommendation={recommendation}

@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from music_review.application.artist_image_models import CommonsImageInfo
+from music_review.pipeline.enrichment.commons_image_confidence import ArtistContext
 from music_review.pipeline.enrichment.wikipedia_client import (
     _commons_filename_from_page,
     _commons_filename_from_upload_url,
@@ -73,12 +74,26 @@ def test_find_commons_image_via_wikipedia_returns_licensed_image(monkeypatch) ->
             license_url="https://creativecommons.org/licenses/by/3.0/",
             author="User:Example",
             source_url="https://commons.wikimedia.org/wiki/File:The_Memorials.jpg",
-            attribution_text="credit",
-            title="The Memorials",
+            attribution_text="The Memorials rock band performing live at concert",
+            title="The Memorials live",
+            imageinfo={
+                "extmetadata": {
+                    "ImageDescription": {
+                        "value": "The Memorials rock band performing live at concert",
+                    },
+                    "ObjectName": {"value": "The Memorials live"},
+                },
+            },
         ),
     )
 
-    info, wikidata_id = find_commons_image_via_wikipedia(["Memorials"])
+    info, wikidata_id = find_commons_image_via_wikipedia(
+        ["Memorials"],
+        context=ArtistContext(
+            artist_mbid="mbid-memorials",
+            resolution_source="wikipedia",
+        ),
+    )
 
     assert info is not None
     assert info.commons_file == "The Memorials.jpg"

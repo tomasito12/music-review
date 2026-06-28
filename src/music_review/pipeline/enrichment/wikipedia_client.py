@@ -11,7 +11,12 @@ from urllib.parse import unquote, urlparse
 import requests
 
 from music_review.application.artist_image_models import CommonsImageInfo
+from music_review.pipeline.enrichment.commons_artist_match import artist_name_in_text
 from music_review.pipeline.enrichment.commons_client import fetch_commons_image_info
+from music_review.pipeline.enrichment.commons_image_confidence import (
+    ArtistContext,
+    score_parsed_commons_image,
+)
 from music_review.pipeline.enrichment.wikidata_client import fetch_commons_filename
 from music_review.pipeline.enrichment.wikimedia_http import WIKIMEDIA_HEADERS
 
@@ -27,11 +32,19 @@ _MUSIC_SNIPPET_RE = re.compile(
     flags=re.IGNORECASE,
 )
 
+_VENUE_SNIPPET_RE = re.compile(
+    r"\b(?:seaworld|theme park|amusement park|aquarium|zoo|stadium|arena|"
+    r"before the show|opening ceremony|pre-show|preshow|venue|theatre|"
+    r"theater|television show|tv show|geographical feature)\b",
+    flags=re.IGNORECASE,
+)
+
 
 def find_commons_image_via_wikipedia(
     search_names: list[str],
     *,
     disambiguation: str | None = None,
+    context: ArtistContext | None = None,
 ) -> tuple[CommonsImageInfo | None, str | None]:
     """Find a licensed Commons image via matching English Wikipedia articles."""
     best: tuple[int, CommonsImageInfo, str | None] | None = None
@@ -55,8 +68,21 @@ def find_commons_image_via_wikipedia(
             )
             if score < 15:
                 continue
+            if not any(
+                artist_name_in_text(name, normalized_title) for name in search_names
+            ):
+                logger.info(
+                    "Rejected Wikipedia article %s for %s: title mismatch",
+                    normalized_title,
+                    search_names,
+                )
+                continue
 
-            info, wikidata_id = _image_from_wikipedia_title(normalized_title)
+            info, wikidata_id = _image_from_wikipedia_title(
+                normalized_title,
+                search_names=search_names,
+                context=context,
+            )
             if info is None:
                 continue
             if best is None or score > best[0]:
@@ -139,6 +165,9 @@ def _unique_wikipedia_queries(
 
 def _image_from_wikipedia_title(
     title: str,
+    *,
+    search_names: list[str] | None = None,
+    context: ArtistContext | None = None,
 ) -> tuple[CommonsImageInfo | None, str | None]:
     """Resolve a Commons image from one Wikipedia article title."""
     page = _fetch_wikipedia_page(title)
@@ -153,6 +182,38 @@ def _image_from_wikipedia_title(
         return None, wikidata_id
 
     info = fetch_commons_image_info(commons_filename)
+    if info is None:
+        return None, wikidata_id
+
+    if search_names and not any(
+        artist_name_in_text(name, info.commons_file)
+        or artist_name_in_text(name, info.title)
+        or artist_name_in_text(name, info.attribution_text or "")
+        for name in search_names
+    ):
+        logger.info(
+            "Rejected Wikipedia image %s for %s: artist name missing in Commons file",
+            info.commons_file,
+            search_names,
+        )
+        return None, wikidata_id
+
+    wiki_context = context or ArtistContext(resolution_source="wikipedia")
+    confidence = score_parsed_commons_image(
+        search_names[0] if search_names else title,
+        info,
+        context=wiki_context,
+        imageinfo=info.imageinfo,
+    )
+    if not confidence.accepted:
+        logger.info(
+            "Rejected Wikipedia image %s for %s: %s",
+            info.commons_file,
+            search_names,
+            confidence.reasons,
+        )
+        return None, wikidata_id
+
     return info, wikidata_id
 
 
@@ -263,6 +324,8 @@ def _score_wikipedia_hit(
     score = 0
     if _MUSIC_SNIPPET_RE.search(combined):
         score += 25
+    if _VENUE_SNIPPET_RE.search(combined) and not _MUSIC_SNIPPET_RE.search(combined):
+        score -= 50
     if "disambiguation" in combined:
         score -= 30
 

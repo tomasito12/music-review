@@ -14,6 +14,9 @@ from music_review.io.jsonl import (
     load_ids_from_jsonl,
     load_jsonl_as_map,
 )
+from music_review.pipeline.enrichment.commons_artist_match import (
+    musicbrainz_name_matches_requested,
+)
 from music_review.pipeline.enrichment.genre_regex import GENRE_REGEX
 from music_review.pipeline.enrichment.musicbrainz_client import (
     fetch_album_tags,
@@ -283,10 +286,21 @@ def fetch_metadata_for_review(
 
         if info.artist_mbid:
             artist_info = fetch_artist_info_by_mbid(info.artist_mbid)
+            if artist_info is not None and not musicbrainz_name_matches_requested(
+                artist,
+                artist_info.name,
+            ):
+                logger.info(
+                    "Rejected MusicBrainz artist %s for review artist %s",
+                    artist_info.name,
+                    artist,
+                )
+                artist_info = None
         else:
-            artist_info = fetch_artist_info(info.artist)
+            artist_info = fetch_artist_info(artist)
+
         if artist_info is None:
-            artist_mbid = info.artist_mbid
+            artist_mbid = None
             artist_country = None
             artist_type = None
             artist_disambiguation = None

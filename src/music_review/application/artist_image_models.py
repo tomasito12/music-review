@@ -28,6 +28,11 @@ class ArtistImageRecord:
     attribution_text: str | None = None
     reason: str | None = None
     local_path: str | None = None
+    confidence: int | None = None
+    resolution_source: str | None = None
+    validation_version: int = 1
+    depicts_member_name: str | None = None
+    reject_reasons: list[str] | None = None
 
     def to_dict(self) -> dict[str, Any]:
         """Return a JSON-serializable dict for JSONL storage."""
@@ -36,6 +41,7 @@ class ArtistImageRecord:
             "artist_name": self.artist_name,
             "status": self.status,
             "fetched_at": self.fetched_at,
+            "validation_version": self.validation_version,
         }
         optional_fields = (
             "wikidata_id",
@@ -49,11 +55,16 @@ class ArtistImageRecord:
             "attribution_text",
             "reason",
             "local_path",
+            "confidence",
+            "resolution_source",
+            "depicts_member_name",
         )
         for key in optional_fields:
             value = getattr(self, key)
             if value is not None:
                 payload[key] = value
+        if self.reject_reasons:
+            payload["reject_reasons"] = list(self.reject_reasons)
         return payload
 
     @classmethod
@@ -61,6 +72,22 @@ class ArtistImageRecord:
         """Build a record from one JSONL object."""
         status_raw = payload.get("status")
         parsed_status: ArtistImageStatus = "ok" if status_raw == "ok" else "not_found"
+        reject_raw = payload.get("reject_reasons")
+        reject_reasons: list[str] | None = None
+        if isinstance(reject_raw, list):
+            reject_reasons = [str(item) for item in reject_raw if str(item).strip()]
+        validation_raw = payload.get("validation_version", 1)
+        try:
+            validation_version = int(validation_raw)
+        except (TypeError, ValueError):
+            validation_version = 1
+        confidence_raw = payload.get("confidence")
+        confidence: int | None = None
+        if confidence_raw is not None:
+            try:
+                confidence = int(confidence_raw)
+            except (TypeError, ValueError):
+                confidence = None
         return cls(
             artist_mbid=str(payload.get("artist_mbid", "")),
             artist_name=str(payload.get("artist_name", "")),
@@ -77,6 +104,11 @@ class ArtistImageRecord:
             attribution_text=_optional_str(payload.get("attribution_text")),
             reason=_optional_str(payload.get("reason")),
             local_path=_optional_str(payload.get("local_path")),
+            confidence=confidence,
+            resolution_source=_optional_str(payload.get("resolution_source")),
+            validation_version=validation_version,
+            depicts_member_name=_optional_str(payload.get("depicts_member_name")),
+            reject_reasons=reject_reasons,
         )
 
 
@@ -106,3 +138,4 @@ class CommonsImageInfo:
     source_url: str
     attribution_text: str
     title: str = field(default="")
+    imageinfo: dict[str, Any] | None = None

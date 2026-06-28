@@ -91,3 +91,80 @@ def test_fetch_metadata_for_review_with_artist_info(monkeypatch) -> None:
     assert "punk" in result.genres
     assert result.artist_mbid == "mbid-from-release-group"
     assert result.artist_disambiguation == "Johannes Sumpich"
+
+
+def test_fetch_metadata_for_review_rejects_mismatched_release_group_mbid(
+    monkeypatch,
+) -> None:
+    """A release-group artist MBID is dropped when MusicBrainz name does not match."""
+    monkeypatch.setattr(
+        fetch_metadata,
+        "fetch_album_tags",
+        lambda **_: ExternalGenreInfo(
+            mbid="rg1",
+            title="Album",
+            artist="Sue",
+            tags=["pop"],
+            artist_mbid="f597eafc-4dc5-4bc4-a019-a5035a3c8502",
+        ),
+    )
+    monkeypatch.setattr(
+        fetch_metadata,
+        "fetch_artist_info_by_mbid",
+        lambda _mbid: ArtistInfo(
+            mbid="f597eafc-4dc5-4bc4-a019-a5035a3c8502",
+            name="Nancy Wilson",
+            country="US",
+            artist_type="Person",
+            disambiguation=None,
+            tags=[],
+            members=[],
+        ),
+    )
+    monkeypatch.setattr(
+        fetch_metadata,
+        "fetch_artist_info",
+        lambda _name: (_ for _ in ()).throw(
+            AssertionError("name lookup should not run when MBID was provided"),
+        ),
+    )
+    result = fetch_metadata.fetch_metadata_for_review(1, "Sue", "Album")
+    assert result.artist_mbid is None
+    assert result.artist_country is None
+
+
+def test_fetch_metadata_for_review_falls_back_to_name_lookup(monkeypatch) -> None:
+    """When release-group credit does not yield an MBID, name lookup is used."""
+    monkeypatch.setattr(
+        fetch_metadata,
+        "fetch_album_tags",
+        lambda **_: ExternalGenreInfo(
+            mbid="rg1",
+            title="Album",
+            artist="Sue",
+            tags=["pop"],
+            artist_mbid=None,
+        ),
+    )
+    monkeypatch.setattr(
+        fetch_metadata,
+        "fetch_artist_info_by_mbid",
+        lambda _mbid: (_ for _ in ()).throw(
+            AssertionError("mbid lookup should not run without release-group MBID"),
+        ),
+    )
+    monkeypatch.setattr(
+        fetch_metadata,
+        "fetch_artist_info",
+        lambda _name: ArtistInfo(
+            mbid="sue-mbid",
+            name="Sue",
+            country="US",
+            artist_type="Group",
+            disambiguation=None,
+            tags=["indie"],
+            members=[],
+        ),
+    )
+    result = fetch_metadata.fetch_metadata_for_review(1, "Sue", "Album")
+    assert result.artist_mbid == "sue-mbid"

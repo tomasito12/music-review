@@ -11,6 +11,22 @@ from music_review.pipeline.enrichment.commons_client import (
     parse_commons_image_info,
     score_commons_search_candidate,
 )
+from music_review.pipeline.enrichment.commons_image_confidence import ArtistContext
+
+
+def _music_imageinfo(
+    imageinfo: dict[str, object],
+    *,
+    artist_name: str,
+) -> dict[str, object]:
+    """Enrich one fixture imageinfo block with music context."""
+    enriched = json.loads(json.dumps(imageinfo))
+    metadata = enriched.setdefault("extmetadata", {})
+    metadata["ImageDescription"] = {
+        "value": f"{artist_name} rock band performing live at concert",
+    }
+    metadata["ObjectName"] = {"value": f"{artist_name} live concert"}
+    return enriched
 
 
 def test_parse_commons_image_info_builds_attribution() -> None:
@@ -57,11 +73,14 @@ def test_find_commons_image_by_artist_name_returns_best_licensed_match(
         limit: int,
         thumb_width: int,
     ) -> list[tuple[str, dict[str, Any]]]:
-        assert artist_name == "Francis of Delirium"
-        assert exact is True
+        if artist_name != "Francis of Delirium":
+            return []
         return [
             ("File:Unrelated.jpg", imageinfo),
-            ("File:Francis of Delirium (2024) 1.jpg", imageinfo),
+            (
+                "File:Francis of Delirium (2024) 1.jpg",
+                _music_imageinfo(imageinfo, artist_name="Francis of Delirium"),
+            ),
         ]
 
     monkeypatch.setattr(
@@ -69,7 +88,31 @@ def test_find_commons_image_by_artist_name_returns_best_licensed_match(
         fake_search,
     )
 
-    info = find_commons_image_by_artist_name("Francis of Delirium")
+    info = find_commons_image_by_artist_name(
+        "Francis of Delirium",
+        context=ArtistContext(
+            artist_mbid="mbid-francis",
+            resolution_source="commons_search",
+        ),
+    )
 
     assert info is not None
     assert info.commons_file == "Francis of Delirium (2024) 1.jpg"
+
+
+def test_find_commons_image_by_artist_name_rejects_homonym_filename(
+    monkeypatch,
+) -> None:
+    """Short artist names must not match longer Commons homonyms."""
+    fixture = Path("tests/fixtures/commons/imageinfo_cc_by.json")
+    payload = json.loads(fixture.read_text(encoding="utf-8"))
+    imageinfo = payload["query"]["pages"]["123"]["imageinfo"][0]
+
+    monkeypatch.setattr(
+        "music_review.pipeline.enrichment.commons_client._search_commons_image_candidates",
+        lambda *_args, **_kwargs: [
+            ("File:The Four Tops 1966.JPG", imageinfo),
+        ],
+    )
+
+    assert find_commons_image_by_artist_name("Tops") is None

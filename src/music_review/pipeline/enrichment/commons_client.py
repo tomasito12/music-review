@@ -16,6 +16,13 @@ from music_review.application.artist_image_attribution import (
     is_license_allowed,
 )
 from music_review.application.artist_image_models import CommonsImageInfo
+from music_review.pipeline.enrichment.commons_artist_match import (
+    artist_name_in_text,
+)
+from music_review.pipeline.enrichment.commons_image_confidence import (
+    ArtistContext,
+    score_commons_image_candidate,
+)
 from music_review.pipeline.enrichment.wikimedia_http import WIKIMEDIA_HEADERS
 
 logger = logging.getLogger(__name__)
@@ -44,25 +51,31 @@ def find_commons_image_by_artist_name(
     *,
     limit: int = _SEARCH_RESULT_LIMIT,
     thumb_width: int = _THUMB_WIDTH,
+    context: ArtistContext | None = None,
 ) -> CommonsImageInfo | None:
     """Search Commons by artist name and return the best licensed match."""
     name = artist_name.strip()
     if not name:
         return None
 
-    candidates = _search_commons_image_candidates(
-        name,
-        exact=True,
-        limit=limit,
-        thumb_width=thumb_width,
-    )
-    if not candidates:
-        candidates = _search_commons_image_candidates(
-            name,
-            exact=False,
-            limit=limit,
-            thumb_width=thumb_width,
-        )
+    search_queries = [name, f'"{name}" band', f'"{name}" musician', f'"{name}" concert']
+    seen_titles: set[str] = set()
+    candidates: list[tuple[str, dict[str, Any]]] = []
+
+    for query in search_queries:
+        for exact in (True, False):
+            batch = _search_commons_image_candidates(
+                query,
+                exact=exact,
+                limit=limit,
+                thumb_width=thumb_width,
+            )
+            for title, imageinfo in batch:
+                if title in seen_titles:
+                    continue
+                seen_titles.add(title)
+                candidates.append((title, imageinfo))
+
     if not candidates:
         logger.info("Commons search returned no files for %s", name)
         return None
@@ -72,17 +85,36 @@ def find_commons_image_by_artist_name(
         key=lambda item: score_commons_search_candidate(item[0], name),
         reverse=True,
     )
+    search_context = context or ArtistContext(resolution_source="commons_search")
+    if search_context.artist_mbid is None and context is None:
+        search_context = ArtistContext(resolution_source="commons_search")
+
     for title, imageinfo in ranked:
         score = score_commons_search_candidate(title, name)
         if score < _MIN_SEARCH_SCORE:
             continue
+        confidence = score_commons_image_candidate(
+            name,
+            title,
+            imageinfo,
+            context=search_context,
+        )
+        if not confidence.accepted:
+            logger.info(
+                "Rejected Commons candidate %s for %s: %s",
+                title,
+                name,
+                confidence.reasons,
+            )
+            continue
         info = parse_commons_image_info(title, imageinfo)
         if info is not None:
             logger.info(
-                "Commons search selected %s for %s (score=%d)",
+                "Commons search selected %s for %s (score=%d confidence=%d)",
                 info.commons_file,
                 name,
                 score,
+                confidence.score,
             )
             return info
 
@@ -98,11 +130,11 @@ def score_commons_search_candidate(commons_title: str, artist_name: str) -> int:
         return -100
 
     score = 0
-    if normalized_name in normalized_file:
+    if artist_name_in_text(artist_name, _filename_from_title(commons_title)):
         score += 50
 
     for token in _name_tokens(normalized_name):
-        if token in normalized_file:
+        if re.search(rf"\b{re.escape(token)}\b", normalized_file):
             score += 10
 
     if _EXCLUDED_FILENAME_RE.search(normalized_file.replace(" ", "_")):
@@ -173,6 +205,7 @@ def parse_commons_image_info(
         source_url=source_url,
         attribution_text=attribution_text,
         title=_strip_html(object_name),
+        imageinfo=imageinfo,
     )
 
 

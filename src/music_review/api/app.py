@@ -179,6 +179,7 @@ def create_app() -> FastAPI:
         """Return licensed thumbnails for multiple highlight artists in one request."""
         records = service.lookup_batch(
             [(item.artist_mbid, item.artist_name) for item in request.artists],
+            cached_only=not getattr(service, "resolve_on_demand", True),
         )
         items = tuple(
             ArtistImageBatchResult(

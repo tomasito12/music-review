@@ -226,9 +226,10 @@ def test_lookup_resolves_by_artist_name_when_mbid_missing(
         artist_name="Sibylle Kefer",
         status="ok",
         fetched_at=utc_now_iso(),
+        commons_file="Sibylle Kefer Vienna 2013.jpg",
         thumbnail_url="https://example.com/sibylle.jpg",
         license="CC BY 4.0",
-        attribution_text="credit",
+        attribution_text="Sibylle Kefer live in Vienna",
         source_url="https://commons.wikimedia.org/wiki/File:Sibylle.jpg",
     )
     service = ArtistImageService(
@@ -250,3 +251,140 @@ def test_lookup_resolves_by_artist_name_when_mbid_missing(
     index = load_artist_image_index(cache_path)
     assert "name:sibylle kefer" in index
     assert index["mbid-sibylle"].status == "ok"
+
+
+def test_lookup_re_resolves_when_cached_image_does_not_match_artist_name(
+    tmp_path: Path,
+) -> None:
+    """Stale cache entries with mismatched Commons files are refreshed."""
+    from music_review.application.artist_image_store import upsert_artist_image
+
+    cache_path = tmp_path / "artist_images.jsonl"
+    upsert_artist_image(
+        cache_path,
+        ArtistImageRecord(
+            artist_mbid="mbid-tops",
+            artist_name="Tops",
+            status="ok",
+            fetched_at=utc_now_iso(),
+            commons_file="The Four Tops 1966.JPG",
+            thumbnail_url="https://example.com/four-tops.jpg",
+            license="CC BY 2.0",
+            attribution_text="The Four Tops in 1966",
+            source_url="https://commons.wikimedia.org/wiki/File:The_Four_Tops.jpg",
+        ),
+    )
+    resolved = ArtistImageRecord(
+        artist_mbid="mbid-tops",
+        artist_name="Tops",
+        status="not_found",
+        fetched_at=utc_now_iso(),
+        reason="artist_name_mismatch",
+    )
+    service = ArtistImageService(
+        cache_path=cache_path,
+        images_dir=tmp_path / "artist_images",
+        negative_ttl_days=30,
+    )
+
+    with pytest.MonkeyPatch.context() as monkeypatch:
+        monkeypatch.setattr(
+            "music_review.application.artist_image_service.resolve_artist_image",
+            lambda **kwargs: resolved,
+        )
+        record = service.lookup("mbid-tops", artist_name="Tops")
+
+    assert record.status == "not_found"
+    assert record.reason == "artist_name_mismatch"
+
+
+def test_lookup_rejects_cache_when_display_name_differs_from_image(
+    tmp_path: Path,
+) -> None:
+    """MBID cache entries must match the requested display name from the UI."""
+    from music_review.application.artist_image_store import upsert_artist_image
+
+    cache_path = tmp_path / "artist_images.jsonl"
+    upsert_artist_image(
+        cache_path,
+        ArtistImageRecord(
+            artist_mbid="mbid-temple",
+            artist_name="The Black Angels",
+            status="ok",
+            fetched_at=utc_now_iso(),
+            commons_file="The Black Angels Austin Psych Fest 2013.jpg",
+            thumbnail_url="https://example.com/black-angels.jpg",
+            license="CC BY 2.0",
+            attribution_text="The Black Angels at Austin Psych Fest",
+            source_url="https://commons.wikimedia.org/wiki/File:Black_Angels.jpg",
+        ),
+    )
+    resolved = ArtistImageRecord(
+        artist_mbid="mbid-temple",
+        artist_name="Temple of Angels",
+        status="not_found",
+        fetched_at=utc_now_iso(),
+        reason="artist_name_mismatch",
+    )
+    service = ArtistImageService(
+        cache_path=cache_path,
+        images_dir=tmp_path / "artist_images",
+        negative_ttl_days=30,
+    )
+
+    with pytest.MonkeyPatch.context() as monkeypatch:
+        monkeypatch.setattr(
+            "music_review.application.artist_image_service.resolve_artist_image",
+            lambda **kwargs: resolved,
+        )
+        record = service.lookup(
+            "mbid-temple",
+            artist_name="Temple of Angels",
+        )
+
+    assert record.status == "not_found"
+    assert record.reason == "artist_name_mismatch"
+
+
+def test_lookup_cached_only_never_calls_resolver(tmp_path: Path) -> None:
+    """Cache-only lookups return synthetic misses without external resolution."""
+    cache_path = tmp_path / "artist_images.jsonl"
+    service = ArtistImageService(
+        cache_path=cache_path,
+        images_dir=tmp_path / "artist_images",
+        resolve_on_demand=False,
+    )
+    resolver = MagicMock()
+
+    with pytest.MonkeyPatch.context() as monkeypatch:
+        monkeypatch.setattr(
+            "music_review.application.artist_image_service.resolve_artist_image",
+            resolver,
+        )
+        record = service.lookup_cached_only("", artist_name="Unknown Artist")
+
+    assert record.status == "not_found"
+    assert record.reason == "cache_miss"
+    resolver.assert_not_called()
+
+
+def test_lookup_skips_resolver_when_on_demand_disabled(tmp_path: Path) -> None:
+    """Lookup uses cache-only mode when resolve_on_demand is false."""
+    cache_path = tmp_path / "artist_images.jsonl"
+    service = ArtistImageService(
+        cache_path=cache_path,
+        images_dir=tmp_path / "artist_images",
+        resolve_on_demand=False,
+    )
+    resolver = MagicMock()
+
+    with pytest.MonkeyPatch.context() as monkeypatch:
+        monkeypatch.setattr(
+            "music_review.application.artist_image_service.resolve_artist_image",
+            resolver,
+        )
+        record = service.lookup("mbid-missing", artist_name="Missing")
+
+    assert record.status == "not_found"
+    assert record.reason == "cache_miss"
+    resolver.assert_not_called()

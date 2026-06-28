@@ -605,11 +605,14 @@ def test_artist_image_endpoint_uses_cache_on_second_request(
         cache_path=cache_path,
         images_dir=tmp_path / "artist_images",
         negative_ttl_days=30,
+        resolve_on_demand=True,
     )
     calls: list[str] = []
 
-    def fake_resolve(*, artist_mbid: str | None = None, artist_name: str | None = None):
-        calls.append(str(artist_mbid))
+    def fake_resolve(**kwargs):
+        calls.append(str(kwargs.get("artist_mbid")))
+        artist_mbid = kwargs.get("artist_mbid")
+        artist_name = kwargs.get("artist_name")
         return ArtistImageRecord(
             artist_mbid=str(artist_mbid),
             artist_name=artist_name or "Alpha",
@@ -638,11 +641,33 @@ def test_artist_image_endpoint_uses_cache_on_second_request(
 class BatchFakeArtistImageService:
     """Artist image service stub with per-MBID lookup behavior."""
 
+    resolve_on_demand = True
+
     def lookup(
         self,
         artist_mbid: str,
         *,
         artist_name: str | None = None,
+        force: bool = False,
+        context=None,
+    ) -> ArtistImageRecord:
+        """Return ok only for mbid-alpha or Sibylle Kefer by name."""
+        return self._lookup_record(artist_mbid, artist_name=artist_name)
+
+    def lookup_cached_only(
+        self,
+        artist_mbid: str,
+        *,
+        artist_name: str | None = None,
+    ) -> ArtistImageRecord:
+        """Return cached-only results for batch cache mode tests."""
+        return self._lookup_record(artist_mbid, artist_name=artist_name)
+
+    def _lookup_record(
+        self,
+        artist_mbid: str,
+        *,
+        artist_name: str | None,
     ) -> ArtistImageRecord:
         """Return ok only for mbid-alpha or Sibylle Kefer by name."""
         if artist_mbid == "mbid-alpha":
@@ -680,6 +705,8 @@ class BatchFakeArtistImageService:
     def lookup_batch(
         self,
         artists: list[tuple[str, str | None]],
+        *,
+        cached_only: bool = False,
     ) -> dict[str, ArtistImageRecord]:
         """Return batch lookup results."""
         from music_review.application.artist_image_lookup import artist_image_lookup_key
@@ -689,7 +716,13 @@ class BatchFakeArtistImageService:
             lookup_key = artist_image_lookup_key(artist_mbid, artist_name=artist_name)
             if not lookup_key or lookup_key in results:
                 continue
-            results[lookup_key] = self.lookup(artist_mbid, artist_name=artist_name)
+            if cached_only:
+                results[lookup_key] = self.lookup_cached_only(
+                    artist_mbid,
+                    artist_name=artist_name,
+                )
+            else:
+                results[lookup_key] = self.lookup(artist_mbid, artist_name=artist_name)
         return results
 
     def public_thumbnail_url(self, record: ArtistImageRecord) -> str | None:

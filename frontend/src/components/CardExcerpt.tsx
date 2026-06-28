@@ -1,5 +1,6 @@
 import { useLayoutEffect, useRef, useState, type ReactElement } from "react";
 
+import { createExcerptFitChecker } from "../lib/excerptFitChecker";
 import {
   buildExcerptPreview,
   normalizeExcerptText,
@@ -20,6 +21,9 @@ export function CardExcerpt({ text }: CardExcerptProps): ReactElement {
       return;
     }
 
+    const checker = createExcerptFitChecker(element);
+    let frameId = 0;
+
     const updatePreview = (): void => {
       const normalized = normalizeExcerptText(text);
       if (normalized.length === 0) {
@@ -27,18 +31,27 @@ export function CardExcerpt({ text }: CardExcerptProps): ReactElement {
         return;
       }
 
-      const fits = (candidate: string): boolean => {
-        element.textContent = candidate;
-        return element.scrollHeight <= element.clientHeight + 1;
-      };
+      if (element.clientWidth <= 0) {
+        return;
+      }
 
-      setPreview(buildExcerptPreview(normalized, fits));
+      setPreview(buildExcerptPreview(normalized, checker.fits));
     };
 
-    updatePreview();
-    const observer = new ResizeObserver(updatePreview);
+    const scheduleUpdate = (): void => {
+      cancelAnimationFrame(frameId);
+      frameId = requestAnimationFrame(updatePreview);
+    };
+
+    scheduleUpdate();
+    const observer = new ResizeObserver(scheduleUpdate);
     observer.observe(element);
-    return () => observer.disconnect();
+
+    return () => {
+      cancelAnimationFrame(frameId);
+      observer.disconnect();
+      checker.destroy();
+    };
   }, [text]);
 
   return (

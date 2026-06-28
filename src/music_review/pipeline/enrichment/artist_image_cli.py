@@ -15,7 +15,6 @@ from music_review.application.artist_image_download import artist_image_download
 from music_review.application.artist_image_models import ArtistImageRecord
 from music_review.application.artist_image_resolver import resolve_artist_image
 from music_review.application.artist_image_service import ArtistImageService
-from music_review.application.artist_image_store import upsert_artist_image
 from music_review.config import resolve_data_path
 from music_review.data_access.paths import (
     DATA_ARTIST_IMAGES,
@@ -152,14 +151,11 @@ def _lookup_target(
             force=force,
         )
 
-    record = resolve_artist_image(
-        artist_mbid=None,
-        artist_name=artist_name or None,
+    return service.lookup(
+        "",
+        artist_name=artist_name,
+        force=force,
     )
-    if record.artist_mbid:
-        record = service._ensure_local_copy(record)
-        upsert_artist_image(output_path, record)
-    return record
 
 
 def _resolve_targets(args: argparse.Namespace) -> list[tuple[str, str]]:

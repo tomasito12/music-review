@@ -391,7 +391,13 @@ p {
 .results-body-aktuell {
   display: flex;
   flex-direction: column;
-  gap: 2.5rem;
+  gap: 3.25rem;
+}
+
+.results-body-entdecken {
+  display: flex;
+  flex-direction: column;
+  gap: 3.25rem;
 }
 
 .results-list-prelude {
@@ -399,7 +405,7 @@ p {
   flex-direction: column;
   gap: 1rem;
   margin: 0;
-  padding: 1.35rem 0 1.5rem;
+  padding: 1.5rem 0 1.75rem;
   border-top: 1px solid rgba(23, 32, 51, 0.14);
   border-bottom: 1px solid rgba(23, 32, 51, 0.14);
   background: linear-gradient(
@@ -410,15 +416,15 @@ p {
 }
 
 .entdecken-lead-entry {
-  margin-bottom: 1rem;
+  margin: 0;
 }
 
 .entdecken-list-prelude {
   display: flex;
   flex-direction: column;
   gap: 1rem;
-  margin: 0 0 1rem;
-  padding: 0 0 1.35rem;
+  margin: 0;
+  padding: 0 0 1.5rem;
   border-bottom: 1px solid rgba(23, 32, 51, 0.14);
 }
 
@@ -428,7 +434,7 @@ p {
 }
 
 .results-body-entdecken .ranking-section {
-  padding-top: 0.15rem;
+  padding-top: 0;
   border-top: none;
 }
 
@@ -635,7 +641,7 @@ p {
 
 .highlights-section {
   margin: 0;
-  padding: 0.25rem 0 0.35rem;
+  padding: 0.25rem 0 0.5rem;
   border-top: none;
 }
 
@@ -861,13 +867,13 @@ p {
 }
 
 .ranking-section-after-prelude {
-  padding-top: 0.15rem;
+  padding-top: 0;
   border-top: none;
 }
 
 .ranking-section-after-prelude .ranking-heading {
   margin-bottom: 1rem;
-  padding-top: 0.15rem;
+  padding-top: 0;
 }
 
 .ranking-section.results-reloading {
@@ -1023,13 +1029,14 @@ p {
 }
 
 .excerpt {
-  flex: 1;
+  flex: 0 1 auto;
   margin: 0;
   overflow: hidden;
   color: #3d4658;
   font-size: 0.86rem;
   line-height: 1.5;
   max-height: calc(1.5em * 3);
+  min-height: 0;
 }
 
 .tag-row {
