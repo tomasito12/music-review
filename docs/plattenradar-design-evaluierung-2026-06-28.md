@@ -363,7 +363,7 @@ echter API-Anbindung und gesetztem temporären Musikprofil, nicht nur gerouteten
 Job `visual-screenshots` in `.github/workflows/ci.yml`:
 
 1. Startet die deterministische Visual-API (`scripts/visual_api_server.py`, Port `8010`)
-2. Startet das Frontend mit `VITE_API_BASE_URL=http://127.0.0.1:8010`
+2. Startet das Frontend mit `VITE_API_BASE_URL=http://127.0.0.1:8010` via `scripts/run_live_screenshots.py`
 3. Führt `frontend/tests/visual/live-screenshots.spec.ts` aus
 4. Vergleicht gegen eingecheckte Referenz-PNGs unter `frontend/tests/visual/reference/`
 
@@ -390,7 +390,7 @@ hatch run frontend-screenshot-live
 Referenzbilder nach Layout-Änderungen bewusst aktualisieren:
 
 ```bash
-cd frontend && pnpm screenshot:update
+hatch run frontend-screenshot-update
 ```
 
 Manuelle Mock-Screenshots (Willkommen, Playlists, Redesign-Mock) bleiben unter

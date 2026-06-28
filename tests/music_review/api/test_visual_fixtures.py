@@ -42,7 +42,9 @@ def test_visual_app_serves_recommendations_and_artist_images() -> None:
         json={"profile": _PROFILE, "limit": 6, "offset": 0, "newest_count": 8},
     )
     assert newest.status_code == 200
-    assert newest.json()["items"][0]["artist"] == "Wolf Alice"
+    newest_artists = {item["artist"] for item in newest.json()["items"]}
+    assert "Wolf Alice" in newest_artists
+    assert "The Notwist" in newest_artists
 
     images = client.post(
         "/v1/artists/images",

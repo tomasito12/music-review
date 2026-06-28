@@ -15,7 +15,10 @@ LOGGER = logging.getLogger("music_review.visual_api_server")
 def main() -> None:
     """Run the visual fixture API server."""
     args = _parse_args()
-    logging.basicConfig(level=logging.INFO, format="%(levelname)s %(name)s: %(message)s")
+    logging.basicConfig(
+        level=logging.INFO,
+        format="%(levelname)s %(name)s: %(message)s",
+    )
     LOGGER.info("Starting visual API on %s:%s", args.host, args.port)
     uvicorn.run(create_visual_app(), host=args.host, port=args.port, log_level="info")
 

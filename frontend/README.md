@@ -28,24 +28,15 @@ The dev server defaults to `http://127.0.0.1:5173`. The API defaults to
 First-time setup for visual capture:
 
 ```bash
-pnpm playwright:install
-pnpm screenshot          # mock/manual captures -> frontend/screenshots/
-pnpm screenshot:live     # live API regression vs frontend/tests/visual/reference/
-pnpm screenshot:update   # refresh committed reference PNGs after layout changes
-```
-
-Or from the repo root:
-
-```bash
 hatch run frontend-playwright-install
-hatch run frontend-screenshot
-hatch run frontend-screenshot-live
+hatch run frontend-screenshot-live      # regression vs frontend/tests/visual/reference/
+hatch run frontend-screenshot-update    # refresh reference PNGs after layout changes
+hatch run frontend-screenshot           # mock/manual captures -> frontend/screenshots/
 ```
 
-Manual PNG exports land in `frontend/screenshots/` (gitignored). Committed
-reference screenshots for CI live against `frontend/tests/visual/reference/`.
-Playwright starts the dev server and visual fixture API automatically unless
-servers are already running locally.
+The live regression runner (`scripts/run_live_screenshots.py`) starts the visual
+fixture API and Vite together. Manual mock PNG exports still land in
+`frontend/screenshots/` (gitignored).
 
 ## Local full-stack
 

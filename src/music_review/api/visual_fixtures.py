@@ -64,7 +64,14 @@ _VISUAL_REVIEW_SPECS: tuple[tuple[int, str, str, int, float, str | None], ...] =
     (11, "Black Country, New Road", "Ants From Up There", 2022, 9, None),
     (12, "Dry Cleaning", "New Long Leg", 2021, 8, None),
     (901, "The Notwist", "Vertigo Days", 2021, 8, "mbid-notwist"),
-    (902, "Big Thief", "Dragon New Warm Mountain I Believe In You", 2022, 8, "mbid-big-thief"),
+    (
+        902,
+        "Big Thief",
+        "Dragon New Warm Mountain I Believe In You",
+        2022,
+        8,
+        "mbid-big-thief",
+    ),
     (903, "Japanese Breakfast", "Jubilee", 2021, 7, None),
     (904, "Dry Cleaning", "New Long Leg", 2021, 8, None),
     (905, "Low", "HEY WHAT", 2021, 9, None),
@@ -93,7 +100,9 @@ class VisualCorpusProvider:
     def metadata(self) -> Mapping[int, Mapping[str, Any]]:
         """Return metadata with optional artist MBIDs."""
         metadata: dict[int, dict[str, Any]] = {}
-        for review_id, artist, _album, _year, _rating, artist_mbid in _VISUAL_REVIEW_SPECS:
+        for spec in _VISUAL_REVIEW_SPECS:
+            review_id = spec[0]
+            artist_mbid = spec[5]
             row: dict[str, Any] = {"labels": ["Visual Fixture Label"]}
             if artist_mbid is not None:
                 row["artist_mbid"] = artist_mbid
@@ -102,7 +111,9 @@ class VisualCorpusProvider:
 
     def affinities(self) -> Sequence[Mapping[str, Any]]:
         """Return album-community affinities for all fixture reviews."""
-        return tuple(_affinity_for_review(review_id) for review_id, *_ in _VISUAL_REVIEW_SPECS)
+        return tuple(
+            _affinity_for_review(review_id) for review_id, *_ in _VISUAL_REVIEW_SPECS
+        )
 
     def affinities_by_review_id(self) -> Mapping[int, Mapping[str, Any]]:
         """Return affinities keyed by review id."""
@@ -181,7 +192,9 @@ def create_visual_app() -> FastAPI:
     """Return a FastAPI app wired to deterministic visual fixtures."""
     app = create_app()
     app.dependency_overrides[get_corpus_provider] = lambda: VisualCorpusProvider()
-    app.dependency_overrides[get_artist_image_service] = create_visual_artist_image_service
+    app.dependency_overrides[get_artist_image_service] = (
+        create_visual_artist_image_service
+    )
     return app
 
 
@@ -194,7 +207,7 @@ def _build_review(
         url=f"https://www.plattentests.de/rezension/visual/{review_id}",
         artist=artist,
         album=album,
-        text=f"{artist} – {album}. {_VISUAL_EXCERPT}",
+        text=f"{artist} - {album}. {_VISUAL_EXCERPT}",
         rating=rating,
         release_date=date(year, 6, 15),
         release_year=year,
