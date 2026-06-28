@@ -38,7 +38,7 @@ Override via `.env.server` or `MUSIC_REVIEW_SYNC_*` variables (same as `sync_dat
 |------|------|
 | Deploy **code** (image rebuild) | GitHub **Deploy** workflow (`run_update=true` optional) |
 | Scrape **new reviews** now | `./scripts/server.sh prod-update` |
-| Hourly scrape | `./scripts/server.sh install-hourly-cron` (once) |
+| Hourly scrape | `./scripts/server.sh install-cron` or automatic on **Deploy** workflow |
 | Long **artist-image** batch | `./scripts/server.sh start-artist-image-batch` or GitHub **Artist image batch** |
 | **MusicBrainz** metadata refresh | `./scripts/server.sh start-metadata-refresh` or GitHub **Metadata refresh** |
 | Copy **data/** locally | `./sync_data.sh pull` |
@@ -84,13 +84,13 @@ Override via `.env.server` or `MUSIC_REVIEW_SYNC_*` variables (same as `sync_dat
 ./scripts/server.sh compose --profile jobs ps -a
 ```
 
-Max review id on server should track [plattentests.de](https://www.plattentests.de/) (`rezi.php?show=ID`). If `reviews.jsonl` mtime is stale and cron is missing, run `install-hourly-cron` then `prod-update`.
+Max review id on server should track [plattentests.de](https://www.plattentests.de/) (`rezi.php?show=ID`). Cron is defined in `deploy/production.crontab` and reinstalled on every **Deploy** workflow run. If data is stale, run `prod-update` and verify `install-cron` / deploy succeeded.
 
 ## Write commands (agent may run when user asks)
 
 ```bash
 ./scripts/server.sh prod-update
-./scripts/server.sh install-hourly-cron
+./scripts/server.sh install-cron
 ./scripts/server.sh start-artist-image-batch
 ./scripts/server.sh start-metadata-refresh
 ./scripts/server.sh start-metadata-refresh overwrite

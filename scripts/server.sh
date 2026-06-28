@@ -20,7 +20,7 @@ SSH_KEY="${MUSIC_REVIEW_SYNC_KEY:-$HOME/.ssh/music_review_deploy}"
 SSH_PORT="${MUSIC_REVIEW_SYNC_PORT:-22}"
 DRY_RUN="${MUSIC_REVIEW_SERVER_DRY_RUN:-false}"
 
-HOURLY_CRON_MARKER="music-review-update"
+HOURLY_CRON_MARKER="music-review-managed"
 LOG_UPDATE="logs/hourly-update.log"
 CONTAINER_BATCH="music-review-artist-image-batch"
 CONTAINER_METADATA="music-review-metadata-refresh"
@@ -38,7 +38,8 @@ Read-only:
 
 Write (production changes):
   prod-update            Scrape new reviews + enrich metadata (docker job)
-  install-hourly-cron    Install hourly prod-update crontab on the server
+  install-cron           Install cron from deploy/production.crontab (IaC)
+  install-hourly-cron    Alias for install-cron
   start-artist-image-batch
                          Start detached artist-image batch on the server
   start-metadata-refresh [overwrite]
@@ -108,7 +109,7 @@ cmd_status() {
     echo '=== docker ==='
     docker compose ps -a 2>/dev/null || docker ps -a --filter name=music-review
     echo '=== crontab (deploy user) ==='
-    crontab -l 2>/dev/null | grep -E 'music-review|prod-update' || echo '(no music-review cron entries)'
+    crontab -l 2>/dev/null | grep -E 'music-review-managed|prod-update' || echo '(no music-review cron entries)'
     echo '=== reviews.jsonl ==='
     if [[ -f data/reviews.jsonl ]]; then
       python3 - <<'PY'
@@ -183,19 +184,16 @@ cmd_prod_update() {
   ")"
 }
 
-cmd_install_hourly_cron() {
-  local cron_line="0 * * * * cd ${SERVER_PATH} && mkdir -p logs && docker compose --profile jobs run --rm music-review-update >> ${LOG_UPDATE} 2>&1"
-  log "Installing hourly cron for ${HOURLY_CRON_MARKER}"
+cmd_install_cron() {
+  log "Installing production cron from deploy/production.crontab on ${SERVER_USER}@${SERVER_HOST}"
   if [[ "$DRY_RUN" == true ]]; then
-    log "DRY_RUN would install: $cron_line"
+    run_ssh "bash -lc $(printf '%q' "
+      cd '$SERVER_PATH'
+      DEPLOY_PATH='$SERVER_PATH' CRONTAB_DRY_RUN=true ./scripts/install_production_cron.sh
+    ")"
     return 0
   fi
-  run_ssh "bash -lc $(printf '%q' "
-    (crontab -l 2>/dev/null | grep -v '$HOURLY_CRON_MARKER' || true
-     echo '$cron_line') | crontab -
-    echo '=== crontab ==='
-    crontab -l
-  ")"
+  run_remote_script "install_production_cron.sh"
 }
 
 cmd_compose() {
@@ -253,8 +251,8 @@ main() {
         cmd_prod_update
         exit 0
         ;;
-      install-hourly-cron)
-        cmd_install_hourly_cron
+      install-cron|install-hourly-cron)
+        cmd_install_cron
         exit 0
         ;;
       start-artist-image-batch)

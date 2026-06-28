@@ -68,9 +68,15 @@ def test_server_sh_prod_update_dry_run_mentions_compose_profile() -> None:
     assert "--profile jobs" in combined
 
 
-def test_server_sh_install_hourly_cron_dry_run_shows_schedule() -> None:
-    """Cron installer dry-run prints the hourly schedule line."""
+def test_server_sh_install_cron_dry_run_invokes_installer() -> None:
+    """Cron install dry-run delegates to install_production_cron.sh on the server."""
+    result = _run_server_sh("install-cron")
+    assert result.returncode == 0
+    assert "install_production_cron.sh" in result.stdout
+
+
+def test_server_sh_install_hourly_cron_is_alias() -> None:
+    """Legacy install-hourly-cron command remains available."""
     result = _run_server_sh("install-hourly-cron")
     assert result.returncode == 0
-    assert "0 * * * *" in result.stdout
-    assert "music-review-update" in result.stdout
+    assert "install_production_cron.sh" in result.stdout + result.stderr

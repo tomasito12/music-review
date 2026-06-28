@@ -29,8 +29,9 @@ The workflow verifies lint/tests first, then deploys over SSH:
 1. Fetch and fast-forward the selected branch on the server.
 2. Rebuild the `music-review` image.
 3. Restart `music-review` and `caddy`.
-4. Optionally run `music-review-update`.
-5. Check the local Streamlit health endpoint in the container.
+4. Install production cron from `deploy/production.crontab` (idempotent).
+5. Optionally run `music-review-update`.
+6. Check the local Streamlit health endpoint in the container.
 
 ## Artist image batch (long-running)
 
@@ -68,8 +69,8 @@ Local helper: `./scripts/server.sh` (configure via `.env.server` from `.env.serv
 |---------|---------|
 | `./scripts/server.sh status` | Cron, Docker, max review id |
 | `./scripts/server.sh prod-update` | Scrape + enrich new reviews |
-| `./scripts/server.sh install-hourly-cron` | Enable hourly prod-update |
+| `./scripts/server.sh install-cron` | Apply `deploy/production.crontab` on server |
 | `./scripts/server.sh start-artist-image-batch` | Detached image batch |
 | `./scripts/server.sh start-metadata-refresh` | Detached metadata refresh |
 
-Agent playbook: `.cursor/skills/music-review-server/SKILL.md`. Data sync: `./sync_data.sh` (gitignored locally).
+Cron schedule lives in **`deploy/production.crontab`** and is reapplied on every GitHub **Deploy** run via `scripts/install_production_cron.sh`.

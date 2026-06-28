@@ -74,7 +74,7 @@ Use **`./scripts/server.sh`** for SSH operations against the production host (se
 | Server status (cron, reviews, Docker) | `./scripts/server.sh status` |
 | Hourly scrape log | `./scripts/server.sh logs update` |
 | Scrape new reviews on server now | `./scripts/server.sh prod-update` |
-| Install hourly cron on server | `./scripts/server.sh install-hourly-cron` |
+| Install hourly cron on server | `./scripts/server.sh install-cron` (also runs on each Deploy workflow) |
 | Sync `data/` with server | `./sync_data.sh pull` or `push` |
 
 ### Streamlit UI (German copy)
