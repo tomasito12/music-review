@@ -14,7 +14,8 @@ from __future__ import annotations
 import json
 import secrets
 import sqlite3
-from collections.abc import Mapping
+from collections.abc import Mapping, Sequence
+from dataclasses import dataclass
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
 from typing import Any
@@ -52,6 +53,20 @@ CREATE TABLE IF NOT EXISTS sessions (
     created_at TEXT NOT NULL,
     expires_at TEXT NOT NULL
 );
+
+CREATE TABLE IF NOT EXISTS user_favorites (
+    user_slug   TEXT    NOT NULL REFERENCES users(slug) ON DELETE CASCADE,
+    review_id   INTEGER NOT NULL,
+    source      TEXT,
+    artist      TEXT    NOT NULL,
+    album       TEXT    NOT NULL,
+    review_url  TEXT    NOT NULL,
+    saved_at    TEXT    NOT NULL,
+    PRIMARY KEY (user_slug, review_id)
+);
+
+CREATE INDEX IF NOT EXISTS idx_user_favorites_saved_at
+ON user_favorites(user_slug, saved_at DESC);
 """
 
 _CREATE_EMAIL_INDEX_SQL = """\
@@ -646,3 +661,115 @@ def purge_expired_sessions(conn: sqlite3.Connection) -> int:
     )
     conn.commit()
     return cur.rowcount
+
+
+# ---- Saved albums (Vormerken) -----------------------------------------------
+
+
+@dataclass(frozen=True, slots=True)
+class UserFavoriteInput:
+    """One album bookmark to store for a user."""
+
+    review_id: int
+    artist: str
+    album: str
+    review_url: str
+    source: str | None = None
+    saved_at: str | None = None
+
+
+def list_user_favorites(
+    conn: sqlite3.Connection,
+    slug: str,
+) -> list[dict[str, Any]]:
+    """Return saved albums for a user, newest first."""
+    rows = conn.execute(
+        """
+        SELECT review_id, source, artist, album, review_url, saved_at
+        FROM user_favorites
+        WHERE user_slug = ?
+        ORDER BY saved_at DESC
+        """,
+        (slug,),
+    ).fetchall()
+    return [
+        {
+            "review_id": int(row["review_id"]),
+            "source": row["source"],
+            "artist": str(row["artist"]),
+            "album": str(row["album"]),
+            "review_url": str(row["review_url"]),
+            "saved_at": str(row["saved_at"]),
+        }
+        for row in rows
+    ]
+
+
+def add_user_favorite(
+    conn: sqlite3.Connection,
+    slug: str,
+    favorite: UserFavoriteInput,
+) -> None:
+    """Save one album for a user. Existing rows are left unchanged."""
+    saved_at = favorite.saved_at or _utc_now_iso()
+    conn.execute(
+        """
+        INSERT OR IGNORE INTO user_favorites (
+            user_slug, review_id, source, artist, album, review_url, saved_at
+        ) VALUES (?, ?, ?, ?, ?, ?, ?)
+        """,
+        (
+            slug,
+            favorite.review_id,
+            favorite.source,
+            favorite.artist,
+            favorite.album,
+            favorite.review_url,
+            saved_at,
+        ),
+    )
+    conn.commit()
+
+
+def remove_user_favorite(
+    conn: sqlite3.Connection,
+    slug: str,
+    review_id: int,
+) -> bool:
+    """Remove one saved album. Return True when a row was deleted."""
+    cur = conn.execute(
+        "DELETE FROM user_favorites WHERE user_slug = ? AND review_id = ?",
+        (slug, review_id),
+    )
+    conn.commit()
+    return cur.rowcount > 0
+
+
+def merge_user_favorites(
+    conn: sqlite3.Connection,
+    slug: str,
+    items: Sequence[UserFavoriteInput],
+) -> int:
+    """Insert local favorites without overwriting existing server rows."""
+    merged = 0
+    for item in items:
+        saved_at = item.saved_at or _utc_now_iso()
+        cur = conn.execute(
+            """
+            INSERT OR IGNORE INTO user_favorites (
+                user_slug, review_id, source, artist, album, review_url, saved_at
+            ) VALUES (?, ?, ?, ?, ?, ?, ?)
+            """,
+            (
+                slug,
+                item.review_id,
+                item.source,
+                item.artist,
+                item.album,
+                item.review_url,
+                saved_at,
+            ),
+        )
+        merged += cur.rowcount
+    conn.commit()
+    return merged

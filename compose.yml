@@ -39,6 +39,7 @@ services:
       - .env
     environment:
       MUSIC_REVIEW_PROJECT_ROOT: /app
+      ARTIST_IMAGE_DOWNLOAD: "true"
     volumes:
       - ./data:/app/data
     command: ["python", "-m", "music_review.pipeline.production_update", "-v"]
@@ -65,6 +66,25 @@ services:
         "--all",
         "--download",
         "-v",
+      ]
+
+  music-review-metadata-refresh:
+    profiles:
+      - jobs
+    build:
+      context: .
+    env_file:
+      - .env
+    environment:
+      MUSIC_REVIEW_PROJECT_ROOT: /app
+    volumes:
+      - ./data:/app/data
+    command:
+      [
+        "python",
+        "-m",
+        "music_review.pipeline.enrichment.fetch_metadata",
+        "--update",
       ]
 
 volumes:

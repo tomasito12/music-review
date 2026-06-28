@@ -86,6 +86,51 @@ class TasteProfileResponse(ApiModel):
     profile: TasteProfile | None = None
 
 
+class SaveFavoriteRequest(ApiModel):
+    """Snapshot metadata stored when bookmarking one album."""
+
+    artist: str
+    album: str
+    review_url: str
+    source: RecommendationSource | None = None
+
+
+class MergeFavoriteItem(SaveFavoriteRequest):
+    """One local favorite row to merge into the user account."""
+
+    review_id: int
+    saved_at: str | None = None
+
+
+class MergeFavoritesRequest(ApiModel):
+    """Bulk merge payload for guest favorites after login."""
+
+    items: tuple[MergeFavoriteItem, ...] = Field(default_factory=tuple)
+
+
+class MergeFavoritesResponse(ApiModel):
+    """Result of merging local favorites into the account."""
+
+    merged_count: int = Field(ge=0)
+
+
+class SavedAlbumResponse(ApiModel):
+    """One saved album returned by the favorites API."""
+
+    review_id: int
+    artist: str
+    album: str
+    review_url: str
+    source: RecommendationSource | None = None
+    saved_at: str
+
+
+class FavoritesListResponse(ApiModel):
+    """Saved albums for the current user."""
+
+    items: tuple[SavedAlbumResponse, ...]
+
+
 class ArtistImageResponse(ApiModel):
     """Licensed artist thumbnail metadata for highlight cards."""
 

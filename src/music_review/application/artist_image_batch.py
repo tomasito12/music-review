@@ -80,6 +80,7 @@ def artist_targets_from_metadata(
     metadata_path: Path,
     *,
     artist_genres_path: Path | None = None,
+    review_ids: frozenset[int] | None = None,
 ) -> list[ArtistImageTarget]:
     """Aggregate unique artist targets with metadata hints from JSONL."""
     if not metadata_path.is_file():
@@ -89,6 +90,11 @@ def artist_targets_from_metadata(
     grouped: dict[str, dict[str, Any]] = {}
 
     for obj in iter_jsonl_objects(metadata_path, log_errors=False):
+        if review_ids is not None:
+            review_id = obj.get("review_id")
+            if not isinstance(review_id, int) or review_id not in review_ids:
+                continue
+
         artist_name = obj.get("artist")
         name = str(artist_name).strip() if artist_name else ""
         if not name:

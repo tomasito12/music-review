@@ -43,3 +43,19 @@ Manual start on the server:
 ```bash
 ./scripts/start_artist_image_batch.sh
 ```
+
+## Metadata refresh (long-running)
+
+Use the **Metadata refresh** GitHub Actions workflow to re-fetch MusicBrainz
+metadata for all reviews, then rebuild `metadata_imputed.jsonl` and
+`artist_genres.json`. The workflow exits after the container starts; monitor with
+`docker logs -f music-review-metadata-refresh`.
+
+Manual start on the server:
+
+```bash
+./scripts/start_metadata_refresh.sh
+METADATA_REFRESH_MODE=overwrite ./scripts/start_metadata_refresh.sh
+```
+
+See `docs/metadata-refresh.md` for details.

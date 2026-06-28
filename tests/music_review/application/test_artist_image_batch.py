@@ -67,6 +67,28 @@ def test_artist_targets_from_metadata_includes_name_only_queue(
     assert by_key["name:no mbid artist"].artist_mbid is None
 
 
+def test_artist_targets_from_metadata_filters_by_review_ids(tmp_path: Path) -> None:
+    """Review-id filtering limits targets to one scraped batch."""
+    metadata_path = tmp_path / "metadata.jsonl"
+    metadata_path.write_text(
+        "\n".join(
+            [
+                '{"review_id": 10, "artist": "Old", "artist_mbid": "mbid-old"}',
+                '{"review_id": 11, "artist": "New One", "artist_mbid": "mbid-new-1"}',
+                '{"review_id": 12, "artist": "New Two", "artist_mbid": "mbid-new-2"}',
+            ],
+        ),
+        encoding="utf-8",
+    )
+
+    targets = artist_targets_from_metadata(
+        metadata_path,
+        review_ids=frozenset({11, 12}),
+    )
+
+    assert {target.artist_mbid for target in targets} == {"mbid-new-1", "mbid-new-2"}
+
+
 def test_batch_selection_slice_process_all_ignores_limit() -> None:
     """The --all flag selects every target after the offset."""
     targets = [

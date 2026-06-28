@@ -11,6 +11,7 @@ import type { Recommendation } from "../types";
 const sampleRecommendations: Recommendation[] = [
   {
     rank: 1,
+    reviewId: 1,
     artist: "Alpha",
     album: "First",
     year: 2024,
@@ -25,6 +26,7 @@ const sampleRecommendations: Recommendation[] = [
   },
   {
     rank: 2,
+    reviewId: 2,
     artist: "Beta",
     album: "Second",
     year: 2024,

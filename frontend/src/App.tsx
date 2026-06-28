@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { ReactElement } from "react";
 
+import { AccountFavoritesSection } from "./components/AccountFavoritesSection";
 import { AuthDialog } from "./components/AuthDialog";
 import { AppShell } from "./components/AppShell";
 import { PlaylistGenerator } from "./components/PlaylistGenerator";
@@ -17,6 +18,8 @@ import {
 } from "./lib/aktuellPage";
 import { buildEntdeckenHeaderMessage } from "./lib/entdeckenPage";
 import { ApiClient } from "./lib/apiClient";
+import { ApiClientProvider, useApiClient } from "./lib/apiClientContext";
+import { FavoritesProvider, useFavorites } from "./lib/favoritesContext";
 import type { AuthSession } from "./lib/authSessionStorage";
 import {
   clearAuthSession,
@@ -150,10 +153,7 @@ export function App(): ReactElement {
     (route === "aktuell" || route === "entdecken") && temporaryProfile !== null;
   const resultsFilterOptions = useResultsFilterOptions(resultsFilterOptionsEnabled);
 
-  const apiClient = useCallback(
-    () => new ApiClient({ token: authSession?.accessToken }),
-    [authSession],
-  );
+  const apiClient = useApiClient();
 
   const pageTitle = useMemo(() => {
     switch (route) {
@@ -729,7 +729,216 @@ export function App(): ReactElement {
   ) : null;
 
   return (
-    <AppShell
+    <ApiClientProvider token={authSession?.accessToken}>
+      <FavoritesProvider accessToken={authSession?.accessToken ?? null}>
+        <AppContent
+          authMode={authMode}
+          authOpen={authOpen}
+          authSession={authSession}
+          applyProfileToOverview={applyProfileToOverview}
+          archiveError={archiveError}
+          archiveLoading={archiveLoading}
+          archiveLoadingMore={archiveLoadingMore}
+          archiveRecommendations={archiveRecommendations}
+          archiveTotal={archiveTotal}
+          aktuellError={aktuellError}
+          aktuellFilterSummary={aktuellFilterSummary}
+          archiveFilterSummary={archiveFilterSummary}
+          aktuellLoading={aktuellLoading}
+          aktuellLoadingMore={aktuellLoadingMore}
+          aktuellRecommendations={aktuellRecommendations}
+          aktuellTotal={aktuellTotal}
+          canLoadMoreArchive={canLoadMoreArchive}
+          canLoadMoreAktuell={canLoadMoreAktuell}
+          createPlaylist={createPlaylist}
+          discardProfileChanges={discardProfileChanges}
+          editProfile={editProfile}
+          finishSetup={finishSetup}
+          handleAuthSuccess={handleAuthSuccess}
+          handleDismissSavePrompt={handleDismissSavePrompt}
+          handleResultCommunityWeightsChange={handleResultCommunityWeightsChange}
+          handleResultFilterSettingsChange={handleResultFilterSettingsChange}
+          handleResultPresetSelect={handleResultPresetSelect}
+          handleUpdateRoundsChange={handleUpdateRoundsChange}
+          hasUnsavedProfileChanges={hasUnsavedProfileChanges}
+          isAuthenticated={isAuthenticated}
+          lastSavedProfile={lastSavedProfile}
+          loadMoreArchiveRecommendations={loadMoreArchiveRecommendations}
+          loadMoreAktuellRecommendations={loadMoreAktuellRecommendations}
+          logout={logout}
+          navigate={navigate}
+          openInitialProfileSetup={openInitialProfileSetup}
+          openLogin={openLogin}
+          openProfileOverview={openProfileOverview}
+          openSaveProfile={openSaveProfile}
+          playlistSource={playlistSource}
+          profileChangesError={profileChangesError}
+          profileChangesSavedMessage={profileChangesSavedMessage}
+          profileEditStep={profileEditStep}
+          profileReturnRoute={profileReturnRoute}
+          profileSaveBanner={profileSaveBanner}
+          profileSavedNotice={profileSavedNotice}
+          profileSession={profileSession}
+          profileSetupMode={profileSetupMode}
+          profileWizardContext={profileWizardContext}
+          resultsFilterOptions={resultsFilterOptions}
+          retryArchiveLoad={retryArchiveLoad}
+          retryAktuellLoad={retryAktuellLoad}
+          route={route}
+          saveProfileChanges={saveProfileChanges}
+          savePromptSlot={savePromptSlot}
+          setAuthMode={setAuthMode}
+          setAuthOpen={setAuthOpen}
+          setProfileEditStep={setProfileEditStep}
+          setProfileWizardContext={setProfileWizardContext}
+          showRecommendations={showRecommendations}
+          temporaryProfile={temporaryProfile}
+          updateRounds={updateRounds}
+          userState={userState}
+        />
+      </FavoritesProvider>
+    </ApiClientProvider>
+  );
+}
+
+interface AppContentProps {
+  applyProfileToOverview: (result: ProfileSetupResult) => void;
+  authMode: "login" | "save-profile";
+  authOpen: boolean;
+  authSession: AuthSession | null;
+  archiveError: string | null;
+  archiveFilterSummary: string[] | undefined;
+  archiveLoading: boolean;
+  archiveLoadingMore: boolean;
+  archiveRecommendations: Recommendation[] | null;
+  archiveTotal: number;
+  aktuellError: string | null;
+  aktuellFilterSummary: string[] | undefined;
+  aktuellLoading: boolean;
+  aktuellLoadingMore: boolean;
+  aktuellRecommendations: Recommendation[] | null;
+  aktuellTotal: number;
+  canLoadMoreArchive: boolean;
+  canLoadMoreAktuell: boolean;
+  createPlaylist: (source: RecommendationSource) => void;
+  discardProfileChanges: () => void;
+  editProfile: () => void;
+  finishSetup: (result: ProfileSetupResult) => Promise<void>;
+  handleAuthSuccess: (session: AuthSession) => void;
+  handleDismissSavePrompt: () => void;
+  handleResultCommunityWeightsChange: (weights: Record<string, number>) => void;
+  handleResultFilterSettingsChange: (settings: TasteFilterSettings) => void;
+  handleResultPresetSelect: (preset: TastePreset) => void;
+  handleUpdateRoundsChange: (value: string) => void;
+  hasUnsavedProfileChanges: boolean;
+  isAuthenticated: boolean;
+  lastSavedProfile: TemporaryTasteProfile | null;
+  loadMoreArchiveRecommendations: () => Promise<void>;
+  loadMoreAktuellRecommendations: () => Promise<void>;
+  logout: () => void;
+  navigate: (route: AppRoute) => void;
+  openInitialProfileSetup: () => void;
+  openLogin: () => void;
+  openProfileOverview: () => void;
+  openSaveProfile: () => void;
+  playlistSource: RecommendationSource;
+  profileChangesError: string | null;
+  profileChangesSavedMessage: string | null;
+  profileEditStep: SetupStep | undefined;
+  profileReturnRoute: ProfileReturnRoute | null;
+  profileSaveBanner: ReturnType<typeof resolveProfileSaveBannerState>;
+  profileSavedNotice: boolean;
+  profileSession: ProfileSetupResult | null;
+  profileSetupMode: ProfileSetupMode;
+  profileWizardContext: ProfileEntryContext | null;
+  resultsFilterOptions: ReturnType<typeof useResultsFilterOptions>;
+  retryArchiveLoad: () => void;
+  retryAktuellLoad: () => void;
+  route: AppRoute;
+  saveProfileChanges: () => Promise<void>;
+  savePromptSlot: ReactElement | null;
+  setAuthMode: (mode: "login" | "save-profile") => void;
+  setAuthOpen: (open: boolean) => void;
+  setProfileEditStep: (step: SetupStep | undefined) => void;
+  setProfileWizardContext: (context: ProfileEntryContext | null) => void;
+  showRecommendations: () => void;
+  temporaryProfile: TemporaryTasteProfile | null;
+  updateRounds: string;
+  userState: UserState;
+}
+
+function AppContent({
+  applyProfileToOverview,
+  authMode,
+  authOpen,
+  authSession,
+  archiveError,
+  archiveFilterSummary,
+  archiveLoading,
+  archiveLoadingMore,
+  archiveRecommendations,
+  archiveTotal,
+  aktuellError,
+  aktuellFilterSummary,
+  aktuellLoading,
+  aktuellLoadingMore,
+  aktuellRecommendations,
+  aktuellTotal,
+  canLoadMoreArchive,
+  canLoadMoreAktuell,
+  createPlaylist,
+  discardProfileChanges,
+  editProfile,
+  finishSetup,
+  handleAuthSuccess,
+  handleDismissSavePrompt,
+  handleResultCommunityWeightsChange,
+  handleResultFilterSettingsChange,
+  handleResultPresetSelect,
+  handleUpdateRoundsChange,
+  hasUnsavedProfileChanges,
+  isAuthenticated,
+  isSavingProfileChanges,
+  lastSavedProfile,
+  loadMoreArchiveRecommendations,
+  loadMoreAktuellRecommendations,
+  logout,
+  navigate,
+  openInitialProfileSetup,
+  openLogin,
+  openProfileOverview,
+  openSaveProfile,
+  playlistSource,
+  profileChangesError,
+  profileChangesSavedMessage,
+  profileEditStep,
+  profileReturnRoute,
+  profileSaveBanner,
+  profileSavedNotice,
+  profileSession,
+  profileSetupMode,
+  profileWizardContext,
+  resultsFilterOptions,
+  retryArchiveLoad,
+  retryAktuellLoad,
+  route,
+  saveProfileChanges,
+  savePromptSlot,
+  setAuthMode,
+  setAuthOpen,
+  setProfileEditStep,
+  setProfileWizardContext,
+  showRecommendations,
+  temporaryProfile,
+  updateRounds,
+  userState,
+}: AppContentProps): ReactElement {
+  const apiClient = useApiClient();
+  const { savedCount } = useFavorites();
+
+  return (
+    <>
+      <AppShell
       activeRoute={route}
       onLoginClick={openLogin}
       onNavigate={navigate}
@@ -738,6 +947,7 @@ export function App(): ReactElement {
         void saveProfileChanges();
       }}
       profileSaveBanner={profileSaveBanner}
+      savedCount={savedCount}
       userEmail={authSession?.email ?? null}
       userState={userState}
     >
@@ -866,6 +1076,10 @@ export function App(): ReactElement {
             </>
           )}
           </div>
+          <AccountFavoritesSection
+            isAuthenticated={isAuthenticated}
+            onOpenLogin={openLogin}
+          />
         </section>
       )}
       {authOpen && (
@@ -879,6 +1093,7 @@ export function App(): ReactElement {
         />
       )}
     </AppShell>
+    </>
   );
 }
 

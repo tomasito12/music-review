@@ -80,6 +80,13 @@ def _build_arg_parser() -> argparse.ArgumentParser:
     parser.add_argument("--skip-graph-affinities", action="store_true")
     parser.add_argument("--skip-dq", action="store_true")
     parser.add_argument("--dq-strict", action="store_true")
+    parser.add_argument(
+        "--no-fetch-artist-images",
+        action="store_true",
+        help=(
+            "Skip Wikimedia Commons artist image prefetch for newly scraped reviews."
+        ),
+    )
     parser.add_argument("-v", "--verbose", action="store_true")
     return parser
 

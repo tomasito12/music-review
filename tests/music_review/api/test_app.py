@@ -503,11 +503,159 @@ def test_me_requires_bearer_token(user_db: sqlite3.Connection) -> None:
     assert response.status_code == 401
 
 
+def _auth_token(client: TestClient, user_db: sqlite3.Connection) -> str:
+    """Register one user and return a bearer token."""
+    response = client.post(
+        "/v1/auth/register",
+        json={
+            "email": "favorites@example.com",
+            "password": "secret123",
+            "profile": _profile_payload(),
+        },
+    )
+    assert response.status_code == 201
+    return response.json()["access_token"]
+
+
+def test_favorites_requires_bearer_token(user_db: sqlite3.Connection) -> None:
+    """Favorites endpoints reject missing bearer tokens."""
+    client = _client(user_db)
+    assert client.get("/v1/me/favorites").status_code == 401
+    assert (
+        client.put(
+            "/v1/me/favorites/1",
+            json={
+                "artist": "Alpha",
+                "album": "First",
+                "review_url": "https://example.com/1",
+                "source": "archive",
+            },
+        ).status_code
+        == 401
+    )
+
+
+def test_favorites_put_get_delete_roundtrip(user_db: sqlite3.Connection) -> None:
+    """Users can save, list, and remove one favorite album."""
+    client = _client(user_db)
+    token = _auth_token(client, user_db)
+    headers = {"Authorization": f"Bearer {token}"}
+
+    put_response = client.put(
+        "/v1/me/favorites/1",
+        json={
+            "artist": "Alpha",
+            "album": "First",
+            "review_url": "https://example.com/1",
+            "source": "new_reviews",
+        },
+        headers=headers,
+    )
+    assert put_response.status_code == 200
+    saved = put_response.json()
+    assert saved["review_id"] == 1
+    assert saved["artist"] == "Alpha"
+    assert saved["source"] == "new_reviews"
+
+    list_response = client.get("/v1/me/favorites", headers=headers)
+    assert list_response.status_code == 200
+    items = list_response.json()["items"]
+    assert len(items) == 1
+    assert items[0]["album"] == "First"
+
+    duplicate_response = client.put(
+        "/v1/me/favorites/1",
+        json={
+            "artist": "Changed",
+            "album": "Changed",
+            "review_url": "https://example.com/1",
+            "source": "archive",
+        },
+        headers=headers,
+    )
+    assert duplicate_response.status_code == 200
+    assert duplicate_response.json()["artist"] == "Alpha"
+
+    delete_response = client.delete("/v1/me/favorites/1", headers=headers)
+    assert delete_response.status_code == 204
+    assert client.get("/v1/me/favorites", headers=headers).json()["items"] == []
+
+
+def test_favorites_put_returns_404_for_unknown_review(
+    user_db: sqlite3.Connection,
+) -> None:
+    """Saving an unknown review id returns 404."""
+    client = _client(user_db)
+    token = _auth_token(client, user_db)
+    response = client.put(
+        "/v1/me/favorites/999",
+        json={
+            "artist": "Ghost",
+            "album": "Missing",
+            "review_url": "https://example.com/999",
+            "source": "archive",
+        },
+        headers={"Authorization": f"Bearer {token}"},
+    )
+    assert response.status_code == 404
+
+
+def test_favorites_merge_skips_unknown_reviews(user_db: sqlite3.Connection) -> None:
+    """Merge inserts valid rows and skips unknown review ids."""
+    client = _client(user_db)
+    token = _auth_token(client, user_db)
+    headers = {"Authorization": f"Bearer {token}"}
+
+    merge_response = client.post(
+        "/v1/me/favorites/merge",
+        json={
+            "items": [
+                {
+                    "review_id": 1,
+                    "artist": "Alpha",
+                    "album": "First",
+                    "review_url": "https://example.com/1",
+                    "source": "archive",
+                    "saved_at": "2026-01-01T10:00:00Z",
+                },
+                {
+                    "review_id": 999,
+                    "artist": "Ghost",
+                    "album": "Missing",
+                    "review_url": "https://example.com/999",
+                    "source": "archive",
+                },
+            ],
+        },
+        headers=headers,
+    )
+    assert merge_response.status_code == 200
+    assert merge_response.json()["merged_count"] == 1
+    items = client.get("/v1/me/favorites", headers=headers).json()["items"]
+    assert len(items) == 1
+    assert items[0]["review_id"] == 1
+
+
 class FakeArtistImageService:
     """Minimal artist image service stub for API tests."""
 
-    def __init__(self, record: ArtistImageRecord) -> None:
+    def __init__(
+        self,
+        record: ArtistImageRecord,
+        *,
+        has_local_file: bool = False,
+    ) -> None:
         self._record = record
+        self._has_local_file = has_local_file
+
+    def lookup_cached_only(
+        self,
+        artist_mbid: str,
+        *,
+        artist_name: str | None = None,
+    ) -> ArtistImageRecord:
+        """Return a fixed lookup result."""
+        return self._mapped_record(artist_mbid, artist_name=artist_name)
 
     def lookup(
         self,
@@ -516,6 +664,14 @@ class FakeArtistImageService:
         artist_name: str | None = None,
     ) -> ArtistImageRecord:
         """Return a fixed lookup result."""
+        return self._mapped_record(artist_mbid, artist_name=artist_name)
+
+    def _mapped_record(
+        self,
+        artist_mbid: str,
+        *,
+        artist_name: str | None = None,
+    ) -> ArtistImageRecord:
         return ArtistImageRecord(
             artist_mbid=artist_mbid,
             artist_name=artist_name or self._record.artist_name,
@@ -526,22 +682,35 @@ class FakeArtistImageService:
             attribution_text=self._record.attribution_text,
             source_url=self._record.source_url,
             reason=self._record.reason,
+            local_path=self._record.local_path,
         )
 
     def lookup_batch(
         self,
         artists: list[tuple[str, str | None]],
+        *,
+        cached_only: bool = False,
     ) -> dict[str, ArtistImageRecord]:
         """Return fixed lookup results for a batch request."""
+        from music_review.application.artist_image_lookup import artist_image_lookup_key
+
         return {
-            artist_mbid.strip(): self.lookup(artist_mbid, artist_name=artist_name)
+            artist_image_lookup_key(artist_mbid, artist_name=artist_name): (
+                self.lookup_cached_only(artist_mbid, artist_name=artist_name)
+            )
             for artist_mbid, artist_name in artists
-            if artist_mbid.strip()
+            if artist_image_lookup_key(artist_mbid, artist_name=artist_name)
         }
 
+    def local_file_exists(self, record: ArtistImageRecord) -> bool:
+        """Return whether the stub exposes a local thumbnail."""
+        return self._has_local_file and record.status == "ok"
+
     def public_thumbnail_url(self, record: ArtistImageRecord) -> str | None:
-        """Return the remote thumbnail URL for API responses."""
-        return record.thumbnail_url
+        """Return the local API thumbnail URL when available."""
+        if not self.local_file_exists(record):
+            return None
+        return f"/v1/artists/{record.artist_mbid}/image/file"
 
 
 def test_artist_image_endpoint_returns_cached_thumbnail() -> None:
@@ -556,7 +725,9 @@ def test_artist_image_endpoint_returns_cached_thumbnail() -> None:
             license="CC BY 4.0",
             attribution_text="Alpha by User, CC BY 4.0 via Wikimedia Commons",
             source_url="https://commons.wikimedia.org/wiki/File:Alpha.jpg",
+            local_path="artist_images/mbid-alpha.jpg",
         ),
+        has_local_file=True,
     )
     client = _client(artist_image_service=service)  # type: ignore[arg-type]
 
@@ -569,11 +740,33 @@ def test_artist_image_endpoint_returns_cached_thumbnail() -> None:
     assert response.json() == {
         "artist_mbid": "mbid-alpha",
         "artist_name": "Alpha",
-        "thumbnail_url": "https://example.com/alpha.jpg",
+        "thumbnail_url": "/v1/artists/mbid-alpha/image/file",
         "attribution_text": "Alpha by User, CC BY 4.0 via Wikimedia Commons",
         "license": "CC BY 4.0",
         "source_url": "https://commons.wikimedia.org/wiki/File:Alpha.jpg",
     }
+
+
+def test_artist_image_endpoint_returns_404_without_local_file() -> None:
+    """Artist image endpoint ignores cache entries without a local JPG."""
+    service = FakeArtistImageService(
+        ArtistImageRecord(
+            artist_mbid="mbid-alpha",
+            artist_name="Alpha",
+            status="ok",
+            fetched_at=utc_now_iso(),
+            thumbnail_url="https://example.com/alpha.jpg",
+            license="CC BY 4.0",
+            attribution_text="Alpha by User, CC BY 4.0 via Wikimedia Commons",
+            source_url="https://commons.wikimedia.org/wiki/File:Alpha.jpg",
+        ),
+        has_local_file=False,
+    )
+    client = _client(artist_image_service=service)  # type: ignore[arg-type]
+
+    response = client.get("/v1/artists/mbid-alpha/image")
+
+    assert response.status_code == 404
 
 
 def test_artist_image_endpoint_returns_404_when_unavailable() -> None:
@@ -601,9 +794,12 @@ def test_artist_image_endpoint_uses_cache_on_second_request(
 ) -> None:
     """Second request for the same MBID reuses the JSONL cache."""
     cache_path = tmp_path / "artist_images.jsonl"
+    images_dir = tmp_path / "artist_images"
+    images_dir.mkdir()
+    (images_dir / "mbid-alpha.jpg").write_bytes(b"fake-jpeg")
     service = ArtistImageService(
         cache_path=cache_path,
-        images_dir=tmp_path / "artist_images",
+        images_dir=images_dir,
         negative_ttl_days=30,
         resolve_on_demand=True,
     )
@@ -622,7 +818,25 @@ def test_artist_image_endpoint_uses_cache_on_second_request(
             license="CC BY 4.0",
             attribution_text="Alpha by User, CC BY 4.0 via Wikimedia Commons",
             source_url="https://commons.wikimedia.org/wiki/File:Alpha.jpg",
+            local_path="artist_images/mbid-alpha.jpg",
         )
+
+    from music_review.application.artist_image_store import upsert_artist_image
+
+    upsert_artist_image(
+        cache_path,
+        ArtistImageRecord(
+            artist_mbid="mbid-alpha",
+            artist_name="Alpha",
+            status="ok",
+            fetched_at=utc_now_iso(),
+            thumbnail_url="https://example.com/alpha.jpg",
+            license="CC BY 4.0",
+            attribution_text="Alpha by User, CC BY 4.0 via Wikimedia Commons",
+            source_url="https://commons.wikimedia.org/wiki/File:Alpha.jpg",
+            local_path="artist_images/mbid-alpha.jpg",
+        ),
+    )
 
     monkeypatch.setattr(
         "music_review.application.artist_image_service.resolve_artist_image",
@@ -635,13 +849,14 @@ def test_artist_image_endpoint_uses_cache_on_second_request(
 
     assert first.status_code == 200
     assert second.status_code == 200
-    assert len(calls) == 1
+    assert len(calls) == 0
 
 
 class BatchFakeArtistImageService:
     """Artist image service stub with per-MBID lookup behavior."""
 
     resolve_on_demand = True
+    has_local_file = True
 
     def lookup(
         self,
@@ -726,8 +941,14 @@ class BatchFakeArtistImageService:
         return results
 
     def public_thumbnail_url(self, record: ArtistImageRecord) -> str | None:
-        """Return the remote thumbnail URL for API responses."""
-        return record.thumbnail_url
+        """Return the local API thumbnail URL when available."""
+        if record.status != "ok" or not self.has_local_file:
+            return None
+        return f"/v1/artists/{record.artist_mbid}/image/file"
+
+    def local_file_exists(self, record: ArtistImageRecord) -> bool:
+        """Return whether the stub exposes a local thumbnail."""
+        return self.has_local_file and record.status == "ok"
 
 
 def test_artist_images_batch_endpoint_returns_available_images() -> None:
@@ -748,8 +969,30 @@ def test_artist_images_batch_endpoint_returns_available_images() -> None:
     payload = response.json()
     assert payload["items"][0]["artist_mbid"] == "mbid-alpha"
     assert payload["items"][0]["image"]["artist_mbid"] == "mbid-alpha"
+    assert payload["items"][0]["image"]["thumbnail_url"] == (
+        "/v1/artists/mbid-alpha/image/file"
+    )
     assert payload["items"][1]["artist_mbid"] == "mbid-missing"
     assert payload["items"][1]["image"] is None
+
+
+def test_artist_images_batch_endpoint_skips_cache_without_local_file() -> None:
+    """Batch endpoint returns null when only remote cache metadata exists."""
+    service = BatchFakeArtistImageService()
+    service.has_local_file = False
+    client = _client(artist_image_service=service)  # type: ignore[arg-type]
+
+    response = client.post(
+        "/v1/artists/images",
+        json={
+            "artists": [
+                {"artist_mbid": "mbid-alpha", "artist_name": "Alpha"},
+            ],
+        },
+    )
+
+    assert response.status_code == 200
+    assert response.json()["items"][0]["image"] is None
 
 
 def test_artist_images_batch_endpoint_resolves_name_only_artists() -> None:
@@ -769,6 +1012,9 @@ def test_artist_images_batch_endpoint_resolves_name_only_artists() -> None:
     payload = response.json()
     assert payload["items"][0]["artist_mbid"] == "name:sibylle kefer"
     assert payload["items"][0]["image"]["artist_name"] == "Sibylle Kefer"
+    assert payload["items"][0]["image"]["thumbnail_url"] == (
+        "/v1/artists/mbid-sibylle/image/file"
+    )
 
 
 def test_artist_image_file_endpoint_returns_local_jpg(tmp_path) -> None:

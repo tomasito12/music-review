@@ -1,7 +1,10 @@
 import type { ReactElement } from "react";
 
+import { artistInitials } from "../lib/artistInitials";
 import type { ArtistImageData } from "../lib/artistImageApi";
 import { CardExcerpt } from "./CardExcerpt";
+import { SaveHeartButton } from "./SaveHeartButton";
+import { useFavorites } from "../lib/favoritesContext";
 import { recommendationCardMetaParts } from "../lib/recommendationCardMeta";
 import {
   recommendationTagStyle,
@@ -33,6 +36,22 @@ type HighlightColumnCardProps =
   | HighlightColumnCardHighlightProps
   | HighlightColumnCardRankedProps;
 
+type HighlightMediaMode = "photo" | "loading" | "textOnly";
+
+function resolveHighlightMediaMode(
+  image: ArtistImageData | null,
+  imageLoading: boolean,
+  variant: "highlight" | "ranked",
+): HighlightMediaMode {
+  if (image !== null) {
+    return "photo";
+  }
+  if (imageLoading) {
+    return "loading";
+  }
+  return variant === "highlight" ? "textOnly" : "loading";
+}
+
 function HighlightTileMedia({
   artistName,
   image,
@@ -45,18 +64,12 @@ function HighlightTileMedia({
   if (image !== null) {
     return <ArtistImage artistName={artistName} image={image} />;
   }
-  if (imageLoading) {
-    return (
-      <div
-        aria-hidden="true"
-        className="highlight-tile-media-panel highlight-tile-media-loading"
-      />
-    );
-  }
   return (
     <div
       aria-hidden="true"
-      className="highlight-tile-media-panel highlight-tile-media-fallback"
+      className={`highlight-tile-media-panel${
+        imageLoading ? " highlight-tile-media-loading" : " highlight-tile-media-fallback"
+      }`}
     />
   );
 }
@@ -64,45 +77,60 @@ function HighlightTileMedia({
 /** One full-width highlight tile with alternating image placement. */
 export function HighlightColumnCard(props: HighlightColumnCardProps): ReactElement {
   const { image, imageLoading, imageOnStart, showSaveAction } = props;
+  const variant = props.variant ?? "highlight";
   const recommendation =
-    props.variant === "ranked" ? props.recommendation : props.highlight.recommendation;
+    variant === "ranked" ? props.recommendation : props.highlight.recommendation;
   const label =
-    props.variant === "ranked"
+    variant === "ranked"
       ? formatRankPhotoKicker(recommendation.rank)
       : props.highlight.label;
-  const description = props.variant === "ranked" ? null : props.highlight.description;
-  const isPrimary =
-    props.variant !== "ranked" && props.highlight.label === "Beste Passung";
+  const description = variant === "ranked" ? null : props.highlight.description;
+  const isPrimary = variant !== "ranked" && props.highlight.label === "Beste Passung";
   const metaParts = recommendationCardMetaParts(recommendation);
   const tags = visibleRecommendationTags(recommendation.tags);
+  const mediaMode = resolveHighlightMediaMode(image, imageLoading, variant);
+  const { isSaved, isToggling, toggleSave } = useFavorites();
+  const saved = isSaved(recommendation.reviewId);
+  const tileClassName = [
+    "highlight-tile",
+    mediaMode === "textOnly"
+      ? "highlight-tile-text-only"
+      : imageOnStart
+        ? "highlight-tile-image-start"
+        : "highlight-tile-image-end",
+    isPrimary ? "highlight-tile-primary" : "",
+  ]
+    .filter(Boolean)
+    .join(" ");
 
   return (
-    <article
-      className={`highlight-tile${
-        imageOnStart ? " highlight-tile-image-start" : " highlight-tile-image-end"
-      }${isPrimary ? " highlight-tile-primary" : ""}`}
-    >
-      <div className="highlight-tile-media">
-        <HighlightTileMedia
-          artistName={recommendation.artist}
-          image={image}
-          imageLoading={imageLoading}
-        />
-      </div>
+    <article className={tileClassName}>
+      {mediaMode !== "textOnly" && (
+        <div className="highlight-tile-media">
+          <HighlightTileMedia
+            artistName={recommendation.artist}
+            image={image}
+            imageLoading={mediaMode === "loading"}
+          />
+        </div>
+      )}
 
       <div className="highlight-tile-body">
+        {mediaMode === "textOnly" && (
+          <p aria-hidden="true" className="highlight-tile-initials">
+            {artistInitials(recommendation.artist)}
+          </p>
+        )}
+
         {showSaveAction && (
-          <button
-            aria-label="Vormerken"
+          <SaveHeartButton
             className="highlight-save-heart"
-            disabled
-            title="Vormerken kommt in einer späteren Ausbaustufe."
-            type="button"
-          >
-            <svg aria-hidden="true" className="card-save-heart-icon" viewBox="0 0 24 24">
-              <path d="M12 20.25s-6.9-4.35-9.33-7.58C.86 10.03 1.1 6.88 3.45 5.1 5.8 3.32 8.9 4.04 12 6.7c3.1-2.66 6.2-3.38 8.55-1.6 2.35 1.78 2.59 4.93.78 7.57C18.9 15.9 12 20.25 12 20.25z" />
-            </svg>
-          </button>
+            isSaved={saved}
+            isToggling={isToggling(recommendation.reviewId)}
+            onToggle={() => {
+              void toggleSave(recommendation);
+            }}
+          />
         )}
 
         <p className="highlight-tile-kicker">{label}</p>
@@ -137,7 +165,10 @@ export function HighlightColumnCard(props: HighlightColumnCardProps): ReactEleme
           </div>
         )}
 
-        <CardExcerpt text={recommendation.excerpt} />
+        <CardExcerpt
+          continues={recommendation.excerptContinues}
+          text={recommendation.excerpt}
+        />
       </div>
     </article>
   );

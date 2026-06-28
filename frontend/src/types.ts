@@ -23,6 +23,7 @@ export interface RecommendationTag {
 
 export interface Recommendation {
   rank: number;
+  reviewId: number;
   artist: string;
   album: string;
   year: number;
@@ -33,6 +34,7 @@ export interface Recommendation {
   releaseDate?: string;
   recordLabel?: string;
   excerpt: string;
+  excerptContinues?: boolean;
   reviewUrl: string;
   tags: RecommendationTag[];
   source: RecommendationSource;
@@ -43,6 +45,15 @@ export interface RecommendationHighlight {
   description: string;
   label: string;
   recommendation: Recommendation;
+}
+
+export interface SavedAlbum {
+  reviewId: number;
+  artist: string;
+  album: string;
+  reviewUrl: string;
+  source: RecommendationSource | null;
+  savedAt: string;
 }
 
 export interface UpdateSummary {

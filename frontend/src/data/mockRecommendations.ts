@@ -7,6 +7,7 @@ import type {
 export const aktuellRecommendations: Recommendation[] = [
   {
     rank: 1,
+    reviewId: 17491,
     artist: "The Notwist",
     album: "Vertigo Days",
     year: 2021,
@@ -28,6 +29,7 @@ export const aktuellRecommendations: Recommendation[] = [
   },
   {
     rank: 2,
+    reviewId: 18120,
     artist: "Big Thief",
     album: "Dragon New Warm Mountain I Believe In You",
     year: 2022,
@@ -49,6 +51,7 @@ export const aktuellRecommendations: Recommendation[] = [
   },
   {
     rank: 3,
+    reviewId: 17627,
     artist: "Japanese Breakfast",
     album: "Jubilee",
     year: 2021,
@@ -73,6 +76,7 @@ export const aktuellRecommendations: Recommendation[] = [
 export const entdeckenRecommendations: Recommendation[] = [
   {
     rank: 1,
+    reviewId: 1294,
     artist: "Broken Social Scene",
     album: "You Forgot It In People",
     year: 2002,
@@ -94,6 +98,7 @@ export const entdeckenRecommendations: Recommendation[] = [
   },
   {
     rank: 2,
+    reviewId: 3146,
     artist: "Sufjan Stevens",
     album: "Illinois",
     year: 2005,
@@ -114,6 +119,7 @@ export const entdeckenRecommendations: Recommendation[] = [
   },
   {
     rank: 3,
+    reviewId: 694,
     artist: "The Dismemberment Plan",
     album: "Emergency & I",
     year: 1999,

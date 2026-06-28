@@ -7,11 +7,12 @@ import {
 } from "../lib/recommendationExcerpt";
 
 interface CardExcerptProps {
+  continues?: boolean;
   text: string;
 }
 
 /** Render a review excerpt that fills three lines before showing a preview marker. */
-export function CardExcerpt({ text }: CardExcerptProps): ReactElement {
+export function CardExcerpt({ continues = false, text }: CardExcerptProps): ReactElement {
   const ref = useRef<HTMLParagraphElement>(null);
   const [preview, setPreview] = useState(() => normalizeExcerptText(text));
 
@@ -35,7 +36,23 @@ export function CardExcerpt({ text }: CardExcerptProps): ReactElement {
         return;
       }
 
-      setPreview(buildExcerptPreview(normalized, checker.fits));
+      const nextPreview = buildExcerptPreview(normalized, checker.fits, { continues });
+      setPreview(nextPreview);
+
+      frameId = requestAnimationFrame(() => {
+        const currentElement = ref.current;
+        if (currentElement === null) {
+          return;
+        }
+
+        const rendered = currentElement.textContent ?? "";
+        const overflows = currentElement.scrollHeight > currentElement.clientHeight + 1;
+        if ((overflows || continues) && !rendered.endsWith("[...]")) {
+          setPreview(
+            buildExcerptPreview(normalized, checker.fits, { continues: true }),
+          );
+        }
+      });
     };
 
     const scheduleUpdate = (): void => {
@@ -52,7 +69,7 @@ export function CardExcerpt({ text }: CardExcerptProps): ReactElement {
       observer.disconnect();
       checker.destroy();
     };
-  }, [text]);
+  }, [continues, text]);
 
   return (
     <p className="excerpt" ref={ref}>

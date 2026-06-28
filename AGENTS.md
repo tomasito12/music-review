@@ -58,6 +58,8 @@ Music Review is a Python 3.12+ CLI-based data pipeline that scrapes album review
 | FastAPI (Plattenradar v1) | `hatch run api` |
 | Artist image spike CLI | `hatch run artist-image-cli --mbid MBID --artist-name "Name" -v` (also `--review-id ID`, `--sample N`; `ARTIST_IMAGE_DOWNLOAD=true` stores JPGs under `data/artist_images/`) |
 | Artist image batch prefetch | `hatch run artist-image-batch --missing-only --all -v` (also `--revalidate`, `--queue name|mbid|all`, `--limit N`, `--download`; GitHub workflow **Artist image batch** for detached server run; see `docs/artist-image-batch.md`) |
+| Hourly production update | `hatch run prod-update` (or `docker compose run --rm music-review-update`) — scrapes new reviews, enriches metadata/graph, then prefetches Wikimedia artist images for **that review batch only** (`--no-fetch-artist-images` to disable; set `ARTIST_IMAGE_DOWNLOAD=true` for JPGs) |
+| Metadata refresh (MusicBrainz) | `hatch run python -m music_review.pipeline.enrichment.fetch_metadata --update` then `artist_genres` + `reference_imputation`; GitHub workflow **Metadata refresh** or `./scripts/start_metadata_refresh.sh` for detached server run; see `docs/metadata-refresh.md` |
 | React frontend dev server | `hatch run frontend` (after `hatch run frontend-install`) |
 | Frontend unit tests | `hatch run frontend-test` |
 | Frontend UI screenshots | `hatch run frontend-screenshot` (after `hatch run frontend-playwright-install`) |
