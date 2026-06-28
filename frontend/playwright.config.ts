@@ -9,8 +9,18 @@ export default defineConfig({
   fullyParallel: false,
   reporter: isCi ? [["list"], ["github"]] : "list",
   snapshotPathTemplate: "{testDir}/reference/{arg}{ext}",
+  expect: {
+    toHaveScreenshot: {
+      maxDiffPixelRatio: 0.05,
+      animations: "disabled",
+    },
+  },
   use: {
     baseURL,
+    locale: "de-DE",
+    timezoneId: "Europe/Berlin",
+    deviceScaleFactor: 1,
+    colorScheme: "light",
     ...devices["Desktop Chrome"],
   },
   projects: [

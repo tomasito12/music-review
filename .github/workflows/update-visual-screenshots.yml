@@ -1,0 +1,59 @@
+name: Update visual screenshots
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  update-visual-references:
+    name: Regenerate Linux reference screenshots
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+
+      - name: Set up pnpm
+        uses: pnpm/action-setup@v4
+        with:
+          version: 10.12.1
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: "22.12.0"
+          cache: pnpm
+          cache-dependency-path: frontend/pnpm-lock.yaml
+
+      - name: Install screenshot fonts
+        run: sudo apt-get update && sudo apt-get install -y fonts-liberation fonts-dejavu-core
+
+      - name: Install Hatch and uv
+        run: python -m pip install --upgrade hatch uv
+
+      - name: Use uv in Hatch
+        run: hatch config set installer uv
+
+      - name: Install frontend dependencies
+        run: hatch run frontend-install
+
+      - name: Install Playwright Chromium
+        run: hatch run frontend-playwright-install
+
+      - name: Regenerate reference screenshots
+        run: hatch run frontend-screenshot-update
+
+      - name: Commit updated references
+        uses: stefanzweifel/git-auto-commit-action@v5
+        with:
+          commit_message: "chore: update visual reference screenshots"
+          file_pattern: frontend/tests/visual/reference/*.png
