@@ -8,7 +8,6 @@ import {
   clearYearFilter,
   enableYearFilter,
   hasYearFilter,
-  overallWeightQuestion,
   readYearBound,
   sortModeLabel,
   styleMatchMinPercent,
@@ -24,6 +23,8 @@ import {
   type SliderApplyMode,
 } from "../lib/useCommittedRangeValue";
 import { CommunityStyleWeights } from "./CommunityStyleWeights";
+import { OverallScoreWeightControl } from "./OverallScoreWeightControl";
+import { ThresholdSlider } from "./ThresholdSlider";
 
 interface CommittedRangeInputProps
   extends Omit<InputHTMLAttributes<HTMLInputElement>, "type" | "value" | "onChange"> {
@@ -169,13 +170,16 @@ export function TasteFilterControls({
             <span className="threshold-value">
               Mindestens {Math.round(filterSettings.rating_min)}
             </span>
-            <CommittedRangeInput
+            <ThresholdSlider
               applyMode={sliderApplyMode}
+              formatValue={(nextValue) => String(Math.round(nextValue))}
+              keptLabel="Höhere Wertungen bleiben sichtbar"
               max={MAX_PLATTENTESTS_RATING}
               min={0}
               onValueCommit={(nextValue) => {
                 onChange(updateMinimumRating(filterSettings, nextValue));
               }}
+              rejectedLabel="Darunter ausgeblendet"
               step={1}
               value={filterSettings.rating_min}
             />
@@ -190,13 +194,16 @@ export function TasteFilterControls({
           </p>
           <label className="threshold-control">
             <span className="threshold-value">Mindestens {styleMinPercent} %</span>
-            <CommittedRangeInput
+            <ThresholdSlider
               applyMode={sliderApplyMode}
+              formatValue={(nextValue) => `${Math.round(nextValue)} %`}
+              keptLabel="Stärkere Passung bleibt sichtbar"
               max={100}
               min={0}
               onValueCommit={(nextValue) => {
                 onChange(updateStyleMatchMinPercent(filterSettings, nextValue));
               }}
+              rejectedLabel="Schwächere Passung ausgeblendet"
               step={STYLE_MATCH_PERCENT_STEP}
               value={styleMinPercent}
             />
@@ -213,39 +220,11 @@ export function TasteFilterControls({
 
         <section className="filter-section">
           <h3>Gewichtung des Gesamtscores</h3>
-          <p className="field-hint">
-            Drei Scores zwischen 0 und 1: Stilpassung, plattentests.de-Wertung und
-            Album-Stilbreite. Die Regler bestimmen, wie stark jeder Score die
-            Reihenfolge beeinflusst.
-          </p>
-          {(
-            [
-              "overall_weight_alpha",
-              "overall_weight_beta",
-              "overall_weight_gamma",
-            ] as const
-          ).map((field) => (
-            <label className="weight-control" key={field}>
-              <span>{overallWeightQuestion(field)}</span>
-              <div className="weight-control-row">
-                <CommittedRangeInput
-                  applyMode={sliderApplyMode}
-                  max={1}
-                  min={0}
-                  onValueCommit={(nextValue) => {
-                    onChange(
-                      updateFilterSettingsField(filterSettings, field, nextValue),
-                    );
-                  }}
-                  step={0.05}
-                  value={filterSettings[field]}
-                />
-                <span className="threshold-value">
-                  {Math.round(filterSettings[field] * 100)} %
-                </span>
-              </div>
-            </label>
-          ))}
+          <OverallScoreWeightControl
+            applyMode={sliderApplyMode}
+            filterSettings={filterSettings}
+            onChange={onChange}
+          />
         </section>
 
         <section className="filter-section">

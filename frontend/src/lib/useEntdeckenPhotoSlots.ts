@@ -2,7 +2,7 @@ import { useEffect, useMemo, useState } from "react";
 
 import { useApiClient } from "./apiClientContext";
 import { loadArtistImagesBatch, type ArtistImageData } from "./artistImageApi";
-import { artistImageLookupKey } from "./artistImageLookupKey";
+import { artistImageLookupKey, claimArtist, isArtistClaimed } from "./artistImageLookupKey";
 import {
   entdeckenPhotoSlotGroups,
   entdeckenRecommendationHasPhoto,
@@ -129,8 +129,16 @@ export function useEntdeckenPhotoSlots(
           if (recommendation === undefined) {
             return false;
           }
-          const lookupKey = recommendationLookupKey(recommendation);
-          if (lookupKey.length === 0 || claimedArtistLookupKeys.has(lookupKey)) {
+          if (
+            recommendationLookupKey(recommendation).length === 0 ||
+            isArtistClaimed(
+              {
+                artistMbid: recommendation.artistMbid,
+                artistName: recommendation.artist,
+              },
+              claimedArtistLookupKeys,
+            )
+          ) {
             return false;
           }
           return entdeckenRecommendationHasPhoto(recommendation, resolvedImages);
@@ -139,10 +147,13 @@ export function useEntdeckenPhotoSlots(
         if (selectedRank !== undefined) {
           const recommendation = rankByNumber.get(selectedRank);
           if (recommendation !== undefined) {
-            const lookupKey = recommendationLookupKey(recommendation);
-            if (lookupKey.length > 0) {
-              claimedArtistLookupKeys.add(lookupKey);
-            }
+            claimArtist(
+              {
+                artistMbid: recommendation.artistMbid,
+                artistName: recommendation.artist,
+              },
+              claimedArtistLookupKeys,
+            );
           }
           resolvedPhotoRanks.add(selectedRank);
           claimedRanks.add(selectedRank);

@@ -209,9 +209,11 @@ def test_presets_endpoint_returns_default_modes() -> None:
     preset_ids = [item["id"] for item in response.json()]
     assert "balanced" in preset_ids
     assert "precise" in preset_ids
+    assert "style_pure" in preset_ids
     balanced = next(item for item in response.json() if item["id"] == "balanced")
     assert balanced["icon"] == "sliders-horizontal"
     assert balanced["filter_settings"]["score_min"] == 0.4
+    assert balanced["filter_settings"]["overall_weight_alpha"] == 0.7
 
 
 def test_taste_filter_ui_endpoint_exposes_frontend_labels() -> None:

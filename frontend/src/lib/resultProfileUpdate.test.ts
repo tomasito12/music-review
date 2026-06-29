@@ -35,8 +35,8 @@ const precisePreset: TastePreset = {
   description: "Sortiert stärker nach Stilpassung.",
   icon: "crosshair",
   filter_settings: {
-    overall_weight_alpha: 0.7,
-    overall_weight_beta: 0.2,
+    overall_weight_alpha: 0.8,
+    overall_weight_beta: 0.05,
     overall_weight_gamma: 0.1,
     rating_max: 10,
     rating_min: 6,
@@ -76,6 +76,6 @@ describe("buildProfileSessionFromPreset", () => {
 
     expect(next.presetId).toBe("precise");
     expect(next.presetLabel).toBe("Treffsicher");
-    expect(next.profile.filter_settings.overall_weight_alpha).toBe(0.7);
+    expect(next.profile.filter_settings.overall_weight_alpha).toBe(0.8);
   });
 });

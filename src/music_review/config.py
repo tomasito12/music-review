@@ -52,9 +52,9 @@ def get_project_root() -> Path:
 
 # Dashboard overall score: alpha*S_a + beta*R + gamma*coverage_norm.
 # Weights: get_recommendation_overall_weights().
-RECOMMENDATION_OVERALL_ALPHA: float = 0.5
-RECOMMENDATION_OVERALL_BETA: float = 0.25
-RECOMMENDATION_OVERALL_GAMMA: float = 0.25
+RECOMMENDATION_OVERALL_ALPHA: float = 0.7
+RECOMMENDATION_OVERALL_BETA: float = 0.1
+RECOMMENDATION_OVERALL_GAMMA: float = 0.2
 # Plattentests rating default on 0-10 scale when missing (scoring and rating filter).
 RECOMMENDATION_RATING_DEFAULT_WHEN_MISSING: float = 7.0
 # Raw per-community weight in [0, 1] when missing (UI center / neutral bias 0).

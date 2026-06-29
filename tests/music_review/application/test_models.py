@@ -42,7 +42,7 @@ def test_filter_settings_normalizes_ranges_and_legacy_sort_mode() -> None:
     assert settings.score_max == 1
     assert settings.overall_weight_alpha == 1
     assert settings.overall_weight_beta == 0
-    assert settings.overall_weight_gamma == 0.25
+    assert settings.overall_weight_gamma == 0.2
     assert settings.plattenlabel_selection == ("Sub Pop", "Matador")
     assert settings.sort_mode == "discovery"
     assert settings.serendipity == 1
@@ -57,9 +57,9 @@ def test_taste_profile_defaults_exclude_legacy_album_style_breadth_k() -> None:
 
 def test_taste_profile_defaults_use_standard_weights() -> None:
     settings = TasteFilterSettings()
-    assert settings.overall_weight_alpha == pytest.approx(0.5)
-    assert settings.overall_weight_beta == pytest.approx(0.25)
-    assert settings.overall_weight_gamma == pytest.approx(0.25)
+    assert settings.overall_weight_alpha == pytest.approx(0.7)
+    assert settings.overall_weight_beta == pytest.approx(0.1)
+    assert settings.overall_weight_gamma == pytest.approx(0.2)
 
 
 def test_profile_from_legacy_payload_keeps_taste_fields() -> None:

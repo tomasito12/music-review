@@ -11,6 +11,12 @@ const SORT_MODE_LABELS: Record<string, string> = {
   discovery: "Mit Zufall",
 };
 
+const OVERALL_WEIGHT_SHORT_LABELS: Record<string, string> = {
+  overall_weight_alpha: "Stilpassung",
+  overall_weight_beta: "Wertung",
+  overall_weight_gamma: "Stilbreite",
+};
+
 const OVERALL_WEIGHT_QUESTIONS: Record<string, string> = {
   overall_weight_alpha:
     "Wie wichtig ist dir die Stilpassung zum Musikprofil?",
@@ -28,6 +34,11 @@ export function sortModeLabel(value: string): string {
 /** Returns the question text for one overall-weight slider. */
 export function overallWeightQuestion(field: string): string {
   return OVERALL_WEIGHT_QUESTIONS[field] ?? field;
+}
+
+/** Returns a compact label for stacked overall-weight visuals. */
+export function overallWeightShortLabel(field: string): string {
+  return OVERALL_WEIGHT_SHORT_LABELS[field] ?? field;
 }
 
 /** Reads the minimum style-match threshold as a whole percent value. */

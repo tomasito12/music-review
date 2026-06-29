@@ -74,9 +74,9 @@ class TasteFilterSettings(ApiModel):
     rating_max: float = 10.0
     score_min: float = 0.0
     score_max: float = 1.0
-    overall_weight_alpha: float = 0.5
-    overall_weight_beta: float = 0.25
-    overall_weight_gamma: float = 0.25
+    overall_weight_alpha: float = 0.70
+    overall_weight_beta: float = 0.10
+    overall_weight_gamma: float = 0.20
     plattenlabel_selection: tuple[str, ...] | None = None
     sort_mode: SortMode = "deterministic"
     serendipity: float = Field(default=0.0, ge=0.0, le=1.0)
@@ -116,9 +116,9 @@ class TasteFilterSettings(ApiModel):
         defaults = {
             "score_min": 0.0,
             "score_max": 1.0,
-            "overall_weight_alpha": 0.5,
-            "overall_weight_beta": 0.25,
-            "overall_weight_gamma": 0.25,
+            "overall_weight_alpha": 0.70,
+            "overall_weight_beta": 0.10,
+            "overall_weight_gamma": 0.20,
             "serendipity": 0.0,
         }
         field_name = info.field_name or ""

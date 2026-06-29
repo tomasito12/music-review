@@ -3,6 +3,7 @@ import { describe, expect, it } from "vitest";
 import {
   buildEntdeckenHeaderMessage,
   buildEntdeckenPhotoTileIndices,
+  effectiveStyleCountFromAffinities,
   entdeckenHighlightArtistLookupKeys,
   entdeckenHighlightRanks,
   entdeckenPhotoLookupRecommendations,
@@ -14,6 +15,8 @@ import {
   recurringPhotoSlotCandidates,
   resolveEntdeckenPhotoRanks,
   selectEntdeckenHighlightsFromPhotoPool,
+  visibleStyleBreadthScore,
+  visibleStyleTagCount,
 } from "./entdeckenPage";
 import type { ArtistImageData } from "./artistImageApi";
 import type { Recommendation } from "../types";
@@ -147,11 +150,33 @@ describe("resolveEntdeckenPhotoRanks", () => {
       recommendations,
       (item) => item.rank <= 8,
       new Set(),
-      new Set(["mbid-1"]),
+      new Set(["mbid-1", "name:artist 1"]),
     );
 
     expect(photoRanks.has(1)).toBe(false);
     expect([...photoRanks].length).toBeGreaterThan(0);
+  });
+
+  it("skips a band in list slots when only the name key was claimed in highlights", () => {
+    const photoRanks = resolveEntdeckenPhotoRanks(
+      [
+        recommendation(1, "Slint", { artistMbid: "mbid-slint" }),
+        recommendation(2, "Slint", { album: "Tweez" }),
+        recommendation(6, "Beta", { artistMbid: "mbid-beta" }),
+        ...Array.from({ length: 8 }, (_, index) =>
+          recommendation(index + 3, `Artist ${index + 3}`, {
+            artistMbid: `mbid-${index + 3}`,
+          }),
+        ).filter((item) => item.rank !== 6),
+      ],
+      (item) => true,
+      new Set(),
+      new Set(["name:slint"]),
+    );
+
+    expect(photoRanks.has(1)).toBe(false);
+    expect(photoRanks.has(2)).toBe(false);
+    expect(photoRanks.has(6)).toBe(true);
   });
 });
 
@@ -227,13 +252,71 @@ describe("formatEntdeckenHighlightKicker", () => {
   });
 });
 
+describe("visibleStyleBreadthScore", () => {
+  it("returns one for a single visible style tag", () => {
+    const item = recommendation(1, "Solo", {
+      tags: [{ label: "Folk", affinity: 0.8, matchesProfile: true }],
+    });
+
+    expect(visibleStyleTagCount(item)).toBe(1);
+    expect(visibleStyleBreadthScore(item)).toBe(1);
+  });
+
+  it("returns more than one when multiple visible tags share mass", () => {
+    const item = recommendation(1, "Mixed", {
+      tags: [
+        { label: "Folk", affinity: 0.55, matchesProfile: true },
+        { label: "Rock", affinity: 0.45, matchesProfile: false },
+      ],
+    });
+
+    expect(visibleStyleTagCount(item)).toBe(2);
+    expect(visibleStyleBreadthScore(item)).toBeGreaterThan(1.9);
+  });
+
+  it("ignores tags below the card display threshold", () => {
+    const item = recommendation(1, "Hidden", {
+      tags: [
+        { label: "Folk", affinity: 0.8, matchesProfile: true },
+        { label: "Noise", affinity: 0.05, matchesProfile: false },
+      ],
+    });
+
+    expect(visibleStyleTagCount(item)).toBe(1);
+    expect(visibleStyleBreadthScore(item)).toBe(1);
+  });
+});
+
+describe("effectiveStyleCountFromAffinities", () => {
+  it("matches a fifty-fifty two-style mix", () => {
+    expect(effectiveStyleCountFromAffinities([0.5, 0.5])).toBeCloseTo(2, 5);
+  });
+});
+
 describe("selectEntdeckenHighlightsFromPhotoPool", () => {
   it("returns four distinct photo-backed highlight roles", () => {
     const pool = [
       recommendation(1, "Alpha", { score: 0.95, rating: 7, styleFit: 0.7, albumStyleBreadth: 0.2 }),
       recommendation(2, "Beta", { score: 0.7, rating: 10, styleFit: 0.6, albumStyleBreadth: 0.4 }),
-      recommendation(3, "Gamma", { score: 0.8, rating: 8, styleFit: 0.5, albumStyleBreadth: 0.9 }),
-      recommendation(4, "Delta", { score: 0.6, rating: 9, styleFit: 0.95, albumStyleBreadth: 0.3 }),
+      {
+        ...recommendation(3, "Gamma"),
+        score: 0.8,
+        rating: 8,
+        styleFit: 0.5,
+        albumStyleBreadth: 0.2,
+        tags: [
+          { label: "A", affinity: 0.55, matchesProfile: true },
+          { label: "B", affinity: 0.45, matchesProfile: false },
+        ],
+      },
+      {
+        ...recommendation(4, "Delta"),
+        score: 0.6,
+        rating: 9,
+        styleFit: 0.95,
+        albumStyleBreadth: 0.99,
+        tags: [{ label: "A", affinity: 0.9, matchesProfile: true }],
+      },
     ];
 
     const highlights = selectEntdeckenHighlightsFromPhotoPool(pool);
@@ -247,6 +330,23 @@ describe("selectEntdeckenHighlightsFromPhotoPool", () => {
     expect(highlights[2]?.recommendation.artist).toBe("Gamma");
     expect(highlights[3]?.label).toBe("Höchste Passung");
     expect(highlights[3]?.recommendation.artist).toBe("Delta");
+  });
+
+  it("skips stylistically broad when no album has two visible style tags", () => {
+    const highlights = selectEntdeckenHighlightsFromPhotoPool([
+      recommendation(1, "Alpha", {
+        score: 0.95,
+        rating: 7,
+        styleFit: 0.7,
+        albumStyleBreadth: 0.99,
+        tags: [{ label: "Folk", affinity: 0.9, matchesProfile: true }],
+      }),
+      recommendation(2, "Beta", { score: 0.7, rating: 10, styleFit: 0.6 }),
+      recommendation(3, "Gamma", { score: 0.8, rating: 8, styleFit: 0.95 }),
+    ]);
+
+    expect(highlights.find((item) => item.label === "Stilistisch breit")).toBeUndefined();
+    expect(highlights).toHaveLength(3);
   });
 
   it("skips the overall winner when picking the critic favorite", () => {
@@ -275,6 +375,43 @@ describe("selectEntdeckenHighlightsFromPhotoPool", () => {
     expect(lookupKeys.filter((mbid) => mbid === "mbid-same")).toHaveLength(1);
   });
 
+  it("uses each band at most once when albums differ in MBID metadata", () => {
+    const pool = [
+      recommendation(1, "Slint", {
+        album: "Spiderland",
+        artistMbid: "mbid-slint",
+        score: 0.7,
+        rating: 10,
+        styleFit: 0.6,
+      }),
+      recommendation(2, "Beta", { score: 0.95, rating: 8, styleFit: 0.7, albumStyleBreadth: 0.2 }),
+      {
+        ...recommendation(3, "Slint"),
+        album: "Tweez",
+        artistMbid: undefined,
+        score: 0.8,
+        rating: 8,
+        styleFit: 0.5,
+        tags: [
+          { label: "A", affinity: 0.55, matchesProfile: true },
+          { label: "B", affinity: 0.45, matchesProfile: false },
+        ],
+      },
+      recommendation(4, "Delta", { score: 0.6, rating: 9, styleFit: 0.95, albumStyleBreadth: 0.3 }),
+    ];
+
+    const highlights = selectEntdeckenHighlightsFromPhotoPool(pool);
+    const slintHighlights = highlights.filter(
+      (item) => item.recommendation.artist.toLowerCase() === "slint",
+    );
+
+    expect(slintHighlights).toHaveLength(1);
+    expect(highlights.find((item) => item.label === "Kritikerfavorit")?.recommendation.artist).toBe(
+      "Slint",
+    );
+    expect(highlights.find((item) => item.label === "Stilistisch breit")).toBeUndefined();
+  });
+
   it("returns an empty list without recommendations", () => {
     expect(selectEntdeckenHighlightsFromPhotoPool([])).toEqual([]);
   });
@@ -285,7 +422,17 @@ describe("entdeckenHighlightArtistLookupKeys", () => {
     const highlights = selectEntdeckenHighlightsFromPhotoPool([
       recommendation(1, "Alpha", { score: 0.95, rating: 7, styleFit: 0.7, albumStyleBreadth: 0.2 }),
       recommendation(2, "Beta", { score: 0.7, rating: 10, styleFit: 0.6, albumStyleBreadth: 0.4 }),
-      recommendation(3, "Gamma", { score: 0.8, rating: 8, styleFit: 0.5, albumStyleBreadth: 0.9 }),
+      {
+        ...recommendation(3, "Gamma"),
+        score: 0.8,
+        rating: 8,
+        styleFit: 0.5,
+        albumStyleBreadth: 0.9,
+        tags: [
+          { label: "A", affinity: 0.55, matchesProfile: true },
+          { label: "B", affinity: 0.45, matchesProfile: false },
+        ],
+      },
       recommendation(4, "Delta", { score: 0.6, rating: 9, styleFit: 0.95, albumStyleBreadth: 0.3 }),
     ]);
 
@@ -294,6 +441,10 @@ describe("entdeckenHighlightArtistLookupKeys", () => {
       "mbid-2",
       "mbid-3",
       "mbid-4",
+      "name:alpha",
+      "name:beta",
+      "name:delta",
+      "name:gamma",
     ]);
   });
 });
@@ -303,7 +454,17 @@ describe("entdeckenHighlightRanks", () => {
     const highlights = selectEntdeckenHighlightsFromPhotoPool([
       recommendation(1, "Alpha", { score: 0.95, rating: 7, styleFit: 0.7, albumStyleBreadth: 0.2 }),
       recommendation(2, "Beta", { score: 0.7, rating: 10, styleFit: 0.6, albumStyleBreadth: 0.4 }),
-      recommendation(3, "Gamma", { score: 0.8, rating: 8, styleFit: 0.5, albumStyleBreadth: 0.9 }),
+      {
+        ...recommendation(3, "Gamma"),
+        score: 0.8,
+        rating: 8,
+        styleFit: 0.5,
+        albumStyleBreadth: 0.9,
+        tags: [
+          { label: "A", affinity: 0.55, matchesProfile: true },
+          { label: "B", affinity: 0.45, matchesProfile: false },
+        ],
+      },
       recommendation(4, "Delta", { score: 0.6, rating: 9, styleFit: 0.95, albumStyleBreadth: 0.3 }),
     ]);
 

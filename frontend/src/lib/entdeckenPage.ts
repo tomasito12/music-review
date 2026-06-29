@@ -1,7 +1,8 @@
 import type { Recommendation, RecommendationHighlight } from "../types";
 
 import type { ArtistImageData } from "./artistImageApi";
-import { artistImageLookupKey } from "./artistImageLookupKey";
+import { artistImageLookupKey, claimArtist, isArtistClaimed } from "./artistImageLookupKey";
+import { visibleRecommendationTags } from "./recommendationTagStyles";
 
 /** Section copy for the Entdecken highlight hero. */
 export const ENTDECKEN_HIGHLIGHTS_SECTION = {
@@ -79,7 +80,10 @@ export function resolveEntdeckenPhotoRanks(
         return false;
       }
       const lookupKey = recommendationArtistLookupKey(recommendation);
-      if (lookupKey.length === 0 || claimedArtistLookupKeys.has(lookupKey)) {
+      if (
+        lookupKey.length === 0 ||
+        isArtistClaimed(recommendationArtistClaimInput(recommendation), claimedArtistLookupKeys)
+      ) {
         return false;
       }
       return hasPhoto(recommendation);
@@ -88,10 +92,7 @@ export function resolveEntdeckenPhotoRanks(
     if (selectedRank !== undefined) {
       const recommendation = rankByNumber.get(selectedRank);
       if (recommendation !== undefined) {
-        const lookupKey = recommendationArtistLookupKey(recommendation);
-        if (lookupKey.length > 0) {
-          claimedArtistLookupKeys.add(lookupKey);
-        }
+        claimArtist(recommendationArtistClaimInput(recommendation), claimedArtistLookupKeys);
       }
       photoRanks.add(selectedRank);
       claimedRanks.add(selectedRank);
@@ -146,15 +147,24 @@ export function recommendationArtistLookupKey(recommendation: Recommendation): s
   });
 }
 
-/** Artist lookup keys already shown in Entdecken highlight cards. */
+function recommendationArtistClaimInput(
+  recommendation: Recommendation,
+): { artistMbid?: string; artistName?: string } {
+  return {
+    artistMbid: recommendation.artistMbid,
+    artistName: recommendation.artist,
+  };
+}
+
+/** Artist dedupe keys already shown in Entdecken highlight cards. */
 export function entdeckenHighlightArtistLookupKeys(
   highlights: RecommendationHighlight[],
 ): Set<string> {
-  return new Set(
-    highlights
-      .map((highlight) => recommendationArtistLookupKey(highlight.recommendation))
-      .filter((lookupKey) => lookupKey.length > 0),
-  );
+  const keys = new Set<string>();
+  for (const highlight of highlights) {
+    claimArtist(recommendationArtistClaimInput(highlight.recommendation), keys);
+  }
+  return keys;
 }
 
 /** Ranks used by Entdecken highlight cards (excluded from list photo slots). */
@@ -162,6 +172,40 @@ export function entdeckenHighlightRanks(
   highlights: RecommendationHighlight[],
 ): Set<number> {
   return new Set(highlights.map((highlight) => highlight.recommendation.rank));
+}
+
+/** Effective style count (N_eff) from normalized tag affinities, matching backend Shannon logic. */
+export function effectiveStyleCountFromAffinities(affinities: number[]): number {
+  const positive = affinities.filter((affinity) => affinity > 0);
+  if (positive.length <= 1) {
+    return 1;
+  }
+  const total = positive.reduce((sum, affinity) => sum + affinity, 0);
+  if (total <= 0) {
+    return 1;
+  }
+  let entropy = 0;
+  for (const affinity of positive) {
+    const proportion = affinity / total;
+    if (proportion > 0) {
+      entropy -= proportion * Math.log(proportion);
+    }
+  }
+  return Math.exp(entropy);
+}
+
+/** Style breadth from tags that are actually shown on recommendation cards. */
+export function visibleStyleBreadthScore(recommendation: Recommendation): number {
+  const tags = visibleRecommendationTags(recommendation.tags);
+  if (tags.length <= 1) {
+    return 1;
+  }
+  return effectiveStyleCountFromAffinities(tags.map((tag) => tag.affinity));
+}
+
+/** Count of style tags shown on the card (affinity at or above display threshold). */
+export function visibleStyleTagCount(recommendation: Recommendation): number {
+  return visibleRecommendationTags(recommendation.tags).length;
 }
 
 /** Derives four editorial Entdecken highlights from recommendations that have photos. */
@@ -178,6 +222,13 @@ export function selectEntdeckenHighlightsFromPhotoPool(
   const albumKey = (recommendation: Recommendation): string =>
     `${recommendation.artist}-${recommendation.album}`;
 
+  const isArtistUsed = (recommendation: Recommendation): boolean =>
+    isArtistClaimed(recommendationArtistClaimInput(recommendation), usedArtistLookupKeys);
+
+  const markArtistUsed = (recommendation: Recommendation): void => {
+    claimArtist(recommendationArtistClaimInput(recommendation), usedArtistLookupKeys);
+  };
+
   const addHighlight = (
     label: string,
     description: string,
@@ -186,29 +237,44 @@ export function selectEntdeckenHighlightsFromPhotoPool(
     if (recommendation === undefined) {
       return;
     }
-    const lookupKey = recommendationArtistLookupKey(recommendation);
-    if (lookupKey.length === 0 || usedArtistLookupKeys.has(lookupKey)) {
+    if (
+      recommendationArtistLookupKey(recommendation).length === 0 ||
+      isArtistUsed(recommendation)
+    ) {
       return;
     }
-    usedArtistLookupKeys.add(lookupKey);
+    markArtistUsed(recommendation);
     highlights.push({ label, description, recommendation });
   };
 
   const pickTopUnused = (
     scoreFor: (item: Recommendation) => number,
     exclude: Recommendation | undefined = undefined,
+    predicate: (item: Recommendation) => boolean = () => true,
   ): Recommendation | undefined => {
     const excludeAlbumKey = exclude === undefined ? null : albumKey(exclude);
     return [...recommendations]
       .filter((item) => {
-        const lookupKey = recommendationArtistLookupKey(item);
-        if (lookupKey.length === 0 || usedArtistLookupKeys.has(lookupKey)) {
+        if (
+          recommendationArtistLookupKey(item).length === 0 ||
+          isArtistUsed(item)
+        ) {
+          return false;
+        }
+        if (!predicate(item)) {
           return false;
         }
         return excludeAlbumKey === null || albumKey(item) !== excludeAlbumKey;
       })
       .sort((left, right) => scoreFor(right) - scoreFor(left))[0];
   };
+
+  const pickBroadestVisibleStyle = (): Recommendation | undefined =>
+    pickTopUnused(
+      (item) => visibleStyleBreadthScore(item),
+      undefined,
+      (item) => visibleStyleTagCount(item) >= 2,
+    );
 
   const bestOverall = pickTopUnused((item) => item.score);
   addHighlight(
@@ -225,8 +291,8 @@ export function selectEntdeckenHighlightsFromPhotoPool(
 
   addHighlight(
     "Stilistisch breit",
-    "Hohe stilistische Vielfalt im Album.",
-    pickTopUnused((item) => item.albumStyleBreadth),
+    "Mehrere sichtbare Stil-Tags – verschiedene Richtungen auf einen Blick.",
+    pickBroadestVisibleStyle(),
   );
 
   addHighlight(

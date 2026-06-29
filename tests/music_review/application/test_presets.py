@@ -19,9 +19,9 @@ def test_default_preset_is_ausgewogen() -> None:
     assert preset.label == "Ausgewogen"
     assert preset.filter_settings.score_min == 0.4
     assert preset.filter_settings.rating_min == 6
-    assert preset.filter_settings.overall_weight_alpha == 0.5
-    assert preset.filter_settings.overall_weight_beta == 0.25
-    assert preset.filter_settings.overall_weight_gamma == 0.25
+    assert preset.filter_settings.overall_weight_alpha == 0.7
+    assert preset.filter_settings.overall_weight_beta == 0.1
+    assert preset.filter_settings.overall_weight_gamma == 0.2
 
 
 def test_presets_keep_list_variation_disabled() -> None:
@@ -35,11 +35,12 @@ def test_preset_values_match_v1_specification() -> None:
     """Presets share filter baselines and differ mainly in score weighting."""
     shared_filters = (0.4, 6)
     expected = {
-        "precise": (*shared_filters, 0.7, 0.2, 0.1),
-        "balanced": (*shared_filters, 0.5, 0.25, 0.25),
-        "exploratory": (*shared_filters, 0.3, 0.3, 0.4),
-        "critics": (*shared_filters, 0.3, 0.5, 0.2),
-        "multifaceted": (*shared_filters, 0.35, 0.15, 0.5),
+        "precise": (*shared_filters, 0.8, 0.05, 0.1),
+        "balanced": (*shared_filters, 0.7, 0.1, 0.2),
+        "exploratory": (*shared_filters, 0.5, 0.25, 0.25),
+        "critics": (*shared_filters, 0.6, 0.3, 0.1),
+        "multifaceted": (*shared_filters, 0.5, 0.15, 0.35),
+        "style_pure": (*shared_filters, 0.85, 0.15, 0.0),
     }
 
     for preset in list_presets():
@@ -51,6 +52,15 @@ def test_preset_values_match_v1_specification() -> None:
             settings.overall_weight_beta,
             settings.overall_weight_gamma,
         ) == expected[preset.id]
+
+
+def test_preset_weights_are_non_negative() -> None:
+    """Each preset stores non-negative score weights."""
+    for preset in list_presets():
+        settings = preset.filter_settings
+        assert settings.overall_weight_alpha >= 0.0
+        assert settings.overall_weight_beta >= 0.0
+        assert settings.overall_weight_gamma >= 0.0
 
 
 def test_get_preset_rejects_unknown_id() -> None:
@@ -65,4 +75,12 @@ def test_preset_to_dict_is_json_ready() -> None:
 
     assert payload["id"] == "multifaceted"
     assert payload["label"] == "Vielschichtig"
-    assert payload["filter_settings"]["overall_weight_gamma"] == 0.5
+    assert payload["filter_settings"]["overall_weight_gamma"] == 0.35
+
+
+def test_style_pure_preset_ignores_album_breadth_weight() -> None:
+    """Stilreinheit turns off the album style breadth term in overall scoring."""
+    preset = get_preset("style_pure")
+
+    assert preset.label == "Stilreinheit"
+    assert preset.filter_settings.overall_weight_gamma == 0.0
