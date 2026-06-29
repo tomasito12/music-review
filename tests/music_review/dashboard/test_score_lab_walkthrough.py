@@ -110,31 +110,38 @@ def test_walkthrough_marks_dominant_community() -> None:
     )
 
 
-def test_walkthrough_purity_norm_detail_matches_batch_formula() -> None:
+def test_walkthrough_purity_norm_matches_style_purity_complement() -> None:
     profile = _profile()
     inputs = _inputs()
     rows = build_score_lab_rows(profile, inputs, limit=5)
+    row = rows[0]
+    walkthrough = build_album_score_walkthrough(
+        row,
+        profile,
+        inputs,
+        batch_rows=rows,
+    )
+    detail = walkthrough["purity_norm_detail"]
+    style_breadth = float(row["breadth_norm"])
+    purity_norm = float(detail["purity_norm"])
+    assert purity_norm == pytest.approx(max(0.0, 1.0 - style_breadth))
+    assert len(detail["batch_purity_rows"]) == len(rows)
+    assert detail["interpretation"]
+
+
+def test_walkthrough_includes_cosine_fit_in_summary() -> None:
+    profile = _profile()
+    inputs = _inputs()
+    rows = build_score_lab_rows(profile, inputs, limit=3)
     walkthrough = build_album_score_walkthrough(
         rows[0],
         profile,
         inputs,
         batch_rows=rows,
     )
-    detail = walkthrough["purity_norm_detail"]
-    purity_lo = float(detail["purity_lo"])
-    purity_hi = float(detail["purity_hi"])
-    purity_raw = float(detail["purity_raw"])
-    purity_norm = float(detail["purity_norm"])
-    if purity_hi > purity_lo:
-        expected = (purity_raw - purity_lo) / (purity_hi - purity_lo)
-        assert purity_norm == pytest.approx(expected)
-    assert len(detail["batch_purity_rows"]) == len(rows)
-    current_rows = [
-        row for row in detail["batch_purity_rows"] if row.get("is_current_album")
-    ]
-    assert len(current_rows) == 1
-    assert float(current_rows[0]["purity_norm"]) == pytest.approx(purity_norm)
-    assert detail["interpretation"]
+    assert float(walkthrough["summary"]["cosine_fit"]) == pytest.approx(
+        float(rows[0]["cosine_fit"]),
+    )
 
 
 def test_walkthrough_includes_breadth_reference_rows() -> None:

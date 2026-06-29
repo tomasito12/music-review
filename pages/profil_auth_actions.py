@@ -18,7 +18,6 @@ from music_review.dashboard.user_db import (
 )
 from music_review.dashboard.user_profile_store import (
     ACTIVE_PROFILE_SESSION_KEY,
-    apply_profile_to_session,
     load_profile,
     normalize_profile_slug,
     post_login_maybe_defer_profile_apply,
@@ -89,7 +88,9 @@ def run_register(name_raw: str, password: str, password_confirm: str) -> None:
     save_profile(None, slug, payload)  # type: ignore[arg-type]
     st.session_state[ACTIVE_PROFILE_SESSION_KEY] = slug
     persist_active_profile_slug_cookie(slug)
-    apply_profile_to_session(st.session_state, payload)
+    from pages.profile_session import apply_saved_profile_to_session
+
+    apply_saved_profile_to_session(payload)
     st.session_state.pop(WIZARD_ACCOUNT_SAVE_INTENT_KEY, None)
     if session_taste_setup_complete():
         st.switch_page("pages/2_Entdecken.py")

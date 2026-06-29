@@ -2,8 +2,10 @@
 
 from __future__ import annotations
 
+import math
 import random
 from collections.abc import Iterable, Mapping, Sequence
+from typing import Any
 
 from music_review.config import (
     RECOMMENDATION_DEFAULT_COMMUNITY_WEIGHT_RAW,
@@ -144,6 +146,310 @@ def purity_max_weighted_share(max_weighted_affinity: float, s_a_total: float) ->
     return min(1.0, max_weighted_affinity / s_a_total)
 
 
+def affinity_vector_from_entries(
+    entries: Sequence[Mapping[str, object]],
+) -> dict[str, float]:
+    """Build a sparse album affinity vector from ``res_*`` community entries."""
+    out: dict[str, float] = {}
+    for entry in entries:
+        if not isinstance(entry, Mapping):
+            continue
+        cid = entry.get("id")
+        score_val = entry.get("score")
+        if cid is None or not isinstance(score_val, (int, float)):
+            continue
+        affinity = float(score_val)
+        if affinity > 0.0:
+            out[str(cid)] = affinity
+    return out
+
+
+def user_preference_vector(
+    selected_comms: Iterable[str],
+    weights_raw: Mapping[str, float],
+    *,
+    default_weight: float = RECOMMENDATION_DEFAULT_COMMUNITY_WEIGHT_RAW,
+) -> dict[str, float]:
+    """Sparse user taste vector: weights on selected communities, zero elsewhere."""
+    return {
+        str(community_id): float(
+            weights_raw.get(str(community_id), default_weight),
+        )
+        for community_id in selected_comms
+    }
+
+
+def cosine_similarity_sparse(
+    left: Mapping[str, float],
+    right: Mapping[str, float],
+) -> float:
+    """Cosine similarity of two sparse vectors over the union of their keys."""
+    if not left or not right:
+        return 0.0
+    keys = set(left) | set(right)
+    dot = sum(float(left.get(key, 0.0)) * float(right.get(key, 0.0)) for key in keys)
+    norm_left = math.sqrt(sum(float(value) ** 2 for value in left.values()))
+    norm_right = math.sqrt(sum(float(value) ** 2 for value in right.values()))
+    if norm_left <= 0.0 or norm_right <= 0.0:
+        return 0.0
+    return max(0.0, min(1.0, dot / (norm_left * norm_right)))
+
+
+def album_style_proportions_from_entries(
+    entries: Sequence[Mapping[str, object]],
+) -> tuple[float, ...]:
+    """Return normalized album style shares (positive affinities summing to 1)."""
+    masses = affinity_vector_from_entries(entries)
+    if not masses:
+        return ()
+    total_mass = sum(masses.values())
+    if total_mass <= 0.0:
+        return ()
+    return tuple(mass / total_mass for mass in masses.values())
+
+
+def shannon_entropy_from_proportions(proportions: Sequence[float]) -> float:
+    """Shannon entropy in nats; zero-mass components are ignored."""
+    entropy = 0.0
+    for proportion in proportions:
+        p = float(proportion)
+        if p <= 0.0:
+            continue
+        entropy -= p * math.log(p)
+    return entropy
+
+
+def effective_style_count_from_proportions(proportions: Sequence[float]) -> float:
+    """Effective number of styles: ``N_eff = exp(H)`` from album proportions."""
+    positive = [
+        float(proportion) for proportion in proportions if float(proportion) > 0.0
+    ]
+    if len(positive) <= 1:
+        return 1.0
+    return math.exp(shannon_entropy_from_proportions(positive))
+
+
+def effective_style_diversity_from_affinity_entries(
+    entries: Sequence[Mapping[str, object]],
+) -> float:
+    """Effective Shannon diversity ``N_eff = exp(H)`` from album community shares."""
+    proportions = album_style_proportions_from_entries(entries)
+    if not proportions:
+        return 1.0
+    return effective_style_count_from_proportions(proportions)
+
+
+def global_album_style_breadth_norm_by_review_id(
+    affinity_by_review_id: Mapping[int, Mapping[str, Any]],
+    *,
+    res_key: str = "res_10",
+) -> dict[int, float]:
+    """Percentile-normalize album style diversity across the corpus.
+
+    Uses effective Shannon diversity ``N_eff`` per album. Lowest ``N_eff`` in the
+    corpus maps to ``0``, highest to ``1`` (ordinal ranks, ties averaged).
+    """
+    if not affinity_by_review_id:
+        return {}
+    review_ids: list[int] = []
+    n_eff_values: list[float] = []
+    for review_id, affinity_row in affinity_by_review_id.items():
+        entries_any = affinity_row.get("communities")
+        entries: list[Mapping[str, object]] = []
+        if isinstance(entries_any, Mapping):
+            raw = entries_any.get(res_key)
+            if isinstance(raw, list):
+                entries = [entry for entry in raw if isinstance(entry, Mapping)]
+        review_ids.append(int(review_id))
+        n_eff_values.append(
+            effective_style_diversity_from_affinity_entries(entries),
+        )
+    norms = percentile_rank_normalize_batch(n_eff_values)
+    if len(norms) != len(review_ids):
+        return {}
+    return {review_ids[i]: norms[i] for i in range(len(review_ids))}
+
+
+def album_style_breadth_norm_for_review_ids(
+    review_ids: Sequence[int],
+    n_eff_by_review_id: Mapping[int, float],
+    *,
+    global_norm_by_review_id: Mapping[int, float] | None = None,
+) -> list[float]:
+    """Resolve percentile-normalized style breadth for one ordered review list."""
+    if global_norm_by_review_id is not None:
+        return [
+            float(global_norm_by_review_id.get(int(review_id), 0.0))
+            for review_id in review_ids
+        ]
+    n_eff_values = [
+        float(n_eff_by_review_id[int(review_id)]) for review_id in review_ids
+    ]
+    return percentile_rank_normalize_batch(n_eff_values)
+
+
+def matching_style_proportions_from_entries(
+    entries: Sequence[Mapping[str, object]],
+    *,
+    selected_comms: Iterable[str],
+) -> tuple[float, ...]:
+    """Normalized album shares restricted to the profile's selected communities."""
+    masses = affinity_vector_from_entries(entries)
+    if not masses:
+        return ()
+    selected = {str(community_id) for community_id in selected_comms}
+    matching = {
+        community_id: float(mass)
+        for community_id, mass in masses.items()
+        if community_id in selected and float(mass) > 0.0
+    }
+    if not matching:
+        return ()
+    total_mass = sum(matching.values())
+    if total_mass <= 0.0:
+        return ()
+    return tuple(mass / total_mass for mass in matching.values())
+
+
+def matching_style_breadth_from_affinity_entries(
+    entries: Sequence[Mapping[str, object]],
+    *,
+    selected_comms: Iterable[str],
+) -> float:
+    """Breadth of how many selected styles match on the album.
+
+    Uses only communities from ``selected_comms`` with positive album affinity.
+    A single matching style yields ``0``; several selected styles with meaningful
+    shares yield values in ``(0, 1]``.
+    """
+    proportions = matching_style_proportions_from_entries(
+        entries,
+        selected_comms=selected_comms,
+    )
+    if not proportions:
+        return 0.0
+    n_eff = effective_style_count_from_proportions(proportions)
+    if n_eff <= 1.0 or len(proportions) <= 1:
+        return 0.0
+    return min(1.0, (n_eff - 1.0) / (len(proportions) - 1.0))
+
+
+def weighted_style_fit_raw(
+    entries: Sequence[Mapping[str, object]],
+    *,
+    selected_comms: Iterable[str],
+    weights_raw: Mapping[str, float],
+    default_weight: float = RECOMMENDATION_DEFAULT_COMMUNITY_WEIGHT_RAW,
+) -> float:
+    """Weighted album-style fit: sum of album shares times profile weights.
+
+    Uses every positive album community (shares sum to 1). Communities not in
+    ``selected_comms`` contribute profile weight 0. Selected communities use
+    stored weights, or ``default_weight`` when unset.
+    """
+    album_masses = affinity_vector_from_entries(entries)
+    if not album_masses:
+        return 0.0
+    total_mass = sum(album_masses.values())
+    if total_mass <= 0.0:
+        return 0.0
+    selected = {str(community_id) for community_id in selected_comms}
+    fit = 0.0
+    for community_id, mass in album_masses.items():
+        share = mass / total_mass
+        if community_id in selected:
+            weight = float(weights_raw.get(community_id, default_weight))
+        else:
+            weight = 0.0
+        fit += share * weight
+    return max(0.0, min(1.0, fit))
+
+
+def aligned_style_cosine_fit_raw(
+    entries: Sequence[Mapping[str, object]],
+    *,
+    selected_comms: Iterable[str],
+    weights_raw: Mapping[str, float],
+    default_weight: float = RECOMMENDATION_DEFAULT_COMMUNITY_WEIGHT_RAW,
+) -> float:
+    """Deprecated alias for :func:`weighted_style_fit_raw` (cosine removed)."""
+    return weighted_style_fit_raw(
+        entries,
+        selected_comms=selected_comms,
+        weights_raw=weights_raw,
+        default_weight=default_weight,
+    )
+
+
+def style_fit_batch_normalized(raw_values: list[float]) -> list[float]:
+    """Map raw style-fit values to [0, 1] by dividing by the batch maximum."""
+    if not raw_values:
+        return []
+    maximum = max(float(value) for value in raw_values)
+    if maximum <= 0.0:
+        return [0.0] * len(raw_values)
+    return [float(value) / maximum for value in raw_values]
+
+
+def cosine_fit_from_affinity_entries(
+    entries: Sequence[Mapping[str, object]],
+    *,
+    selected_comms: Iterable[str],
+    weights_raw: Mapping[str, float],
+) -> float:
+    """Weighted style fit (legacy name kept for Score Lab columns)."""
+    return weighted_style_fit_raw(
+        entries,
+        selected_comms=selected_comms,
+        weights_raw=weights_raw,
+    )
+
+
+def cosine_fit_from_affinity_row(
+    affinity_row: Mapping[str, object] | None,
+    *,
+    selected_comms: Iterable[str],
+    weights_raw: Mapping[str, float],
+    res_key: str = "res_10",
+) -> float:
+    """Cosine fit for one album affinity row, or 0 when data is missing."""
+    if affinity_row is None:
+        return 0.0
+    comms = affinity_row.get("communities")
+    if not isinstance(comms, Mapping):
+        return 0.0
+    entries_any = comms.get(res_key)
+    if not isinstance(entries_any, list):
+        return 0.0
+    return cosine_fit_from_affinity_entries(
+        entries_any,
+        selected_comms=selected_comms,
+        weights_raw=weights_raw,
+    )
+
+
+def album_spectrum_term_from_style_breadth(
+    album_style_breadth: float,
+    *,
+    crossover_weight: float,
+) -> tuple[float, float, float]:
+    """Blend stylistic purity and breadth for the gamma overall-score term.
+
+    Uses per-album ``album_style_breadth`` over all album communities (entropy-based,
+    absolute in [0, 1]). ``crossover_weight`` 0 favors stylistically pure albums;
+    1 favors stylistically broad albums.
+
+    Returns ``(spectrum_term, purity_side, breadth_side)``.
+
+    The legacy reference-graph spectrum (:func:`community_spectrum_norm_batch`) remains
+    available for Score Lab but is not used in the active ranking path.
+    """
+    breadth = max(0.0, min(1.0, float(album_style_breadth)))
+    purity = 1.0 - breadth
+    spectrum = blend_purity_breadth(purity, breadth, crossover_weight=crossover_weight)
+    return spectrum, purity, breadth
+
+
 def blend_purity_breadth(
     purity_raw: float,
     breadth_raw: float,
@@ -231,16 +537,20 @@ def community_spectrum_norm_batch(
 
 
 def overall_score(
-    s_a: float,
+    style_fit_norm: float,
     rating_norm: float,
-    community_term_norm: float,
+    style_breadth_norm: float,
     *,
     alpha: float,
     beta: float,
     gamma: float,
 ) -> float:
-    """Linear combination of normalized components (each typically in [0, 1])."""
-    return alpha * s_a + beta * rating_norm + gamma * community_term_norm
+    """Linear combination of three normalized scores in ``[0, 1]``.
+
+    ``alpha`` weights style fit, ``beta`` plattentests rating, ``gamma`` album
+    style breadth (percentile-normalized Shannon diversity ``N_eff`` over the corpus).
+    """
+    return alpha * style_fit_norm + beta * rating_norm + gamma * style_breadth_norm
 
 
 def serendipity_rank_sort_key(

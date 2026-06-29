@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import pytest
+
 from music_review.application.models import TasteFilterSettings, TasteProfile
 from music_review.application.presets import get_preset
 from music_review.application.recommendation_service import (
@@ -15,10 +17,13 @@ from music_review.dashboard.score_lab import (
     diagnose_score_lab_empty,
     guess_matching_preset_id,
     k_hits_for_review,
+    lab_slider_settings_from_profile,
+    load_active_saved_taste_profile,
     parse_review_ids_text,
     profile_for_archive_lab,
     profile_with_lab_overrides,
     score_lab_rows_to_csv,
+    taste_profile_from_saved_document,
 )
 from music_review.domain.models import Review
 
@@ -130,6 +135,20 @@ def test_build_score_lab_rows_archive_contains_table_columns() -> None:
         assert column in rows[0]
     assert rows[0]["artist"] == "Strong"
     assert rows[0]["k_hits"] == 1
+    assert float(rows[0]["cosine_fit"]) > 0.0
+
+
+def test_score_lab_cosine_raw_differs_from_legacy_s_a() -> None:
+    profile = _profile(
+        selected_communities=("C001", "C002"),
+        community_weights_raw={"C001": 1.0, "C002": 1.0},
+    )
+    rows = build_score_lab_rows(profile, _inputs(), limit=10)
+    assert rows
+    assert all(float(row["cosine_fit"]) > 0.0 for row in rows)
+    assert any(
+        float(row["cosine_fit"]) != pytest.approx(float(row["s_a"])) for row in rows
+    )
 
 
 def test_build_score_lab_rows_respects_limit() -> None:
@@ -178,6 +197,40 @@ def test_build_score_lab_rows_live_alpha_changes_overall_score() -> None:
     base_rows = build_score_lab_rows(base_profile, _inputs(), limit=1)
     tuned_rows = build_score_lab_rows(tuned_profile, _inputs(), limit=1)
     assert base_rows[0]["overall_score"] != tuned_rows[0]["overall_score"]
+
+
+def test_lab_slider_settings_from_saved_document() -> None:
+    data = {
+        "selected_communities": ["C001", "C002"],
+        "filter_settings": {"score_min": 0.2, "score_max": 1.0},
+        "community_weights_raw": {"C001": 1.0},
+    }
+    profile = taste_profile_from_saved_document(data, profile_name="thomas")
+    sliders = lab_slider_settings_from_profile(profile)
+    assert sliders["score_min"] == pytest.approx(0.2)
+    assert sliders["score_max"] == pytest.approx(1.0)
+
+
+def test_load_active_saved_taste_profile_reads_db(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    payload = {
+        "selected_communities": ["C001"],
+        "filter_settings": {"score_min": 0.2, "score_max": 1.0},
+        "community_weights_raw": {"C001": 1.0},
+    }
+
+    def fake_load(_base_dir: object, slug: str) -> dict[str, object]:
+        assert slug == "thomas"
+        return payload
+
+    monkeypatch.setattr(
+        "music_review.dashboard.score_lab.load_profile",
+        fake_load,
+    )
+    profile = load_active_saved_taste_profile("thomas")
+    assert profile is not None
+    assert profile.filter_settings.score_min == pytest.approx(0.2)
 
 
 def test_score_lab_rows_to_csv_uses_table_columns() -> None:

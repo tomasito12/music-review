@@ -18,7 +18,6 @@ from music_review.dashboard.streamlit_branding import (
 from music_review.dashboard.user_profile_store import (
     LOGIN_GUEST_SESSION_PINNED_KEY,
     LOGIN_PROFILE_MERGE_PENDING_KEY,
-    apply_profile_to_session,
 )
 
 
@@ -138,7 +137,9 @@ def main() -> None:
             ):
                 server = merge_pending.get("server_profile")
                 if isinstance(server, dict) and server:
-                    apply_profile_to_session(st.session_state, server)
+                    from pages.profile_session import apply_saved_profile_to_session
+
+                    apply_saved_profile_to_session(server)
                 st.session_state.pop(LOGIN_PROFILE_MERGE_PENDING_KEY, None)
                 st.session_state.pop(LOGIN_GUEST_SESSION_PINNED_KEY, None)
                 st.session_state.pop(WIZARD_ACCOUNT_SAVE_INTENT_KEY, None)

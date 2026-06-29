@@ -18,6 +18,7 @@ from music_review.config import (
 )
 from music_review.dashboard.recommendation_scoring import (
     breadth_raw_from_selected_community_masses,
+    cosine_fit_from_affinity_row,
     effective_plattentests_rating,
     gini_coefficient,
     normalize_coverage_batch,
@@ -475,6 +476,11 @@ def build_album_score_walkthrough(
         max_weighted=max_weighted,
         purity_raw=purity_raw,
     )
+    cosine_fit = cosine_fit_from_affinity_row(
+        affinity_row,
+        selected_comms=selected,
+        weights_raw=weights_raw,
+    )
     ref_masses = reference_community_position_masses(
         review,
         inputs.memberships,
@@ -670,6 +676,7 @@ def build_album_score_walkthrough(
         "overall_steps": overall_steps,
         "summary": {
             "s_a": s_a,
+            "cosine_fit": cosine_fit,
             "overall_score": overall,
             "batch_size": len(batch_rows),
         },

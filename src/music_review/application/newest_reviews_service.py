@@ -29,7 +29,6 @@ class NewestReviewsInputs:
     newest_reviews: Sequence[Review]
     affinity_by_review_id: Mapping[int, Mapping[str, Any]]
     memberships: dict[str, dict[str, str]]
-    all_reviews_for_breadth_norm: Sequence[Review] = ()
 
 
 @dataclass(frozen=True, slots=True)
@@ -60,7 +59,7 @@ class NewestReviewsService:
         breadth_norm = (
             dict(global_breadth_norm)
             if global_breadth_norm is not None
-            else self.compute_global_breadth_norm(selected_comms, profile)
+            else self.compute_global_breadth_norm()
         )
         rows = preference_ranked_rows(
             self.inputs.newest_reviews,
@@ -89,20 +88,9 @@ class NewestReviewsService:
         )
         return rows
 
-    def compute_global_breadth_norm(
-        self,
-        selected_comms: set[str],
-        profile: TasteProfile,
-    ) -> dict[int, float]:
-        """Return corpus-wide breadth normalization for newest ranking."""
-        if not self.inputs.all_reviews_for_breadth_norm:
-            return {}
-        return global_breadth_norm_by_review_id(
-            self.inputs.all_reviews_for_breadth_norm,
-            memberships=self.inputs.memberships,
-            selected_comms=selected_comms,
-            weights_raw=profile.community_weights_raw,
-        )
+    def compute_global_breadth_norm(self) -> dict[int, float]:
+        """Return corpus-wide style-breadth percentile norms."""
+        return global_breadth_norm_by_review_id(self.inputs.affinity_by_review_id)
 
 
 __all__ = ["RES_KEY", "NewestReviewsInputs", "NewestReviewsService"]

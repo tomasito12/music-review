@@ -17,14 +17,17 @@ from music_review.config import (
     normalize_overall_weights,
 )
 from music_review.dashboard.recommendation_scoring import (
+    album_style_breadth_norm_for_review_ids,
     breadth_raw_from_selected_community_masses,
-    community_spectrum_norm_batch,
     effective_plattentests_rating,
-    gated_community_spectrum,
+    effective_style_diversity_from_affinity_entries,
+    global_album_style_breadth_norm_by_review_id,
     overall_score,
     purity_max_weighted_share,
     rating_to_unit_interval,
     serendipity_rank_sort_key,
+    style_fit_batch_normalized,
+    weighted_style_fit_raw,
 )
 from music_review.domain.models import Review
 from music_review.domain.reference_masses import reference_community_position_masses
@@ -105,8 +108,28 @@ class RecommendationService:
         if not candidates:
             return []
 
-        _apply_overall_scores(candidates, profile)
-        candidates.sort(key=lambda x: float(x["overall_score"]), reverse=True)
+        _apply_style_fit_scores(candidates)
+        settings = profile.filter_settings
+        candidates = [
+            row
+            for row in candidates
+            if settings.score_min <= float(row["score"]) <= settings.score_max
+        ]
+        if not candidates:
+            return []
+
+        breadth_norm_global = global_album_style_breadth_norm_by_review_id(
+            _affinity_by_review_id(self.inputs.affinities),
+        )
+        _apply_overall_scores(candidates, profile, breadth_norm_global)
+        candidates.sort(
+            key=lambda x: (
+                float(x["overall_score"]),
+                float(x["score"]),
+                int(x["review_id"]),
+            ),
+            reverse=True,
+        )
         if settings.sort_mode == "discovery" and settings.serendipity > 0.0:
             _apply_serendipity(candidates, settings.serendipity, rng=rng)
         return candidates
@@ -123,8 +146,7 @@ class RecommendationService:
         rating_min: float,
         rating_max: float,
     ) -> list[dict[str, Any]]:
-        """Build pre-ranking candidate rows after hard filters."""
-        settings = profile.filter_settings
+        """Build pre-ranking candidate rows after hard filters (except style fit)."""
         candidates: list[dict[str, Any]] = []
         for obj in self.inputs.affinities:
             entries_any = _affinity_entries(obj)
@@ -142,10 +164,7 @@ class RecommendationService:
                 rating_min=rating_min,
                 rating_max=rating_max,
             )
-            if row is None:
-                continue
-            score = float(row["score"])
-            if settings.score_min <= score <= settings.score_max:
+            if row is not None:
                 candidates.append(row)
         return candidates
 
@@ -211,11 +230,21 @@ class RecommendationService:
             profile.community_weights_raw,
         )
         meta = self.inputs.metadata.get(review_id_val) or {}
+        style_fit_raw = weighted_style_fit_raw(
+            entries_any,
+            selected_comms=selected_comms,
+            weights_raw=profile.community_weights_raw,
+        )
+        style_diversity_n_eff = effective_style_diversity_from_affinity_entries(
+            entries_any,
+        )
         return {
             "review_id": review_id_val,
             "artist": review.artist,
             "album": review.album,
-            "score": s,
+            "s_a": s,
+            "style_fit_raw": style_fit_raw,
+            "style_diversity_n_eff": style_diversity_n_eff,
             "k_hits": k_hits,
             "purity_raw": purity_max_weighted_share(max_wv, s),
             "breadth_raw": breadth_raw,
@@ -292,9 +321,31 @@ def _selected_affinity_score(
     return score, hits, max_weighted_value
 
 
+def _apply_style_fit_scores(candidates: list[dict[str, Any]]) -> None:
+    """Batch-normalize raw style-fit cosines into ``score`` for filtering/ranking."""
+    normalized = style_fit_batch_normalized(
+        [float(item["style_fit_raw"]) for item in candidates],
+    )
+    for item, style_fit in zip(candidates, normalized, strict=True):
+        item["score"] = style_fit
+
+
+def _affinity_by_review_id(
+    affinities: Sequence[Mapping[str, Any]],
+) -> dict[int, Mapping[str, Any]]:
+    """Index affinity rows by review id."""
+    out: dict[int, Mapping[str, Any]] = {}
+    for obj in affinities:
+        review_id_val = obj.get("review_id")
+        if isinstance(review_id_val, int):
+            out[int(review_id_val)] = obj
+    return out
+
+
 def _apply_overall_scores(
     candidates: list[dict[str, Any]],
     profile: TasteProfile,
+    breadth_norm_global: Mapping[int, float],
 ) -> None:
     """Add normalized score components and overall score to each candidate."""
     settings = profile.filter_settings
@@ -303,35 +354,36 @@ def _apply_overall_scores(
         settings.overall_weight_beta,
         settings.overall_weight_gamma,
     )
-    purity_list = [float(c["purity_raw"]) for c in candidates]
-    breadth_list = [float(c["breadth_raw"]) for c in candidates]
-    purity_norms, breadth_norms, spec_norm_list = community_spectrum_norm_batch(
-        purity_list,
-        breadth_list,
-        crossover_weight=settings.community_spectrum_crossover,
+    n_eff_by_review_id = {
+        int(item["review_id"]): float(item["style_diversity_n_eff"])
+        for item in candidates
+    }
+    style_breadth_norms = album_style_breadth_norm_for_review_ids(
+        [int(item["review_id"]) for item in candidates],
+        n_eff_by_review_id,
+        global_norm_by_review_id=breadth_norm_global,
     )
-    for item, p_n, b_n, spec_n in zip(
-        candidates,
-        purity_norms,
-        breadth_norms,
-        spec_norm_list,
-        strict=True,
-    ):
+    for item, style_breadth in zip(candidates, style_breadth_norms, strict=True):
         rating_norm = rating_to_unit_interval(
             item["rating"],
             default_on_10_scale=RECOMMENDATION_RATING_DEFAULT_WHEN_MISSING,
         )
-        spec_eff, gate = gated_community_spectrum(float(spec_n), float(item["score"]))
-        item["purity_norm"] = p_n
-        item["breadth_norm"] = b_n
-        item["community_spectrum_norm"] = spec_n
-        item["spectrum_matching_gate"] = gate
-        item["community_spectrum_effective"] = spec_eff
+        style_fit = float(item["score"])
+        item["album_style_breadth"] = style_breadth
+        item["style_breadth_norm"] = style_breadth
         item["rating_norm"] = rating_norm
+        item["purity_norm"] = max(0.0, 1.0 - style_breadth)
+        item["breadth_norm"] = style_breadth
+        item["community_spectrum_norm"] = style_breadth
+        item["community_spectrum_effective"] = style_breadth
+        item["spectrum_matching_gate"] = 1.0
+        item["alpha"] = alpha
+        item["beta"] = beta
+        item["gamma"] = gamma
         item["overall_score"] = overall_score(
-            float(item["score"]),
+            style_fit,
             rating_norm,
-            spec_eff,
+            style_breadth,
             alpha=alpha,
             beta=beta,
             gamma=gamma,

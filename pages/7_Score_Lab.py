@@ -6,10 +6,10 @@ from typing import Any
 
 import pandas as pd
 import streamlit as st
-from pages.page_helpers import (
+from pages.page_helpers import get_selected_communities, render_toolbar
+from pages.profile_session import (
     ACTIVE_PROFILE_SESSION_KEY,
-    get_selected_communities,
-    render_toolbar,
+    apply_saved_profile_to_session,
 )
 from pages.recommendations_pool import (
     load_affinities,
@@ -27,22 +27,28 @@ from music_review.dashboard.data_cache import (
     cached_min_release_year_from_corpus,
 )
 from music_review.dashboard.score_lab import (
-    SCORE_LAB_DEFAULT_SCORE_MAX,
-    SCORE_LAB_DEFAULT_SCORE_MIN,
     SCORE_LAB_TABLE_COLUMNS,
     ScoreLabDataSource,
     build_score_lab_rows,
     diagnose_score_lab_empty,
     format_score_lab_filter_summary,
     guess_matching_preset_id,
+    lab_exploration_slider_defaults,
+    lab_slider_settings_from_profile,
+    load_active_saved_taste_profile,
     parse_review_ids_text,
     profile_with_lab_overrides,
     score_lab_rows_to_csv,
+    taste_profile_from_saved_document,
 )
 from music_review.dashboard.score_lab_walkthrough import (
     build_album_score_walkthrough,
 )
-from music_review.dashboard.user_profile_store import default_profiles_dir, load_profile
+from music_review.dashboard.user_profile_store import (
+    default_profiles_dir,
+    ensure_active_profile_hydrated,
+    load_profile,
+)
 
 _SCORE_LAB_WIDGET_PREFIX = "score_lab_"
 _SCORE_LAB_LIMIT_OPTIONS: tuple[int | None, ...] = (50, 200, 500, None)
@@ -128,6 +134,17 @@ def _rename_columns(df: pd.DataFrame, mapping: dict[str, str]) -> pd.DataFrame:
     return df.rename(columns=rename_map)
 
 
+def _active_profile_slug() -> str | None:
+    raw = st.session_state.get(ACTIVE_PROFILE_SESSION_KEY)
+    if isinstance(raw, str) and raw.strip():
+        return raw.strip()
+    return None
+
+
+def _saved_profile_for_lab() -> TasteProfile | None:
+    return load_active_saved_taste_profile(_active_profile_slug())
+
+
 def _profile_from_session() -> TasteProfile | None:
     selected = get_selected_communities()
     if not selected:
@@ -157,30 +174,57 @@ def _profile_from_session() -> TasteProfile | None:
     )
 
 
-def _lab_settings_from_profile(profile: TasteProfile) -> dict[str, float]:
-    settings = profile.filter_settings
-    return {
-        "overall_weight_alpha": float(settings.overall_weight_alpha),
-        "overall_weight_beta": float(settings.overall_weight_beta),
-        "overall_weight_gamma": float(settings.overall_weight_gamma),
-        "community_spectrum_crossover": float(settings.community_spectrum_crossover),
-        "score_min": float(settings.score_min),
-        "score_max": float(settings.score_max),
-    }
-
-
-def _lab_exploration_defaults(profile: TasteProfile) -> dict[str, float]:
-    defaults = _lab_settings_from_profile(profile)
-    defaults["score_min"] = SCORE_LAB_DEFAULT_SCORE_MIN
-    defaults["score_max"] = SCORE_LAB_DEFAULT_SCORE_MAX
-    return defaults
+def _apply_lab_sliders_from_profile(profile: TasteProfile) -> None:
+    for key, value in lab_slider_settings_from_profile(profile).items():
+        st.session_state[_widget_key(key)] = value
 
 
 def _init_lab_slider_defaults(profile: TasteProfile) -> None:
-    for key, value in _lab_exploration_defaults(profile).items():
+    for key, value in lab_exploration_slider_defaults(profile).items():
         widget_key = _widget_key(key)
         if widget_key not in st.session_state:
             st.session_state[widget_key] = value
+
+
+def _load_lab_settings_from_saved_profile() -> bool:
+    """Apply saved DB profile to session and lab sliders; return False if none."""
+    slug = _active_profile_slug()
+    if slug is None:
+        return False
+    try:
+        data = load_profile(default_profiles_dir(), slug)
+    except OSError:
+        return False
+    if data is None:
+        return False
+    apply_saved_profile_to_session(data)
+    loaded_profile = taste_profile_from_saved_document(data, profile_name=slug)
+    _apply_lab_sliders_from_profile(loaded_profile)
+    st.session_state[_widget_key("apply_product_filters")] = True
+    return True
+
+
+def _on_load_from_profile_click() -> None:
+    """Streamlit callback: runs before widgets bind keys on the next rerun."""
+    status_key = _widget_key("load_profile_status")
+    if _load_lab_settings_from_saved_profile():
+        st.session_state[status_key] = "saved"
+        return
+    profile = _profile_from_session()
+    if profile is not None:
+        _apply_lab_sliders_from_profile(profile)
+    st.session_state[status_key] = "session_only"
+
+
+def _on_reset_exploration_click() -> None:
+    """Reset lab sliders to exploration defaults (full S_a range)."""
+    profile = _profile_from_session()
+    if profile is None:
+        return
+    for key, value in lab_exploration_slider_defaults(profile).items():
+        st.session_state[_widget_key(key)] = value
+    st.session_state[_widget_key("apply_product_filters")] = False
+    st.session_state.pop(_widget_key("load_profile_status"), None)
 
 
 def _recommendation_inputs() -> RecommendationInputs:
@@ -284,6 +328,39 @@ def _render_sidebar(
             for key, label in _SCORE_LAB_LIMIT_LABELS.items()
             if label == limit_label
         )
+        st.caption(
+            f"Profil-Filter (Session): {format_score_lab_filter_summary(profile)}"
+        )
+        saved_profile = _saved_profile_for_lab()
+        if saved_profile is not None:
+            st.caption(
+                "Gespeichertes Profil (DB): "
+                f"{format_score_lab_filter_summary(saved_profile)}"
+            )
+
+        st.subheader("Live-Gewichtung")
+        col_load, col_reset = st.columns(2)
+        with col_load:
+            st.button(
+                "Aus Profil laden",
+                key=_widget_key("load_from_profile"),
+                on_click=_on_load_from_profile_click,
+            )
+        with col_reset:
+            st.button(
+                "Zurücksetzen",
+                key=_widget_key("reset_defaults"),
+                on_click=_on_reset_exploration_click,
+            )
+        load_status = st.session_state.get(_widget_key("load_profile_status"))
+        if load_status == "session_only":
+            st.warning(
+                "Kein gespeichertes Konto-Profil gefunden. "
+                "Session-Filter wurden in die Schieberegler übernommen."
+            )
+        elif load_status == "saved":
+            st.success("Gespeichertes Profil in die Schieberegler geladen.")
+
         apply_product_filters = st.checkbox(
             "Empfehlungs-Filter (Jahr, Rating, Plattenlabel)",
             value=False,
@@ -293,22 +370,6 @@ def _render_sidebar(
                 "An: wie die Seite Empfehlungen."
             ),
         )
-        st.caption(
-            f"Profil-Filter (Session): {format_score_lab_filter_summary(profile)}"
-        )
-
-        st.subheader("Live-Gewichtung")
-        col_load, col_reset = st.columns(2)
-        with col_load:
-            if st.button("Aus Profil laden", key=_widget_key("load_from_profile")):
-                for key, value in _lab_settings_from_profile(profile).items():
-                    st.session_state[_widget_key(key)] = value
-                st.rerun()
-        with col_reset:
-            if st.button("Zurücksetzen", key=_widget_key("reset_defaults")):
-                for key, value in _lab_exploration_defaults(profile).items():
-                    st.session_state[_widget_key(key)] = value
-                st.rerun()
 
         st.slider(
             "Relative Wichtigkeit: Stil-Nähe",
@@ -400,12 +461,14 @@ def _render_score_walkthrough(
         batch_rows=batch_rows,
     )
 
-    meta_col1, meta_col2, meta_col3 = st.columns(3)
+    meta_col1, meta_col2, meta_col3, meta_col4 = st.columns(4)
     with meta_col1:
         st.metric("overall_score", f"{walkthrough['summary']['overall_score']:.4f}")
     with meta_col2:
         st.metric("S_a (Stilpassung)", f"{walkthrough['summary']['s_a']:.4f}")
     with meta_col3:
+        st.metric("cosine_fit", f"{walkthrough['summary']['cosine_fit']:.4f}")
+    with meta_col4:
         st.metric(
             "Kandidaten für Batch-Norm",
             int(walkthrough["summary"]["batch_size"]),
@@ -501,6 +564,7 @@ def _render_score_walkthrough(
 def main() -> None:
     _score_lab_wide_layout_css()
     render_toolbar("Score Lab")
+    ensure_active_profile_hydrated(st.session_state)
     st.title("Score Lab")
     st.caption(
         "Internes Werkzeug: volle Dashboard-Breite, Score-Nachvollzug mit Tabellen. "
@@ -570,8 +634,11 @@ def main() -> None:
         )
         if counts["community_hits"] > 0 and counts["after_score_range"] == 0:
             st.info(
-                "Die Stilpassung min/max-Schieberegler sind zu streng. "
-                "Setze **Stilpassung min** auf 0 oder klicke **Zurücksetzen**."
+                "Die Stilpassung min/max-Schieberegler sind zu streng "
+                f"(aktuell {lab_profile.filter_settings.score_min:.2f}"
+                f"-{lab_profile.filter_settings.score_max:.2f}). "
+                "Klicke **Aus Profil laden** für die gespeicherten Filter, "
+                "oder **Zurücksetzen** für Erkundung (min = 0)."
             )
         elif counts["after_score_range"] > 0 and counts["after_product_filters"] == 0:
             st.info(
@@ -585,7 +652,9 @@ def main() -> None:
     st.subheader("Rangliste")
     st.caption(
         f"Zeige {len(display_rows)} von {len(batch_rows)} Alben "
-        f"(Batch-Normierung nutzt alle {len(batch_rows)} Kandidaten)."
+        f"(Batch-Normierung nutzt alle {len(batch_rows)} Kandidaten). "
+        "cosine_fit: Kosinus-Ähnlichkeit zwischen Nutzer-Gewichtsvektor und "
+        "Album-Affinitätsvektor über alle Communities."
     )
     table_df = pd.DataFrame(display_rows)
     display_columns = [

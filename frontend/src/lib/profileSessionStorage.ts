@@ -2,6 +2,7 @@ import {
   migrateLegacyCommunityWeights,
   normalizeCommunityWeights,
 } from "./communityWeightMapping";
+import { normalizeFilterSettings } from "./plattenradarApi";
 import type { TemporaryTasteProfile } from "./plattenradarApi";
 
 export const PROFILE_SESSION_STORAGE_KEY = "plattenradar.profile-session.v1";
@@ -96,6 +97,7 @@ function normalizeStoredProfileSession(value: unknown): StoredProfileSession | n
           profile.community_weights_raw,
         ),
       ),
+      filter_settings: normalizeFilterSettings(profile.filter_settings),
     },
     savedAt,
   };

@@ -104,7 +104,12 @@ def create_app() -> FastAPI:
     )
     app.add_middleware(
         CORSMiddleware,
-        allow_origins=["http://127.0.0.1:5173", "http://127.0.0.1:5174"],
+        allow_origins=[
+            "http://127.0.0.1:5173",
+            "http://127.0.0.1:5174",
+            "http://localhost:5173",
+            "http://localhost:5174",
+        ],
         allow_credentials=False,
         allow_methods=["*"],
         allow_headers=["*"],
@@ -505,7 +510,6 @@ def _new_review_rows(
         newest_reviews=newest,
         affinity_by_review_id=affinity_by_id,
         memberships=provider.memberships(),
-        all_reviews_for_breadth_norm=provider.reviews(),
     )
     rows = NewestReviewsService(inputs).compute_ranked_rows(profile)
     if rows is None:

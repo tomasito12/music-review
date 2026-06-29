@@ -5,6 +5,7 @@ from __future__ import annotations
 import csv
 import io
 from collections.abc import Mapping, Sequence
+from pathlib import Path
 from typing import Any, Literal
 
 from music_review.application.community_tags import community_tags_from_entries
@@ -20,6 +21,8 @@ from music_review.config import (
     normalize_overall_weights,
 )
 from music_review.dashboard.preference_ranking import preference_ranked_rows
+from music_review.dashboard.recommendation_scoring import cosine_fit_from_affinity_row
+from music_review.dashboard.user_profile_store import default_profiles_dir, load_profile
 from music_review.domain.models import Review
 
 ScoreLabDataSource = Literal["archive", "review_ids"]
@@ -30,6 +33,7 @@ SCORE_LAB_TABLE_COLUMNS: tuple[str, ...] = (
     "artist",
     "album",
     "score",
+    "cosine_fit",
     "rating",
     "rating_norm",
     "purity_raw",
@@ -240,6 +244,9 @@ def _normalize_archive_row(
         "artist": row.get("artist"),
         "album": row.get("album"),
         "score": row.get("score"),
+        "s_a": row.get("s_a"),
+        "style_fit_raw": row.get("style_fit_raw"),
+        "cosine_fit": row.get("cosine_fit"),
         "rating": row.get("rating"),
         "rating_norm": row.get("rating_norm"),
         "purity_raw": row.get("purity_raw"),
@@ -297,6 +304,73 @@ def _normalize_preference_row(
 
 SCORE_LAB_DEFAULT_SCORE_MIN = 0.0
 SCORE_LAB_DEFAULT_SCORE_MAX = 1.0
+
+
+def taste_profile_from_saved_document(
+    data: Mapping[str, Any],
+    *,
+    profile_name: str | None = None,
+) -> TasteProfile:
+    """Build a taste profile from a stored profile document (DB / JSON payload)."""
+    selected = data.get("selected_communities")
+    if isinstance(selected, list) and selected:
+        communities = sorted(str(community_id) for community_id in selected)
+    else:
+        communities = []
+    filter_settings = data.get("filter_settings")
+    if not isinstance(filter_settings, dict):
+        filter_settings = {}
+    weights_raw = data.get("community_weights_raw")
+    if not isinstance(weights_raw, dict):
+        weights_raw = {}
+    name = profile_name or str(data.get("name") or "Profil")
+    return TasteProfile.from_mapping(
+        {
+            "name": name,
+            "selected_communities": communities,
+            "filter_settings": filter_settings,
+            "community_weights_raw": weights_raw,
+        },
+    )
+
+
+def load_active_saved_taste_profile(
+    active_slug: str | None,
+    *,
+    profiles_dir: Path | None = None,
+) -> TasteProfile | None:
+    """Load the signed-in user's saved profile from the database, if available."""
+    if not isinstance(active_slug, str) or not active_slug.strip():
+        return None
+    slug = active_slug.strip()
+    try:
+        data = load_profile(profiles_dir or default_profiles_dir(), slug)
+    except OSError:
+        return None
+    if data is None:
+        return None
+    return taste_profile_from_saved_document(data, profile_name=slug)
+
+
+def lab_slider_settings_from_profile(profile: TasteProfile) -> dict[str, float]:
+    """Return Score Lab sidebar slider values derived from a taste profile."""
+    settings = profile.filter_settings
+    return {
+        "overall_weight_alpha": float(settings.overall_weight_alpha),
+        "overall_weight_beta": float(settings.overall_weight_beta),
+        "overall_weight_gamma": float(settings.overall_weight_gamma),
+        "community_spectrum_crossover": float(settings.community_spectrum_crossover),
+        "score_min": float(settings.score_min),
+        "score_max": float(settings.score_max),
+    }
+
+
+def lab_exploration_slider_defaults(profile: TasteProfile) -> dict[str, float]:
+    """Exploration defaults: profile weights, but full S_a interval 0..1."""
+    defaults = lab_slider_settings_from_profile(profile)
+    defaults["score_min"] = SCORE_LAB_DEFAULT_SCORE_MIN
+    defaults["score_max"] = SCORE_LAB_DEFAULT_SCORE_MAX
+    return defaults
 
 
 def profile_for_archive_lab(
@@ -430,6 +504,27 @@ def _apply_limit(rows: list[dict[str, Any]], limit: int | None) -> list[dict[str
     return rows[:limit]
 
 
+def _enrich_rows_with_cosine_fit(
+    rows: list[dict[str, Any]],
+    *,
+    affinities: Sequence[Mapping[str, Any]],
+    selected_comms: set[str],
+    weights_raw: Mapping[str, float],
+) -> None:
+    """Attach ``cosine_fit`` to each row from album affinity vectors."""
+    aff_map = affinity_by_review_id(affinities)
+    for row in rows:
+        review_id = row.get("review_id")
+        if not isinstance(review_id, int):
+            row["cosine_fit"] = 0.0
+            continue
+        row["cosine_fit"] = cosine_fit_from_affinity_row(
+            aff_map.get(review_id),
+            selected_comms=selected_comms,
+            weights_raw=weights_raw,
+        )
+
+
 def build_score_lab_rows(
     profile: TasteProfile,
     inputs: RecommendationInputs,
@@ -474,6 +569,12 @@ def build_score_lab_rows(
         normalized = [row for row in normalized if row.get("review_id") in review_ids]
         for index, row in enumerate(normalized):
             row["rank"] = index + 1
+    _enrich_rows_with_cosine_fit(
+        normalized,
+        affinities=inputs.affinities,
+        selected_comms=selected_comms,
+        weights_raw=archive_profile.community_weights_raw,
+    )
     return _apply_limit(normalized, limit)
 
 
@@ -532,4 +633,10 @@ def _build_review_id_rows(
                 ),
             ),
         )
+    _enrich_rows_with_cosine_fit(
+        normalized,
+        affinities=inputs.affinities,
+        selected_comms=selected_comms,
+        weights_raw=profile.community_weights_raw,
+    )
     return _apply_limit(normalized, limit)

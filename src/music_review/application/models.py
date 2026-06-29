@@ -74,7 +74,7 @@ class TasteFilterSettings(ApiModel):
     rating_max: float = 10.0
     score_min: float = 0.0
     score_max: float = 1.0
-    community_spectrum_crossover: float = 0.5
+    community_spectrum_crossover: float = 0.2
     overall_weight_alpha: float = 0.5
     overall_weight_beta: float = 0.25
     overall_weight_gamma: float = 0.25
@@ -118,7 +118,7 @@ class TasteFilterSettings(ApiModel):
         defaults = {
             "score_min": 0.0,
             "score_max": 1.0,
-            "community_spectrum_crossover": 0.5,
+            "community_spectrum_crossover": 0.2,
             "overall_weight_alpha": 0.5,
             "overall_weight_beta": 0.25,
             "overall_weight_gamma": 0.25,

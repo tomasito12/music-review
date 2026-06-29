@@ -3,8 +3,9 @@
 from __future__ import annotations
 
 import sqlite3
+import threading
 from collections.abc import Mapping, Sequence
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from datetime import datetime
 from typing import Any, Protocol
 
@@ -163,6 +164,7 @@ class CachedCorpusProvider:
     """In-memory corpus cache with invalidation when source files change."""
 
     source: FileCorpusProvider
+    _lock: threading.RLock = field(default_factory=threading.RLock)
     _source_mtimes: tuple[float, ...] | None = None
     _reviews: list[Review] | None = None
     _metadata: Mapping[int, Mapping[str, Any]] | None = None
@@ -179,20 +181,36 @@ class CachedCorpusProvider:
     def _refresh_cache_if_needed(self) -> None:
         """Reload all corpus slices when source files changed or cache is empty."""
         current_mtimes = _corpus_source_mtimes()
-        if self._source_mtimes is not None and self._source_mtimes == current_mtimes:
-            return
-        self._source_mtimes = current_mtimes
-        self._reviews = list(self.source.reviews())
-        self._metadata = self.source.metadata()
-        self._affinities = list(self.source.affinities())
-        self._affinities_by_review_id = self.source.affinities_by_review_id()
-        self._memberships = self.source.memberships()
-        self._communities = list(self.source.communities())
-        self._broad_categories = self.source.broad_categories()
-        self._genre_labels = self.source.genre_labels()
-        self._plattenlabels = list(self.source.plattenlabels())
-        self._year_floor = self.source.year_floor()
-        self._year_cap = self.source.year_cap()
+        with self._lock:
+            if (
+                self._source_mtimes is not None
+                and self._source_mtimes == current_mtimes
+                and self._reviews is not None
+            ):
+                return
+            reviews = list(self.source.reviews())
+            metadata = self.source.metadata()
+            affinities = list(self.source.affinities())
+            affinities_by_review_id = self.source.affinities_by_review_id()
+            memberships = self.source.memberships()
+            communities = list(self.source.communities())
+            broad_categories = self.source.broad_categories()
+            genre_labels = self.source.genre_labels()
+            plattenlabels = list(self.source.plattenlabels())
+            year_floor = self.source.year_floor()
+            year_cap = self.source.year_cap()
+            self._reviews = reviews
+            self._metadata = metadata
+            self._affinities = affinities
+            self._affinities_by_review_id = affinities_by_review_id
+            self._memberships = memberships
+            self._communities = communities
+            self._broad_categories = broad_categories
+            self._genre_labels = genre_labels
+            self._plattenlabels = plattenlabels
+            self._year_floor = year_floor
+            self._year_cap = year_cap
+            self._source_mtimes = current_mtimes
 
     def reviews(self) -> Sequence[Review]:
         """Return cached reviews."""

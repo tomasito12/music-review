@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import pytest
+
 from music_review.application.models import TasteFilterSettings, TasteProfile
 from music_review.application.newest_reviews_service import (
     NewestReviewsInputs,
@@ -38,14 +40,14 @@ def _affinity(review_id: int, *entries: tuple[str, float]) -> dict[str, object]:
 def _service() -> NewestReviewsService:
     """Return a service with a tiny newest-review batch."""
     newest_reviews = [
-        _review(1, artist="Close Fit", rating=7),
-        _review(2, artist="Better Fit", rating=9),
+        _review(1, artist="Pure", rating=9),
+        _review(2, artist="Mixed", rating=9),
     ]
     inputs = NewestReviewsInputs(
         newest_reviews=newest_reviews,
         affinity_by_review_id={
-            1: _affinity(1, ("C001", 0.5)),
-            2: _affinity(2, ("C001", 0.9)),
+            1: _affinity(1, ("C001", 1.0)),
+            2: _affinity(2, ("C001", 0.5), ("C003", 0.5)),
         },
         memberships={},
     )
@@ -70,13 +72,13 @@ def test_newest_reviews_rank_without_streamlit_state() -> None:
     rows = _service().compute_ranked_rows(profile)
 
     assert rows is not None
-    assert [row["review_id"] for row in rows] == [2, 1]
-    assert rows[0]["review"].artist == "Better Fit"
+    assert [row["review_id"] for row in rows] == [1, 2]
+    assert rows[0]["review"].artist == "Pure"
     assert rows[0]["score"] > rows[1]["score"]
 
 
-def test_newest_reviews_uses_cached_global_breadth_norm() -> None:
-    """A cached corpus-wide breadth map is passed into the ranking formula."""
+def test_newest_reviews_breadth_norm_uses_global_percentile_map() -> None:
+    """Corpus-wide percentile norms drive album_style_breadth in ranked rows."""
     profile = TasteProfile(
         selected_communities=("C001",),
         community_weights_raw={"C001": 1.0},
@@ -89,4 +91,9 @@ def test_newest_reviews_uses_cached_global_breadth_norm() -> None:
 
     assert rows is not None
     breadth_by_id = {int(row["review_id"]): row["breadth_norm"] for row in rows}
-    assert breadth_by_id == {1: 0.25, 2: 0.75}
+    album_breadth_by_id = {
+        int(row["review_id"]): row["album_style_breadth"] for row in rows
+    }
+    assert breadth_by_id == album_breadth_by_id
+    assert breadth_by_id[1] == pytest.approx(0.25)
+    assert breadth_by_id[2] == pytest.approx(0.75)

@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import pytest
+
 from music_review.application.models import (
     ExplanationSignals,
     PlaylistExport,
@@ -46,6 +48,20 @@ def test_filter_settings_normalizes_ranges_and_legacy_sort_mode() -> None:
     assert settings.plattenlabel_selection == ("Sub Pop", "Matador")
     assert settings.sort_mode == "discovery"
     assert settings.serendipity == 1
+
+
+def test_taste_profile_defaults_exclude_legacy_album_style_breadth_k() -> None:
+    settings = TasteFilterSettings.from_mapping(
+        {"album_style_breadth_saturation_k": 0.1},
+    )
+    assert not hasattr(settings, "album_style_breadth_saturation_k")
+
+
+def test_taste_profile_defaults_use_standard_weights() -> None:
+    settings = TasteFilterSettings()
+    assert settings.overall_weight_alpha == pytest.approx(0.5)
+    assert settings.overall_weight_beta == pytest.approx(0.25)
+    assert settings.overall_weight_gamma == pytest.approx(0.25)
 
 
 def test_profile_from_legacy_payload_keeps_taste_fields() -> None:

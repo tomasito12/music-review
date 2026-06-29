@@ -1,6 +1,7 @@
 import type { ReactElement } from "react";
 
 import type { TasteCommunityOption, TasteFilterSettings, TastePreset } from "../lib/plattenradarApi";
+import { normalizeFilterSettings } from "../lib/plattenradarApi";
 import type { ProfileSetupResult } from "../lib/profileSessionStorage";
 
 import { PresetPillBar } from "./PresetPillBar";
@@ -61,7 +62,7 @@ export function ResultsFilterPanel({
           <TasteFilterControls
             communities={communities}
             communityWeights={profile.community_weights_raw}
-            filterSettings={profile.filter_settings}
+            filterSettings={normalizeFilterSettings(profile.filter_settings)}
             onChange={onFilterSettingsChange}
             onCommunityWeightsChange={onCommunityWeightsChange}
             selectedCommunityIds={profile.selected_communities}

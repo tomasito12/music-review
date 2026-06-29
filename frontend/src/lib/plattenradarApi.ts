@@ -452,7 +452,8 @@ export function createTemporaryTasteProfile(
   };
 }
 
-function normalizeFilterSettings(
+/** Normalizes partial or legacy filter settings to the supported API shape. */
+export function normalizeFilterSettings(
   settings: Partial<TasteFilterSettings>,
 ): TasteFilterSettings {
   return {

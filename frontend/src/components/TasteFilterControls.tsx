@@ -5,9 +5,7 @@ import {
   DEFAULT_YEAR_MIN,
   MAX_PLATTENTESTS_RATING,
   STYLE_MATCH_PERCENT_STEP,
-  clampSpectrumCrossover,
   clearYearFilter,
-  describeSpectrumCrossover,
   enableYearFilter,
   hasYearFilter,
   overallWeightQuestion,
@@ -84,9 +82,6 @@ export function TasteFilterControls({
 }: TasteFilterControlsProps): ReactElement {
   const yearFilterActive = hasYearFilter(filterSettings);
   const styleMinPercent = styleMatchMinPercent(filterSettings);
-  const spectrumValue = clampSpectrumCrossover(
-    filterSettings.community_spectrum_crossover,
-  );
 
   return (
     <div className="filter-advanced">
@@ -217,48 +212,12 @@ export function TasteFilterControls({
         </p>
 
         <section className="filter-section">
-          <h3>Stil-Präferenz</h3>
-          <p className="field-hint">
-            Steuert, ob stilreine Alben oder Alben mit mehreren passenden
-            Stilrichtungen stärker profitieren.
-          </p>
-          <div className="spectrum-scale-row">
-            <span>
-              Klare Präferenz:
-              <strong> ein gewählter Stil dominiert</strong>
-            </span>
-            <span className="spectrum-mid">Ausgewogen</span>
-            <span>
-              Breite Präferenz:
-              <strong> möglichst viele Stilrichtungen zugleich</strong>
-            </span>
-          </div>
-          <label className="spectrum-slider threshold-control">
-            <span className="threshold-value">
-              {describeSpectrumCrossover(spectrumValue)}
-            </span>
-            <CommittedRangeInput
-              applyMode={sliderApplyMode}
-              aria-label="Stil-Präferenz"
-              max={1}
-              min={0}
-              onValueCommit={(nextValue) => {
-                onChange(
-                  updateFilterSettingsField(
-                    filterSettings,
-                    "community_spectrum_crossover",
-                    clampSpectrumCrossover(nextValue),
-                  ),
-                );
-              }}
-              step={0.05}
-              value={spectrumValue}
-            />
-          </label>
-        </section>
-
-        <section className="filter-section">
           <h3>Gewichtung des Gesamtscores</h3>
+          <p className="field-hint">
+            Drei Scores zwischen 0 und 1: Stilpassung, plattentests.de-Wertung und
+            Album-Stilbreite. Die Regler bestimmen, wie stark jeder Score die
+            Reihenfolge beeinflusst.
+          </p>
           {(
             [
               "overall_weight_alpha",

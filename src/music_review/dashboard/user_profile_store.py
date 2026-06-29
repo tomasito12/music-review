@@ -45,6 +45,7 @@ class ProfileHydrationResult(Enum):
 
     NO_ACTIVE_SLUG = auto()
     HYDRATED = auto()
+    APPLIED_FROM_DB = auto()
     CLEARED_MISSING_PROFILE_FILE = auto()
     CLEARED_INVALID_SLUG = auto()
 
@@ -309,11 +310,12 @@ def ensure_active_profile_hydrated(
     *,
     profiles_dir: Path | None = None,
 ) -> ProfileHydrationResult:
-    """Re-load profile from DB when ``ACTIVE_PROFILE_SESSION_KEY`` is set.
+    """Load profile from DB when signed in but session taste prefs are empty.
 
-    Keeps communities, filters, and weights in sync with the database on
-    every page run so a partial ``session_state`` loss does not leave the
-    user signed in with empty preferences.
+    When the session already holds communities, filters, or weights, those
+    values are treated as the working copy (edits are not overwritten on each
+    rerun). DB is applied only for empty/partial sessions (e.g. after cookie
+    restore) or explicit reload paths elsewhere in the app.
     """
     raw_slug = session.get(ACTIVE_PROFILE_SESSION_KEY)
     if raw_slug is None or not isinstance(raw_slug, str) or not raw_slug.strip():
@@ -342,7 +344,11 @@ def ensure_active_profile_hydrated(
     if session.get(LOGIN_GUEST_SESSION_PINNED_KEY):
         return ProfileHydrationResult.HYDRATED
 
+    if session_has_guest_taste_or_filter_prefs(session):
+        return ProfileHydrationResult.HYDRATED
+
     data = load_user_profile(conn, safe_slug)
     if data is not None:
         apply_profile_to_session(session, data)
+        return ProfileHydrationResult.APPLIED_FROM_DB
     return ProfileHydrationResult.HYDRATED

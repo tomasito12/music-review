@@ -23,11 +23,11 @@ const SORT_MODE_LABELS: Record<string, string> = {
 
 const OVERALL_WEIGHT_QUESTIONS: Record<string, string> = {
   overall_weight_alpha:
-    "Wie wichtig ist dir, dass die Sortierung deinen gewählten Musikrichtungen entspricht?",
+    "Wie wichtig ist dir die Stilpassung zum Musikprofil?",
   overall_weight_beta:
-    "Wie wichtig ist dir, dass höher bewertete Alben weiter oben in der Sortierung stehen?",
+    "Wie wichtig ist dir die plattentests.de-Wertung?",
   overall_weight_gamma:
-    "Wie wichtig ist dir, dass Alben mit mehreren passenden Stilrichtungen weiter oben stehen?",
+    "Wie wichtig ist dir die Stilbreite des Albums?",
 };
 
 /** Returns a human-readable label for one sort mode option. */

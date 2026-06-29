@@ -202,10 +202,10 @@ TASTE_FILTER_UI = TasteFilterUiConfig(
             controls=(
                 FilterControl(
                     id="overall_weights",
-                    label="Schwerpunkt",
+                    label="Gewichtung",
                     description=(
-                        "Balanciert Stilpassung, Wertung und Vielschichtigkeit "
-                        "in der Rangliste."
+                        "Balanciert Stilpassung, plattentests.de-Wertung und "
+                        "Album-Stilbreite in der Rangliste."
                     ),
                     kind="slider",
                     fields=(
@@ -213,19 +213,6 @@ TASTE_FILTER_UI = TasteFilterUiConfig(
                         "overall_weight_beta",
                         "overall_weight_gamma",
                     ),
-                    min_value=0.0,
-                    max_value=1.0,
-                    step=0.05,
-                ),
-                FilterControl(
-                    id="community_spectrum",
-                    label="Fokus oder Vielschichtigkeit",
-                    description=(
-                        "Steuert, ob stilreine Alben oder Alben mit mehreren "
-                        "passenden Stilrichtungen stärker profitieren."
-                    ),
-                    kind="slider",
-                    fields=("community_spectrum_crossover",),
                     min_value=0.0,
                     max_value=1.0,
                     step=0.05,

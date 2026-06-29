@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import contextlib
+from collections.abc import Mapping
 from typing import Any
 
 from pages._streamlit_ctx import st
@@ -11,8 +12,13 @@ from pages.filter_state import (
     WIZARD_ACCOUNT_SAVE_INTENT_KEY,
     get_selected_communities,
 )
+from pages.taste_widget_sync import (
+    merge_filter_widgets_into_session,
+    sync_taste_widgets_from_streamlit_session,
+)
 from pages.wizard_state import reset_taste_preferences
 
+from music_review.dashboard.score_lab import format_score_lab_filter_summary
 from music_review.dashboard.streamlit_branding import (
     ensure_plattenradar_dashboard_chrome,
 )
@@ -31,6 +37,7 @@ from music_review.dashboard.user_profile_store import (
     LOGIN_GUEST_SESSION_PINNED_KEY,
     LOGIN_PROFILE_MERGE_PENDING_KEY,
     ProfileHydrationResult,
+    apply_profile_to_session,
     build_profile_payload,
     default_profiles_dir,
     ensure_active_profile_hydrated,
@@ -48,6 +55,7 @@ _PROFILE_COOKIE_MANAGER_STATE_KEY = "_mr_profile_cookie_manager_singleton"
 
 def build_session_profile_payload(*, profile_slug: str) -> dict[str, Any]:
     """Assemble profile JSON from the current Streamlit session (taste + filters)."""
+    merge_filter_widgets_into_session(st.session_state)
     selected = get_selected_communities()
     fs = st.session_state.get("filter_settings")
     if not isinstance(fs, dict):
@@ -64,6 +72,12 @@ def build_session_profile_payload(*, profile_slug: str) -> dict[str, Any]:
     )
 
 
+def apply_saved_profile_to_session(data: Mapping[str, Any]) -> None:
+    """Apply a stored profile document and sync Streamlit widget keys."""
+    apply_profile_to_session(st.session_state, data)
+    sync_taste_widgets_from_streamlit_session()
+
+
 def persist_active_profile_from_session() -> str | None:
     """Write taste + filter session to profile JSON when a profile slug is active."""
     raw = st.session_state.get(ACTIVE_PROFILE_SESSION_KEY)
@@ -77,6 +91,7 @@ def persist_active_profile_from_session() -> str | None:
     payload = build_session_profile_payload(profile_slug=slug)
     save_profile(profiles_dir, slug, payload)
     st.session_state.pop(LOGIN_GUEST_SESSION_PINNED_KEY, None)
+    sync_taste_widgets_from_streamlit_session()
     return slug
 
 
@@ -86,7 +101,26 @@ def save_current_profile_to_disk() -> None:
     if slug is None:
         st.warning("Kein Profil aktiv -- bitte zuerst anmelden.")
         return
-    st.success(f"Profil '{slug}' gespeichert.")
+    filter_settings = st.session_state.get("filter_settings")
+    if isinstance(filter_settings, dict):
+        from music_review.application.models import TasteProfile
+
+        summary_profile = TasteProfile.from_mapping(
+            {
+                "name": slug,
+                "selected_communities": sorted(get_selected_communities()),
+                "filter_settings": filter_settings,
+                "community_weights_raw": st.session_state.get("community_weights_raw")
+                or {},
+            },
+        )
+        summary = format_score_lab_filter_summary(summary_profile)
+    else:
+        summary = "Filter nicht gesetzt"
+    n_communities = len(get_selected_communities())
+    st.success(
+        f"Profil '{slug}' gespeichert ({n_communities} Stilrichtungen; {summary}).",
+    )
 
 
 def logout_active_profile() -> None:
@@ -232,6 +266,9 @@ def bootstrap_profile_session() -> None:
             "Gespeichertes Profil wurde nicht gefunden. "
             "Die Anmeldung wurde zurückgesetzt (Cookie entfernt).",
         )
+        return
+    if res == ProfileHydrationResult.APPLIED_FROM_DB:
+        sync_taste_widgets_from_streamlit_session()
 
 
 def render_profile_sidebar() -> None:

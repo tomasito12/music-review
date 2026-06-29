@@ -17,7 +17,6 @@ from music_review.application.newest_reviews_service import (
 from music_review.dashboard.cache_keys import file_cache_signature
 from music_review.dashboard.data_cache import (
     cached_load_affinities_by_review_id,
-    cached_load_all_reviews_for_breadth_norm,
     cached_load_community_memberships,
     cached_load_newest_reviews_slice,
 )
@@ -25,7 +24,7 @@ from music_review.dashboard.user_profile_store import (
     profile_taste_from_account_applied_to_session,
 )
 from music_review.data_access.paths import (
-    community_memberships_path,
+    album_community_affinities_path,
     reviews_path,
 )
 from music_review.domain.models import Review
@@ -91,27 +90,19 @@ def _cached_global_breadth_norm_map(
     selected_key: tuple[str, ...],
     weights_key: tuple[tuple[str, float], ...],
     reviews_signature: tuple[bool, int, int],
-    memberships_signature: tuple[bool, int, int],
+    affinities_signature: tuple[bool, int, int],
 ) -> dict[int, float]:
-    """Breadth norms; first arg is cache-key only (hydrated vs. session-only taste)."""
-    all_rev = cached_load_all_reviews_for_breadth_norm()
-    if not all_rev:
+    """Corpus-wide style-breadth percentile norms for newest ranking."""
+    _ = account_taste_hydrated, selected_key, weights_key
+    aff_map = cached_load_affinities_by_review_id()
+    if not aff_map:
         return {}
-    memberships = cached_load_community_memberships()
-    profile = TasteProfile(
-        selected_communities=selected_key,
-        community_weights_raw=dict(weights_key),
-    )
     inputs = NewestReviewsInputs(
         newest_reviews=(),
-        affinity_by_review_id={},
-        memberships=memberships,
-        all_reviews_for_breadth_norm=all_rev,
+        affinity_by_review_id=aff_map,
+        memberships={},
     )
-    return NewestReviewsService(inputs).compute_global_breadth_norm(
-        set(selected_key),
-        profile,
-    )
+    return NewestReviewsService(inputs).compute_global_breadth_norm()
 
 
 def preference_rank_rows_for_reviews(
@@ -140,14 +131,14 @@ def preference_rank_rows_for_reviews(
     weights_key = tuple((str(k), float(v)) for k, v in sorted(weights_raw.items()))
     taste_hydrated = profile_taste_from_account_applied_to_session(st.session_state)
     reviews_sig = file_cache_signature(reviews_path())
-    memberships_sig = file_cache_signature(community_memberships_path())
+    affinities_sig = file_cache_signature(album_community_affinities_path())
     aff_map_full = cached_load_affinities_by_review_id()
     breadth_norm_global = _cached_global_breadth_norm_map(
         taste_hydrated,
         tuple(sorted(selected_comms)),
         weights_key,
         reviews_sig,
-        memberships_sig,
+        affinities_sig,
     )
     profile = TasteProfile(
         selected_communities=tuple(sorted(selected_comms)),
@@ -158,7 +149,6 @@ def preference_rank_rows_for_reviews(
         newest_reviews=reviews,
         affinity_by_review_id=aff_map_full,
         memberships=cached_load_community_memberships(),
-        all_reviews_for_breadth_norm=(),
     )
     service = NewestReviewsService(inputs, logger=_LOGGER)
     ranked_rows = service.compute_ranked_rows(

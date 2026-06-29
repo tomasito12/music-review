@@ -7,7 +7,6 @@ from collections.abc import Mapping, Sequence
 from typing import Any
 
 from music_review.config import (
-    RECOMMENDATION_DEFAULT_COMMUNITY_CROSSOVER,
     RECOMMENDATION_DEFAULT_COMMUNITY_WEIGHT_RAW,
     RECOMMENDATION_RATING_DEFAULT_WHEN_MISSING,
     REFERENCE_POSITION_W_MIN,
@@ -15,16 +14,16 @@ from music_review.config import (
     normalize_overall_weights,
 )
 from music_review.dashboard.recommendation_scoring import (
-    blend_purity_breadth,
+    album_style_breadth_norm_for_review_ids,
     breadth_raw_from_selected_community_masses,
-    community_spectrum_norm_batch,
-    gated_community_spectrum,
-    normalize_coverage_batch,
+    effective_style_diversity_from_affinity_entries,
+    global_album_style_breadth_norm_by_review_id,
     overall_score,
-    percentile_rank_normalize_batch,
     purity_max_weighted_share,
     rating_to_unit_interval,
     serendipity_rank_sort_key,
+    style_fit_batch_normalized,
+    weighted_style_fit_raw,
 )
 from music_review.domain.models import Review
 from music_review.domain.reference_masses import reference_community_position_masses
@@ -33,42 +32,18 @@ RES_KEY = "res_10"
 
 
 def global_breadth_norm_by_review_id(
-    all_reviews: Sequence[Review],
+    affinity_by_review_id: Mapping[int, Mapping[str, Any]],
     *,
-    memberships: dict[str, dict[str, str]],
-    selected_comms: set[str],
-    weights_raw: Mapping[str, float],
+    res_key: str = RES_KEY,
 ) -> dict[int, float]:
-    """Perzentil-normierte Abdeckungsbreite ``breadth_norm`` ueber **alle** Reviews.
+    """Corpus-wide percentile norms for album Shannon diversity ``N_eff``.
 
-    Entspricht :func:`percentile_rank_normalize_batch` angewandt auf die Liste der
-    ``breadth_raw``-Werte des gesamten Korpus (gleiche Formel wie im
-    Empfehlungsflow, aber Referenzmenge = alle Alben in ``all_reviews``).
-
-    Leeres ``selected_comms`` oder leere Review-Liste -> leeres Dict.
+    Lowest ``N_eff`` in the corpus maps to ``0``, highest to ``1``.
     """
-    if not selected_comms or not all_reviews:
-        return {}
-    breadth_raws: list[float] = []
-    ids: list[int] = []
-    for review in all_reviews:
-        ref_masses = reference_community_position_masses(
-            review,
-            memberships,
-            res_key=RES_KEY,
-            w_min=REFERENCE_POSITION_W_MIN,
-        )
-        b_raw = breadth_raw_from_selected_community_masses(
-            ref_masses,
-            selected_comms,
-            weights_raw,
-        )
-        breadth_raws.append(float(b_raw))
-        ids.append(int(review.id))
-    norms = percentile_rank_normalize_batch(breadth_raws)
-    if len(norms) != len(ids):
-        return {}
-    return {ids[i]: norms[i] for i in range(len(ids))}
+    return global_album_style_breadth_norm_by_review_id(
+        affinity_by_review_id,
+        res_key=res_key,
+    )
 
 
 def _overall_weights_from_filter_settings(
@@ -97,12 +72,6 @@ def _preference_score_rows_sorted(
 ) -> list[dict[str, Any]]:
     """Internal: sorted rows with ``score`` (=S_a), norms, and ``overall_score``."""
     rows: list[dict[str, Any]] = []
-    crossover_w = float(
-        filter_settings.get(
-            "community_spectrum_crossover",
-            RECOMMENDATION_DEFAULT_COMMUNITY_CROSSOVER,
-        )
-    )
     sort_mode = str(filter_settings.get("sort_mode", "Deterministisch"))
     serendipity = float(filter_settings.get("serendipity", 0.0))
 
@@ -145,10 +114,21 @@ def _preference_score_rows_sorted(
         )
         purity_raw = purity_max_weighted_share(max_wv, s)
 
+        style_fit_raw = weighted_style_fit_raw(
+            entries_any,
+            selected_comms=selected_comms,
+            weights_raw=weights_raw,
+        )
+        style_diversity_n_eff = effective_style_diversity_from_affinity_entries(
+            entries_any,
+        )
+
         rows.append(
             {
                 "review": review,
                 "_s": s,
+                "_style_fit_raw": style_fit_raw,
+                "_style_diversity_n_eff": style_diversity_n_eff,
                 "_purity_raw": purity_raw,
                 "_breadth_raw": breadth_raw,
             },
@@ -157,51 +137,46 @@ def _preference_score_rows_sorted(
     if not rows:
         return []
 
-    alpha, beta, gamma = _overall_weights_from_filter_settings(filter_settings)
-    purity_list = [float(r["_purity_raw"]) for r in rows]
-    breadth_list = [float(r["_breadth_raw"]) for r in rows]
-    if global_breadth_norm_by_review_id is None:
-        purity_norms, breadth_norms, spec_norm_list = community_spectrum_norm_batch(
-            purity_list,
-            breadth_list,
-            crossover_weight=crossover_w,
-        )
-    else:
-        purity_norms = normalize_coverage_batch(purity_list)
-        gmap = global_breadth_norm_by_review_id
-        breadth_norms = [float(gmap.get(int(item["review"].id), 1.0)) for item in rows]
-        lam = max(0.0, min(1.0, crossover_w))
-        spec_norm_list = [
-            blend_purity_breadth(p, b, crossover_weight=lam)
-            for p, b in zip(purity_norms, breadth_norms, strict=True)
-        ]
+    style_fits = style_fit_batch_normalized(
+        [float(row["_style_fit_raw"]) for row in rows],
+    )
+    for row, style_fit in zip(rows, style_fits, strict=True):
+        row["_style_fit"] = style_fit
 
-    for item, p_n, b_n, spec_n in zip(
-        rows,
-        purity_norms,
-        breadth_norms,
-        spec_norm_list,
-        strict=True,
-    ):
+    n_eff_by_review_id = {
+        int(row["review"].id): float(row["_style_diversity_n_eff"]) for row in rows
+    }
+    style_breadth_norms = album_style_breadth_norm_for_review_ids(
+        [int(row["review"].id) for row in rows],
+        n_eff_by_review_id,
+        global_norm_by_review_id=global_breadth_norm_by_review_id,
+    )
+
+    alpha, beta, gamma = _overall_weights_from_filter_settings(filter_settings)
+    for item, style_breadth in zip(rows, style_breadth_norms, strict=True):
         review = item["review"]
         rn = rating_to_unit_interval(
             review.rating,
             default_on_10_scale=RECOMMENDATION_RATING_DEFAULT_WHEN_MISSING,
         )
         s_a = float(item["_s"])
+        style_fit = float(item["_style_fit"])
         item["review_id"] = int(review.id)
-        item["score"] = s_a
+        item["s_a"] = s_a
+        item["style_fit_raw"] = float(item["_style_fit_raw"])
+        item["style_diversity_n_eff"] = float(item["_style_diversity_n_eff"])
+        item["album_style_breadth"] = style_breadth
+        item["style_breadth_norm"] = style_breadth
+        item["score"] = style_fit
         item["rating_norm"] = rn
-        item["purity_norm"] = float(p_n)
-        item["breadth_norm"] = float(b_n)
-        item["community_spectrum_norm"] = float(spec_n)
-        spec_eff, gate = gated_community_spectrum(float(spec_n), s_a)
-        item["spectrum_matching_gate"] = gate
-        item["community_spectrum_effective"] = spec_eff
+        item["breadth_norm"] = style_breadth
+        item["community_spectrum_norm"] = style_breadth
+        item["community_spectrum_effective"] = style_breadth
+        item["spectrum_matching_gate"] = 1.0
         item["overall_score"] = overall_score(
-            s_a,
+            style_fit,
             rn,
-            spec_eff,
+            style_breadth,
             alpha=alpha,
             beta=beta,
             gamma=gamma,
@@ -212,11 +187,18 @@ def _preference_score_rows_sorted(
         item["purity_raw"] = float(item["_purity_raw"])
         item["breadth_raw"] = float(item["_breadth_raw"])
         del item["_s"]
+        del item["_style_fit_raw"]
+        del item["_style_diversity_n_eff"]
+        del item["_style_fit"]
         del item["_purity_raw"]
         del item["_breadth_raw"]
 
     rows.sort(
-        key=lambda x: (-float(x["overall_score"]), -int(x["review"].id)),
+        key=lambda x: (
+            -float(x["overall_score"]),
+            -float(x["score"]),
+            -int(x["review"].id),
+        ),
     )
 
     if apply_serendipity and sort_mode == "Serendipity" and serendipity > 0.0:
@@ -250,8 +232,9 @@ def preference_ranked_rows(
 ) -> list[dict[str, Any]]:
     """Like :func:`rank_reviews_by_saved_preferences` but returns score rows for UI.
 
-    Each dict includes ``review``, ``review_id``, ``score`` (``S_a``),
-    ``overall_score``, ``community_spectrum_norm``, ``rating_norm``,
+    Each dict includes ``review``, ``review_id``, ``score`` (batch-normalized
+    style fit), ``s_a`` (legacy weighted sum), ``overall_score``,
+    ``community_spectrum_norm``, ``rating_norm``, ``album_style_breadth``,
     ``purity_raw``, ``breadth_raw``, ``purity_norm``, ``breadth_norm``, and
     ``alpha`` / ``beta`` / ``gamma``.
     Empty list if ``selected_comms`` is empty.
@@ -259,10 +242,8 @@ def preference_ranked_rows(
     If ``apply_serendipity`` is False, the list stays sorted by ``overall_score``
     only (ignores ``sort_mode`` / ``serendipity`` in ``filter_settings``).
 
-    If ``global_breadth_norm_by_review_id`` is set, ``breadth_norm`` (Abdeckungs-
-    perzentil) is taken from that map — typically built with
-    :func:`global_breadth_norm_by_review_id` over **all** corpus reviews; otherwise
-    it is computed only within the current ``reviews`` batch (Empfehlungsliste).
+    ``global_breadth_norm_by_review_id`` supplies corpus-wide percentile norms for
+    album Shannon diversity. When omitted, norms are computed within the batch.
     """
     if not selected_comms:
         return []
