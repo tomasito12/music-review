@@ -30,7 +30,7 @@ export function recommendationCardMetaParts(
     parts.push(release);
   }
   parts.push(`${recommendation.rating}/10 bei plattentests.de`);
-  parts.push(`Score ${recommendation.score.toFixed(2)}`);
+  parts.push(`Gesamtscore ${recommendation.score.toFixed(2)}`);
   if (recommendation.recordLabel !== undefined && recommendation.recordLabel.trim() !== "") {
     parts.push(`Plattenlabel: ${recommendation.recordLabel.trim()}`);
   }

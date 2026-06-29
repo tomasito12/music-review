@@ -85,7 +85,7 @@ export function EntdeckenRankingList({
       <section aria-labelledby="ranking-heading" className="ranking-section">
         <div className="ranking-heading">
           <h2 id="ranking-heading">Alle Empfehlungen</h2>
-          <p>Sortiert nach der Passung zu deinem Musikprofil.</p>
+          <p>Sortiert nach Gesamtscore (Passung, Wertung und Stilbreite).</p>
         </div>
         <div className="recommendation-list">
           {remainingRecommendations.map((recommendation) =>

@@ -90,10 +90,8 @@ def test_newest_reviews_breadth_norm_uses_global_percentile_map() -> None:
     )
 
     assert rows is not None
-    breadth_by_id = {int(row["review_id"]): row["breadth_norm"] for row in rows}
     album_breadth_by_id = {
         int(row["review_id"]): row["album_style_breadth"] for row in rows
     }
-    assert breadth_by_id == album_breadth_by_id
-    assert breadth_by_id[1] == pytest.approx(0.25)
-    assert breadth_by_id[2] == pytest.approx(0.75)
+    assert album_breadth_by_id[1] == pytest.approx(0.25)
+    assert album_breadth_by_id[2] == pytest.approx(0.75)

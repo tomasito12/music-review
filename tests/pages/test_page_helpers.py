@@ -17,7 +17,6 @@ from pages.page_helpers import (
     OVERALL_WEIGHT_TRADEOFF_RED_LIGHT,
     OVERALL_WEIGHT_TRADEOFF_RED_MID,
     PLATTENLABEL_SONSTIGE_UI,
-    SPECTRUM_CROSSOVER_STOPS,
     STYLE_MATCH_FILTER_PERCENT_STEP,
     build_community_broad_category_index,
     build_session_profile_payload,
@@ -51,15 +50,11 @@ from pages.page_helpers import (
     reset_step3,
     reset_taste_preferences,
     session_taste_setup_complete,
-    snap_spectrum_crossover,
-    spectrum_crossover_option_label,
-    spectrum_crossover_semantic_label,
     style_match_percent_tuple_for_slider,
     style_match_scores_from_percent_slider,
 )
 
 from music_review.config import (
-    RECOMMENDATION_DEFAULT_COMMUNITY_CROSSOVER,
     RECOMMENDATION_DEFAULT_COMMUNITY_WEIGHT_RAW,
     RECOMMENDATION_OVERALL_ALPHA,
     RECOMMENDATION_OVERALL_BETA,
@@ -529,32 +524,6 @@ class TestFormatStyleMatchRangeDisplay:
         assert format_style_match_range_display(0.9, 0.1) == "10 % bis 90 %"
 
 
-class TestSpectrumCrossoverStops:
-    def test_stops_cover_full_range_with_five_steps(self) -> None:
-        assert SPECTRUM_CROSSOVER_STOPS[0] == 0.0
-        assert SPECTRUM_CROSSOVER_STOPS[-1] == 1.0
-        assert len(SPECTRUM_CROSSOVER_STOPS) == 5
-
-    def test_snap_maps_to_nearest_stop(self) -> None:
-        assert snap_spectrum_crossover(0.5) == 0.5
-        assert snap_spectrum_crossover(0.37) == 0.25
-        assert snap_spectrum_crossover(0.38) == 0.5
-
-    def test_snap_invalid_input_defaults_to_balanced(self) -> None:
-        assert snap_spectrum_crossover("nope") == 0.5
-
-    def test_snap_clamps_out_of_range(self) -> None:
-        assert snap_spectrum_crossover(-3.0) == 0.0
-        assert snap_spectrum_crossover(9.0) == 1.0
-
-    def test_option_label_matches_stop(self) -> None:
-        assert spectrum_crossover_option_label(0.5) == "Ausgewogen"
-        assert spectrum_crossover_option_label(1.0) == "Breite Abdeckung"
-
-    def test_semantic_label_snaps_before_label(self) -> None:
-        assert spectrum_crossover_semantic_label(0.51) == "Ausgewogen"
-
-
 class TestOverallWeightsDisplayPercents:
     def test_equal_shares_sum_to_100(self) -> None:
         pa, pb, pg = overall_weights_display_percents(1 / 3, 1 / 3, 1 / 3)
@@ -793,10 +762,6 @@ class TestTasteSetupSessionHelpers:
         )
         pct_lo, pct_hi = mod.style_match_percent_tuple_for_slider(0.0, 1.0)
         assert sess[mod.FILTER_FLOW_WIDGET_KEY_STYLE_MATCH_PCT] == (pct_lo, pct_hi)
-        expected_spectrum = mod.snap_spectrum_crossover(
-            RECOMMENDATION_DEFAULT_COMMUNITY_CROSSOVER,
-        )
-        assert sess[mod.FILTER_FLOW_WIDGET_KEY_SPECTRUM] == expected_spectrum
         assert (
             sess[mod.FILTER_FLOW_WIDGET_KEY_OVERALL_ALPHA]
             == RECOMMENDATION_OVERALL_ALPHA
@@ -1179,9 +1144,6 @@ class TestResetStepCascades:
         )
         pct_lo, pct_hi = mod.style_match_percent_tuple_for_slider(0.0, 1.0)
         assert sess[mod.FILTER_FLOW_WIDGET_KEY_STYLE_MATCH_PCT] == (pct_lo, pct_hi)
-        assert sess[mod.FILTER_FLOW_WIDGET_KEY_SPECTRUM] == mod.snap_spectrum_crossover(
-            RECOMMENDATION_DEFAULT_COMMUNITY_CROSSOVER,
-        )
         assert (
             sess[mod.FILTER_FLOW_WIDGET_KEY_OVERALL_ALPHA]
             == RECOMMENDATION_OVERALL_ALPHA

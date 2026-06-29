@@ -14,12 +14,10 @@ from pages.page_helpers import (
     FILTER_FLOW_WIDGET_KEY_OVERALL_BETA,
     FILTER_FLOW_WIDGET_KEY_OVERALL_GAMMA,
     FILTER_FLOW_WIDGET_KEY_RATING_RANGE,
-    FILTER_FLOW_WIDGET_KEY_SPECTRUM,
     FILTER_FLOW_WIDGET_KEY_STYLE_MATCH_PCT,
     FILTER_FLOW_WIDGET_KEY_YEAR_RANGE,
     FILTER_PLATTENLABEL_MULTISELECT_KEY,
     PLATTENLABEL_SONSTIGE_UI,
-    SPECTRUM_CROSSOVER_STOPS,
     STYLE_MATCH_FILTER_PERCENT_STEP,
     WIZARD_ACCOUNT_SAVE_INTENT_KEY,
     clamp_plattentests_rating_filter_range,
@@ -35,14 +33,11 @@ from pages.page_helpers import (
     refresh_taste_wizard_after_filter_save,
     render_toolbar,
     reset_step3,
-    snap_spectrum_crossover,
-    spectrum_crossover_option_label,
     style_match_percent_tuple_for_slider,
     style_match_scores_from_percent_slider,
 )
 
 from music_review.config import (
-    RECOMMENDATION_DEFAULT_COMMUNITY_CROSSOVER,
     RECOMMENDATION_DEFAULT_COMMUNITY_WEIGHT_RAW,
     RECOMMENDATION_OVERALL_ALPHA,
     RECOMMENDATION_OVERALL_BETA,
@@ -249,32 +244,6 @@ def _filter_css() -> None:
         }
         .filter-section.accent-weight {
             border-left: 3px solid #dc2626;
-        }
-        /* Drei-Punkt-Skala über dem Stil-Präferenz-Slider */
-        .spectrum-scale-row {
-            display: flex;
-            justify-content: space-between;
-            align-items: flex-start;
-            gap: 0.65rem;
-            font-size: 0.78rem;
-            line-height: 1.38;
-            color: #6b7280;
-            margin: 0.15rem 0 0.35rem 0;
-            max-width: 100%;
-        }
-        .spectrum-scale-row .spectrum-end {
-            flex: 1;
-            min-width: 0;
-        }
-        .spectrum-scale-row .spectrum-end--left { text-align: left; }
-        .spectrum-scale-row .spectrum-end--right { text-align: right; }
-        .spectrum-scale-row .spectrum-mid {
-            flex: 0 0 auto;
-            text-align: center;
-            font-weight: 650;
-            color: #4b5563;
-            white-space: nowrap;
-            padding: 0 0.25rem;
         }
         .filter-section-label {
             font-size: 0.92rem;
@@ -686,56 +655,6 @@ def main() -> None:
             "</p></div>",
             unsafe_allow_html=True,
         )
-        _filter_vertical_space("md")
-
-        # ── Stil-Präferenz ───────────────────────────────────
-        st.markdown(
-            '<div class="filter-section accent-weight">'
-            '<p class="filter-section-label">Stil-Präferenz</p>',
-            unsafe_allow_html=True,
-        )
-        _filter_vertical_space("sm")
-        st.markdown(
-            '<div class="spectrum-scale-row">'
-            '<span class="spectrum-end spectrum-end--left">'
-            "Klare Präferenz:<br>"
-            "<strong>ein</strong> gewählter Stil dominiert"
-            "</span>"
-            '<span class="spectrum-mid">Ausgewogen</span>'
-            '<span class="spectrum-end spectrum-end--right">'
-            "Breite Präferenz:<br>"
-            "<strong>möglichst viele</strong> gewählte Stilrichtungen zugleich"
-            "</span>"
-            "</div>",
-            unsafe_allow_html=True,
-        )
-        _filter_vertical_space("sm")
-        crossover_default = snap_spectrum_crossover(
-            existing_settings.get(
-                "community_spectrum_crossover",
-                RECOMMENDATION_DEFAULT_COMMUNITY_CROSSOVER,
-            ),
-        )
-        community_spectrum_crossover = float(
-            st.select_slider(
-                "Stil-Präferenz (Auswahl)",
-                options=list(SPECTRUM_CROSSOVER_STOPS),
-                value=crossover_default,
-                format_func=spectrum_crossover_option_label,
-                label_visibility="collapsed",
-                key=FILTER_FLOW_WIDGET_KEY_SPECTRUM,
-                help=(
-                    "**Stufen:** links starker Fokus auf **einen** gewählten "
-                    "Stil, rechts **möglichst viele** gewählte Stile zugleich; "
-                    "**Ausgewogen** in der Mitte.\n\n"
-                    "Wie stark das insgesamt ins Ranking einfließt, steuert "
-                    "**gamma** (Abschnitt darunter); bei gamma = 0 wirkt diese "
-                    "Einstellung nicht."
-                ),
-            ),
-        )
-        st.markdown("</div>", unsafe_allow_html=True)
-
         _filter_vertical_space("xl")
 
         # ── Gewichtung des Gesamtscores ─────────────────────────
@@ -806,26 +725,22 @@ def main() -> None:
         _filter_vertical_space("sm")
         st.markdown(
             '<p class="filter-weight-question">'
-            "Wie wichtig ist dir bei der Sortierung, ob Alben eher einem "
-            "Stil klar zuzuordnen sind oder mehrere deiner gewählten "
-            "Fein-Genres abdecken? (Unabhängig von der Bedeutungs-Skala "
-            "weiter oben: die steuert nur die Richtung; hier steuerst du, "
-            "wie stark dieser Aspekt insgesamt zählt.)"
+            "Wie wichtig ist dir bei der Sortierung, ob Alben viele "
+            "verschiedene Stilrichtungen vereinen oder eher stilrein sind?"
             "</p>",
             unsafe_allow_html=True,
         )
         overall_weight_gamma = st.slider(
-            "Relative Wichtigkeit: Stil-Präferenz im Score",
+            "Relative Wichtigkeit: Album-Stilbreite",
             min_value=0.0,
             max_value=1.0,
             value=min(1.0, max(0.0, ow_g_def)),
             step=0.05,
             key=FILTER_FLOW_WIDGET_KEY_OVERALL_GAMMA,
             help=(
-                "Steuert, wie stark der Spektrum-Term ins Gewicht fällt "
-                "(Zusammenspiel aus Fokus auf einen Stil vs. Abdeckung "
-                "mehrerer Stile, passend zur Bedeutungs-Skala oben). "
-                "Bei 0 wirkst du diesen Teil des Scores ab."
+                "Hohe Werte bevorzugen Alben mit breiterer Stilverteilung "
+                "(Shannon-Diversität über alle erkannten Stile, relativ zum "
+                "Archiv). Bei 0 zählt dieser Teil des Gesamtscores nicht."
             ),
         )
         st.markdown("</div>", unsafe_allow_html=True)
@@ -857,7 +772,6 @@ def main() -> None:
             "rating_max": rating_max,
             "score_min": score_min,
             "score_max": score_max,
-            "community_spectrum_crossover": community_spectrum_crossover,
             "overall_weight_alpha": overall_weight_alpha,
             "overall_weight_beta": overall_weight_beta,
             "overall_weight_gamma": overall_weight_gamma,

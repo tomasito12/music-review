@@ -35,11 +35,11 @@ def test_preset_values_match_v1_specification() -> None:
     """Presets share filter baselines and differ mainly in score weighting."""
     shared_filters = (0.4, 6)
     expected = {
-        "precise": (*shared_filters, 0.7, 0.2, 0.1, 0.5),
-        "balanced": (*shared_filters, 0.5, 0.25, 0.25, 0.5),
-        "exploratory": (*shared_filters, 0.3, 0.3, 0.4, 0.5),
-        "critics": (*shared_filters, 0.3, 0.5, 0.2, 0.5),
-        "multifaceted": (*shared_filters, 0.35, 0.15, 0.5, 0.75),
+        "precise": (*shared_filters, 0.7, 0.2, 0.1),
+        "balanced": (*shared_filters, 0.5, 0.25, 0.25),
+        "exploratory": (*shared_filters, 0.3, 0.3, 0.4),
+        "critics": (*shared_filters, 0.3, 0.5, 0.2),
+        "multifaceted": (*shared_filters, 0.35, 0.15, 0.5),
     }
 
     for preset in list_presets():
@@ -50,7 +50,6 @@ def test_preset_values_match_v1_specification() -> None:
             settings.overall_weight_alpha,
             settings.overall_weight_beta,
             settings.overall_weight_gamma,
-            settings.community_spectrum_crossover,
         ) == expected[preset.id]
 
 
@@ -66,4 +65,4 @@ def test_preset_to_dict_is_json_ready() -> None:
 
     assert payload["id"] == "multifaceted"
     assert payload["label"] == "Vielschichtig"
-    assert payload["filter_settings"]["community_spectrum_crossover"] == 0.75
+    assert payload["filter_settings"]["overall_weight_gamma"] == 0.5

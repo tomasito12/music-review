@@ -81,7 +81,7 @@ def test_global_breadth_norm_by_review_id_empty_without_affinities() -> None:
     assert global_breadth_norm_by_review_id({}) == {}
 
 
-def test_album_style_breadth_drives_breadth_norm() -> None:
+def test_album_style_breadth_drives_overall_score_term() -> None:
     r1, r2 = _review(1), _review(2)
     aff = {
         1: {"communities": {"res_10": [{"id": "c1", "score": 1.0}]}},
@@ -104,11 +104,9 @@ def test_album_style_breadth_drives_breadth_norm() -> None:
         apply_serendipity=False,
         global_breadth_norm_by_review_id={1: 0.0, 2: 1.0},
     )
-    by_id = {r["review_id"]: r["breadth_norm"] for r in rows}
-    album_breadth_by_id = {r["review_id"]: r["album_style_breadth"] for r in rows}
+    by_id = {r["review_id"]: r["album_style_breadth"] for r in rows}
     assert by_id[1] == pytest.approx(0.0)
-    assert by_id[2] > 0.0
-    assert album_breadth_by_id[2] == pytest.approx(1.0)
+    assert by_id[2] == pytest.approx(1.0)
 
 
 def test_gamma_weight_reorders_by_style_breadth() -> None:
@@ -232,13 +230,9 @@ def test_preference_ranked_rows_contains_display_keys() -> None:
         assert "review" in row
         assert "overall_score" in row
         assert "score" in row
-        assert "community_spectrum_norm" in row
-        assert "community_spectrum_effective" in row
-        assert "spectrum_matching_gate" in row
         assert "rating_norm" in row
-        assert "style_breadth_norm" in row
-        assert "breadth_norm" in row
         assert "album_style_breadth" in row
+        assert "style_diversity_n_eff" in row
         assert "alpha" in row and "beta" in row and "gamma" in row
 
 
@@ -272,3 +266,41 @@ def test_serendipity_zero_preserves_score_order() -> None:
     )
     assert out[0].id == 100
     assert out[1].id == 200
+
+
+def test_overall_score_matches_between_newest_subset_and_full_corpus() -> None:
+    """Style fit uses corpus percentiles so scores are stable across list sizes."""
+    r_top, r_mid, r_new = _review(1), _review(2), _review(3)
+    aff = {
+        1: {"communities": {"res_10": [{"id": "c1", "score": 1.0}]}},
+        2: {"communities": {"res_10": [{"id": "c1", "score": 0.6}]}},
+        3: {"communities": {"res_10": [{"id": "c1", "score": 0.3}]}},
+    }
+    common = {
+        "affinity_by_review_id": aff,
+        "memberships": {},
+        "selected_comms": {"c1"},
+        "weights_raw": {"c1": 1.0},
+        "filter_settings": {},
+        "apply_serendipity": False,
+    }
+    global_style_fit = {
+        1: 1.0,
+        2: 0.5,
+        3: 0.0,
+    }
+    global_breadth = {1: 0.0, 2: 0.5, 3: 1.0}
+    full_rows = preference_ranked_rows(
+        [r_top, r_mid, r_new],
+        global_style_fit_norm_by_review_id=global_style_fit,
+        global_breadth_norm_by_review_id=global_breadth,
+        **common,
+    )
+    newest_only = preference_ranked_rows(
+        [r_new],
+        global_style_fit_norm_by_review_id=global_style_fit,
+        global_breadth_norm_by_review_id=global_breadth,
+        **common,
+    )
+    full_by_id = {row["review_id"]: row["overall_score"] for row in full_rows}
+    assert newest_only[0]["overall_score"] == pytest.approx(full_by_id[3])

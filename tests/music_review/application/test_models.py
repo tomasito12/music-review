@@ -25,7 +25,6 @@ def test_filter_settings_normalizes_ranges_and_legacy_sort_mode() -> None:
             "rating_max": -2,
             "score_min": 1.2,
             "score_max": -0.5,
-            "community_spectrum_crossover": 9,
             "overall_weight_alpha": 2,
             "overall_weight_beta": -1,
             "overall_weight_gamma": "not-a-number",
@@ -41,7 +40,6 @@ def test_filter_settings_normalizes_ranges_and_legacy_sort_mode() -> None:
     assert settings.rating_max == 10
     assert settings.score_min == 0
     assert settings.score_max == 1
-    assert settings.community_spectrum_crossover == 1
     assert settings.overall_weight_alpha == 1
     assert settings.overall_weight_beta == 0
     assert settings.overall_weight_gamma == 0.25

@@ -18,7 +18,6 @@ _PRESET_FILTER_BASELINE = TasteFilterSettings(
     overall_weight_alpha=0.50,
     overall_weight_beta=0.25,
     overall_weight_gamma=0.25,
-    community_spectrum_crossover=0.50,
     sort_mode="deterministic",
     serendipity=0.0,
 )
@@ -103,7 +102,7 @@ TASTE_PRESETS: tuple[TastePreset, ...] = (
         label="Ausgewogen",
         subtitle="Der beste Startpunkt",
         description=(
-            "Ausgewogene Gewichtung aus Stilpassung, Wertung und Vielschichtigkeit "
+            "Ausgewogene Gewichtung aus Stilpassung, Wertung und Album-Stilbreite "
             "in der Sortierung."
         ),
         icon="sliders-horizontal",
@@ -151,7 +150,6 @@ TASTE_PRESETS: tuple[TastePreset, ...] = (
             overall_weight_alpha=0.35,
             overall_weight_beta=0.15,
             overall_weight_gamma=0.50,
-            community_spectrum_crossover=0.75,
         ),
     ),
 )

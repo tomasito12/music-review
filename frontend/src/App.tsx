@@ -17,10 +17,10 @@ import {
   UPDATE_ROUND_OPTIONS,
 } from "./lib/aktuellPage";
 import { buildEntdeckenHeaderMessage } from "./lib/entdeckenPage";
-import { ApiClient } from "./lib/apiClient";
+import { ApiClient, ApiError } from "./lib/apiClient";
 import { ApiClientProvider, useApiClient } from "./lib/apiClientContext";
 import { FavoritesProvider, useFavorites } from "./lib/favoritesContext";
-import type { AuthSession } from "./lib/authSessionStorage";
+import { profileSaveUnauthorizedMessage } from "./lib/authForm";
 import {
   clearAuthSession,
   dismissSavePrompt,
@@ -28,6 +28,7 @@ import {
   readAuthSession,
   writeAuthSession,
 } from "./lib/authSessionStorage";
+import type { AuthSession } from "./lib/authSessionStorage";
 import {
   ARCHIVE_PAGE_SIZE,
   fetchCurrentUser,
@@ -84,9 +85,7 @@ export function App(): ReactElement {
     return initialRoute;
   });
   const [userState, setUserState] = useState<UserState>("anonymous_no_profile");
-  const [authSession, setAuthSession] = useState<AuthSession | null>(() =>
-    readAuthSession(),
-  );
+  const [authSession, setAuthSession] = useState<AuthSession | null>(null);
   const [authOpen, setAuthOpen] = useState(false);
   const [authMode, setAuthMode] = useState<"login" | "save-profile">("login");
   const [savePromptHidden, setSavePromptHidden] = useState(() =>
@@ -508,7 +507,16 @@ export function App(): ReactElement {
       writeProfileSession(updatedSession);
       setProfileSession(updatedSession);
       setProfileChangesSavedMessage("Gespeichert.");
-    } catch {
+    } catch (error) {
+      if (error instanceof ApiError && error.status === 401) {
+        clearAuthSession();
+        setAuthSession(null);
+        setLastSavedProfile(null);
+        setProfileChangesError(profileSaveUnauthorizedMessage());
+        setAuthMode("login");
+        setAuthOpen(true);
+        return;
+      }
       setProfileChangesError(
         "Deine Änderungen konnten gerade nicht gespeichert werden. Bitte versuche es noch einmal.",
       );

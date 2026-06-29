@@ -12,21 +12,17 @@ from pages.filter_state import (
     FILTER_FLOW_WIDGET_KEY_OVERALL_BETA,
     FILTER_FLOW_WIDGET_KEY_OVERALL_GAMMA,
     FILTER_FLOW_WIDGET_KEY_RATING_RANGE,
-    FILTER_FLOW_WIDGET_KEY_SPECTRUM,
     FILTER_FLOW_WIDGET_KEY_STYLE_MATCH_PCT,
     FILTER_FLOW_WIDGET_KEY_YEAR_RANGE,
     clamp_plattentests_rating_filter_range,
     clamp_year_filter_bounds,
 )
 from pages.page_formatting import (
-    snap_spectrum_crossover,
     style_match_percent_tuple_for_slider,
     style_match_scores_from_percent_slider,
 )
 
-from music_review.application.models import TasteProfile
 from music_review.config import (
-    RECOMMENDATION_DEFAULT_COMMUNITY_CROSSOVER,
     RECOMMENDATION_OVERALL_ALPHA,
     RECOMMENDATION_OVERALL_BETA,
     RECOMMENDATION_OVERALL_GAMMA,
@@ -37,18 +33,6 @@ from music_review.dashboard.community_weight_mapping import (
 from music_review.dashboard.data_cache import (
     cached_max_release_year_from_corpus,
     cached_min_release_year_from_corpus,
-)
-from music_review.dashboard.score_lab import lab_slider_settings_from_profile
-
-SCORE_LAB_WIDGET_PREFIX = "score_lab_"
-
-_SCORE_LAB_FILTER_FIELDS: tuple[str, ...] = (
-    "overall_weight_alpha",
-    "overall_weight_beta",
-    "overall_weight_gamma",
-    "community_spectrum_crossover",
-    "score_min",
-    "score_max",
 )
 
 
@@ -89,10 +73,6 @@ def _merge_filter_flow_widgets_into_settings(
         merged["score_min"] = score_min
         merged["score_max"] = score_max
 
-    if FILTER_FLOW_WIDGET_KEY_SPECTRUM in state:
-        merged["community_spectrum_crossover"] = snap_spectrum_crossover(
-            float(state[FILTER_FLOW_WIDGET_KEY_SPECTRUM]),
-        )
     if FILTER_FLOW_WIDGET_KEY_OVERALL_ALPHA in state:
         merged["overall_weight_alpha"] = float(
             state[FILTER_FLOW_WIDGET_KEY_OVERALL_ALPHA],
@@ -107,31 +87,11 @@ def _merge_filter_flow_widgets_into_settings(
         )
 
 
-def _merge_score_lab_widgets_into_settings(
-    state: MutableMapping[str, Any],
-    merged: dict[str, Any],
-) -> None:
-    """Copy Score Lab slider values into ``merged`` when widget keys exist."""
-    for field in _SCORE_LAB_FILTER_FIELDS:
-        widget_key = f"{SCORE_LAB_WIDGET_PREFIX}{field}"
-        if widget_key not in state:
-            continue
-        value = state[widget_key]
-        if isinstance(value, (int, float)):
-            merged[field] = float(value)
-
-
 def merge_filter_widgets_into_session(state: MutableMapping[str, Any]) -> None:
-    """Write live filter widget values into canonical ``filter_settings``.
-
-    The profile sidebar runs before page scripts on each rerun, so persisting
-    taste must read widget keys directly instead of relying on the previous
-    page's end-of-script merge.
-    """
+    """Write live filter widget values into canonical ``filter_settings``."""
     existing = state.get("filter_settings")
     merged: dict[str, Any] = dict(existing) if isinstance(existing, dict) else {}
     _merge_filter_flow_widgets_into_settings(state, merged)
-    _merge_score_lab_widgets_into_settings(state, merged)
     if merged:
         state["filter_settings"] = merged
 
@@ -164,19 +124,10 @@ def sync_filter_flow_widgets_from_settings(
         fs.get("score_min", 0.0),
         fs.get("score_max", 1.0),
     )
-    spectrum_val = snap_spectrum_crossover(
-        float(
-            fs.get(
-                "community_spectrum_crossover",
-                RECOMMENDATION_DEFAULT_COMMUNITY_CROSSOVER,
-            ),
-        ),
-    )
 
     state[FILTER_FLOW_WIDGET_KEY_YEAR_RANGE] = (y_lo, y_hi)
     state[FILTER_FLOW_WIDGET_KEY_RATING_RANGE] = (int(r_lo), int(r_hi))
     state[FILTER_FLOW_WIDGET_KEY_STYLE_MATCH_PCT] = (pct_lo, pct_hi)
-    state[FILTER_FLOW_WIDGET_KEY_SPECTRUM] = spectrum_val
     state[FILTER_FLOW_WIDGET_KEY_OVERALL_ALPHA] = float(
         fs.get("overall_weight_alpha", RECOMMENDATION_OVERALL_ALPHA),
     )
@@ -215,29 +166,6 @@ def sync_community_weight_widgets(
         state[f"weight_comm_{community_id}"] = bias
 
 
-def sync_score_lab_widgets_from_session(state: MutableMapping[str, Any]) -> None:
-    """Align Score Lab slider keys with canonical ``filter_settings``."""
-    filter_settings = state.get("filter_settings")
-    if not isinstance(filter_settings, dict):
-        return
-    weights_raw = state.get("community_weights_raw")
-    if not isinstance(weights_raw, dict):
-        weights_raw = {}
-    selected = sorted(get_selected_communities_from_state(state))
-    if not selected:
-        return
-    profile = TasteProfile.from_mapping(
-        {
-            "name": "sync",
-            "selected_communities": selected,
-            "filter_settings": filter_settings,
-            "community_weights_raw": weights_raw,
-        },
-    )
-    for key, value in lab_slider_settings_from_profile(profile).items():
-        state[f"{SCORE_LAB_WIDGET_PREFIX}{key}"] = value
-
-
 def get_selected_communities_from_state(state: Mapping[str, Any]) -> set[str]:
     """Like :func:`get_selected_communities` but for an arbitrary state mapping."""
     primary = state.get("selected_communities")
@@ -251,7 +179,7 @@ def get_selected_communities_from_state(state: Mapping[str, Any]) -> set[str]:
 
 
 def sync_taste_widgets_from_session(state: MutableMapping[str, Any]) -> None:
-    """Sync wizard and Score Lab widgets from canonical session taste fields."""
+    """Sync wizard widgets from canonical session taste fields."""
     filter_settings = state.get("filter_settings")
     if isinstance(filter_settings, dict) and filter_settings:
         sync_filter_flow_widgets_from_settings(state, filter_settings)
@@ -263,8 +191,6 @@ def sync_taste_widgets_from_session(state: MutableMapping[str, Any]) -> None:
     weights_raw = state.get("community_weights_raw")
     if isinstance(weights_raw, dict) and weights_raw:
         sync_community_weight_widgets(state, weights_raw)
-
-    sync_score_lab_widgets_from_session(state)
 
 
 def sync_taste_widgets_from_streamlit_session() -> None:

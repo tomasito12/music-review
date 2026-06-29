@@ -14,7 +14,6 @@ export const VISUAL_PROFILE_SESSION = {
       overall_weight_alpha: 0.5,
       overall_weight_beta: 0.25,
       overall_weight_gamma: 0.25,
-      community_spectrum_crossover: 0.5,
       sort_mode: "deterministic",
       serendipity: 0,
     },

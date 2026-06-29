@@ -56,7 +56,7 @@ def _service() -> RecommendationService:
         metadata={1: {"labels": ["Metadata Label"]}},
         affinities=[
             _affinity(1, ("C001", 0.9), ("C002", 0.2)),
-            _affinity(2, ("C001", 0.4)),
+            _affinity(2, ("C001", 0.4), ("C002", 0.3)),
             _affinity(3, ("C001", 0.95)),
         ],
         memberships={},
@@ -108,6 +108,38 @@ def test_archive_recommendations_filter_and_sort_without_streamlit() -> None:
     assert rows[1]["artist"] == "Weak"
     assert rows[0]["labels"] == "Metadata Label"
     assert rows[0]["top_communities"][0]["label"] == "Indie Rock"
+
+
+def test_archive_recommendations_sorted_by_overall_score_descending() -> None:
+    """Archive rows stay in strict overall-score order for pagination."""
+    profile = TasteProfile(
+        selected_communities=("C001",),
+        community_weights_raw={"C001": 1.0},
+        filter_settings=TasteFilterSettings(score_min=0.0, rating_min=6),
+    )
+    rows = _service().compute_archive_recommendations(profile)
+    overall_scores = [float(row["overall_score"]) for row in rows]
+    assert overall_scores == sorted(overall_scores, reverse=True)
+
+
+def test_archive_discovery_mode_keeps_overall_score_order() -> None:
+    """List variation settings must not reshuffle ranked archive recommendations."""
+    profile = TasteProfile(
+        selected_communities=("C001",),
+        community_weights_raw={"C001": 1.0},
+        filter_settings=TasteFilterSettings(
+            score_min=0.0,
+            rating_min=6,
+            sort_mode="discovery",
+            serendipity=1.0,
+        ),
+    )
+    service = _service()
+    first = service.compute_archive_recommendations(profile)
+    second = service.compute_archive_recommendations(profile)
+    assert [row["review_id"] for row in first] == [row["review_id"] for row in second]
+    overall_scores = [float(row["overall_score"]) for row in first]
+    assert overall_scores == sorted(overall_scores, reverse=True)
 
 
 def test_archive_recommendations_apply_score_and_label_filters() -> None:

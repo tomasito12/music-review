@@ -24,7 +24,7 @@ describe("recommendationCardMetaParts", () => {
         rating: 8,
         score: 0.84,
       }),
-    ).toEqual(["01.05.2024", "8/10 bei plattentests.de", "Score 0.84"]);
+    ).toEqual(["01.05.2024", "8/10 bei plattentests.de", "Gesamtscore 0.84"]);
   });
 
   it("appends plattenlabel when present", () => {
@@ -39,7 +39,7 @@ describe("recommendationCardMetaParts", () => {
     ).toEqual([
       "12.03.2021",
       "7/10 bei plattentests.de",
-      "Score 0.71",
+      "Gesamtscore 0.71",
       "Plattenlabel: City Slang",
     ]);
   });
@@ -52,6 +52,6 @@ describe("recommendationCardMetaParts", () => {
         score: 0.71,
         recordLabel: "",
       }),
-    ).toEqual(["2021", "7/10 bei plattentests.de", "Score 0.71"]);
+    ).toEqual(["2021", "7/10 bei plattentests.de", "Gesamtscore 0.71"]);
   });
 });

@@ -85,6 +85,31 @@ def load_newest_reviews_slice(n: int) -> list[Review]:
 
 
 @st.cache_data(ttl=300)
+def _cached_global_style_fit_norm_map(
+    account_taste_hydrated: bool,
+    selected_key: tuple[str, ...],
+    weights_key: tuple[tuple[str, float], ...],
+    affinities_signature: tuple[bool, int, int],
+) -> dict[int, float]:
+    """Corpus-wide style-fit percentile norms for the active taste profile."""
+    _ = account_taste_hydrated
+    aff_map = cached_load_affinities_by_review_id()
+    if not aff_map or not selected_key:
+        return {}
+    weights_raw = dict(weights_key)
+    profile = TasteProfile(
+        selected_communities=selected_key,
+        community_weights_raw=weights_raw,
+    )
+    inputs = NewestReviewsInputs(
+        newest_reviews=(),
+        affinity_by_review_id=aff_map,
+        memberships={},
+    )
+    return NewestReviewsService(inputs).compute_global_style_fit_norm(profile)
+
+
+@st.cache_data(ttl=300)
 def _cached_global_breadth_norm_map(
     account_taste_hydrated: bool,
     selected_key: tuple[str, ...],
@@ -140,6 +165,12 @@ def preference_rank_rows_for_reviews(
         reviews_sig,
         affinities_sig,
     )
+    style_fit_norm_global = _cached_global_style_fit_norm_map(
+        taste_hydrated,
+        tuple(sorted(selected_comms)),
+        weights_key,
+        affinities_sig,
+    )
     profile = TasteProfile(
         selected_communities=tuple(sorted(selected_comms)),
         community_weights_raw=weights_raw,
@@ -155,6 +186,7 @@ def preference_rank_rows_for_reviews(
         profile,
         apply_serendipity=False,
         global_breadth_norm=breadth_norm_global or None,
+        global_style_fit_norm=style_fit_norm_global or None,
     )
     return ranked_rows
 

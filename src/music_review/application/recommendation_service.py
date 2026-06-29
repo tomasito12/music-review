@@ -13,24 +13,19 @@ from music_review.application.models import TasteProfile
 from music_review.config import (
     RECOMMENDATION_DEFAULT_COMMUNITY_WEIGHT_RAW,
     RECOMMENDATION_RATING_DEFAULT_WHEN_MISSING,
-    REFERENCE_POSITION_W_MIN,
     normalize_overall_weights,
 )
 from music_review.dashboard.recommendation_scoring import (
     album_style_breadth_norm_for_review_ids,
-    breadth_raw_from_selected_community_masses,
     effective_plattentests_rating,
     effective_style_diversity_from_affinity_entries,
     global_album_style_breadth_norm_by_review_id,
+    global_style_fit_norm_by_review_id,
     overall_score,
-    purity_max_weighted_share,
     rating_to_unit_interval,
-    serendipity_rank_sort_key,
-    style_fit_batch_normalized,
     weighted_style_fit_raw,
 )
 from music_review.domain.models import Review
-from music_review.domain.reference_masses import reference_community_position_masses
 
 LOGGER = logging.getLogger(__name__)
 
@@ -66,6 +61,7 @@ class RecommendationService:
         rng: random.Random | None = None,
     ) -> list[dict[str, Any]]:
         """Return archive recommendation rows matching the legacy dashboard shape."""
+        _ = rng
         selected_comms = selected_communities_from_profile(profile)
         if not selected_comms:
             return []
@@ -108,7 +104,16 @@ class RecommendationService:
         if not candidates:
             return []
 
-        _apply_style_fit_scores(candidates)
+        affinity_map = _affinity_by_review_id(self.inputs.affinities)
+        global_style_fit = global_style_fit_norm_by_review_id(
+            affinity_map,
+            selected_comms=selected_comms,
+            weights_raw=profile.community_weights_raw,
+        )
+        breadth_norm_global = global_album_style_breadth_norm_by_review_id(
+            affinity_map,
+        )
+        _apply_style_fit_scores(candidates, global_style_fit)
         settings = profile.filter_settings
         candidates = [
             row
@@ -118,20 +123,14 @@ class RecommendationService:
         if not candidates:
             return []
 
-        breadth_norm_global = global_album_style_breadth_norm_by_review_id(
-            _affinity_by_review_id(self.inputs.affinities),
-        )
         _apply_overall_scores(candidates, profile, breadth_norm_global)
         candidates.sort(
             key=lambda x: (
-                float(x["overall_score"]),
-                float(x["score"]),
-                int(x["review_id"]),
+                -float(x["overall_score"]),
+                -float(x["score"]),
+                -int(x["review_id"]),
             ),
-            reverse=True,
         )
-        if settings.sort_mode == "discovery" and settings.serendipity > 0.0:
-            _apply_serendipity(candidates, settings.serendipity, rng=rng)
         return candidates
 
     def _candidate_rows(
@@ -183,7 +182,7 @@ class RecommendationService:
         rating_max: float,
     ) -> dict[str, Any] | None:
         """Return one candidate row, or None when it fails hard filters."""
-        s, k_hits, max_wv = _selected_affinity_score(
+        _s, k_hits, _ = _selected_affinity_score(
             entries_any,
             selected_comms=selected_comms,
             weights_raw=profile.community_weights_raw,
@@ -218,17 +217,6 @@ class RecommendationService:
         if year_val is not None and not (year_min <= year_val <= year_max):
             return None
 
-        ref_masses = reference_community_position_masses(
-            review,
-            self.inputs.memberships,
-            res_key=RES_KEY,
-            w_min=REFERENCE_POSITION_W_MIN,
-        )
-        breadth_raw = breadth_raw_from_selected_community_masses(
-            ref_masses,
-            selected_comms,
-            profile.community_weights_raw,
-        )
         meta = self.inputs.metadata.get(review_id_val) or {}
         style_fit_raw = weighted_style_fit_raw(
             entries_any,
@@ -242,13 +230,9 @@ class RecommendationService:
             "review_id": review_id_val,
             "artist": review.artist,
             "album": review.album,
-            "s_a": s,
             "style_fit_raw": style_fit_raw,
             "style_diversity_n_eff": style_diversity_n_eff,
             "k_hits": k_hits,
-            "purity_raw": purity_max_weighted_share(max_wv, s),
-            "breadth_raw": breadth_raw,
-            "hits_pct": 100.0 * breadth_raw,
             "rating": review.rating,
             "rating_effective": eff_rating,
             "year": year_val,
@@ -321,13 +305,14 @@ def _selected_affinity_score(
     return score, hits, max_weighted_value
 
 
-def _apply_style_fit_scores(candidates: list[dict[str, Any]]) -> None:
-    """Batch-normalize raw style-fit cosines into ``score`` for filtering/ranking."""
-    normalized = style_fit_batch_normalized(
-        [float(item["style_fit_raw"]) for item in candidates],
-    )
-    for item, style_fit in zip(candidates, normalized, strict=True):
-        item["score"] = style_fit
+def _apply_style_fit_scores(
+    candidates: list[dict[str, Any]],
+    global_norm_by_review_id: Mapping[int, float],
+) -> None:
+    """Assign corpus-percentile style fit as ``score`` for filtering/ranking."""
+    for item in candidates:
+        review_id = int(item["review_id"])
+        item["score"] = float(global_norm_by_review_id.get(review_id, 0.0))
 
 
 def _affinity_by_review_id(
@@ -370,13 +355,7 @@ def _apply_overall_scores(
         )
         style_fit = float(item["score"])
         item["album_style_breadth"] = style_breadth
-        item["style_breadth_norm"] = style_breadth
         item["rating_norm"] = rating_norm
-        item["purity_norm"] = max(0.0, 1.0 - style_breadth)
-        item["breadth_norm"] = style_breadth
-        item["community_spectrum_norm"] = style_breadth
-        item["community_spectrum_effective"] = style_breadth
-        item["spectrum_matching_gate"] = 1.0
         item["alpha"] = alpha
         item["beta"] = beta
         item["gamma"] = gamma
@@ -388,27 +367,6 @@ def _apply_overall_scores(
             beta=beta,
             gamma=gamma,
         )
-
-
-def _apply_serendipity(
-    candidates: list[dict[str, Any]],
-    serendipity: float,
-    *,
-    rng: random.Random | None,
-) -> None:
-    """Sort candidates with the legacy serendipity rank-mix behavior."""
-    ser_rng = rng if rng is not None else random.Random()
-    n_items = len(candidates)
-    for index, item in enumerate(candidates):
-        item["_serendipity_key"] = serendipity_rank_sort_key(
-            index,
-            serendipity=serendipity,
-            rng=ser_rng,
-            n_items=n_items,
-        )
-    candidates.sort(key=lambda x: float(x["_serendipity_key"]))
-    for item in candidates:
-        item.pop("_serendipity_key", None)
 
 
 def _clamp_year_bounds(

@@ -6,16 +6,6 @@ export const DEFAULT_MIN_RATING = 6;
 export const MAX_PLATTENTESTS_RATING = 10;
 export const STYLE_MATCH_PERCENT_STEP = 5;
 
-export const SPECTRUM_CROSSOVER_STOPS = [0, 0.25, 0.5, 0.75, 1] as const;
-
-const SPECTRUM_CROSSOVER_LABELS: Record<number, string> = {
-  0: "Starker Stil-Fokus",
-  0.25: "Eher Fokus",
-  0.5: "Ausgewogen",
-  0.75: "Eher Breite",
-  1: "Breite Abdeckung",
-};
-
 const SORT_MODE_LABELS: Record<string, string> = {
   deterministic: "Stabile Reihenfolge",
   discovery: "Mit Zufall",
@@ -33,30 +23,6 @@ const OVERALL_WEIGHT_QUESTIONS: Record<string, string> = {
 /** Returns a human-readable label for one sort mode option. */
 export function sortModeLabel(value: string): string {
   return SORT_MODE_LABELS[value] ?? value;
-}
-
-/** Returns a readable label for any crossover value on the continuous scale. */
-export function describeSpectrumCrossover(value: number): string {
-  return spectrumCrossoverLabel(value);
-}
-
-/** Clamps a crossover value to the valid 0..1 range without snapping to stops. */
-export function clampSpectrumCrossover(value: number): number {
-  return Math.min(1, Math.max(0, value));
-}
-
-/** Returns the German label for the nearest crossover stop. */
-export function spectrumCrossoverLabel(value: number): string {
-  const snapped = snapSpectrumCrossover(value);
-  return SPECTRUM_CROSSOVER_LABELS[snapped] ?? "Ausgewogen";
-}
-
-/** Snaps a crossover value to the nearest named stop for summaries. */
-export function snapSpectrumCrossover(value: number): number {
-  const clamped = clampSpectrumCrossover(value);
-  return SPECTRUM_CROSSOVER_STOPS.reduce((best, stop) =>
-    Math.abs(stop - clamped) < Math.abs(best - clamped) ? stop : best,
-  );
 }
 
 /** Returns the question text for one overall-weight slider. */

@@ -18,7 +18,7 @@ from pages.taste_widget_sync import (
 )
 from pages.wizard_state import reset_taste_preferences
 
-from music_review.dashboard.score_lab import format_score_lab_filter_summary
+from music_review.dashboard.filter_summary import format_profile_filter_summary
 from music_review.dashboard.streamlit_branding import (
     ensure_plattenradar_dashboard_chrome,
 )
@@ -114,7 +114,7 @@ def save_current_profile_to_disk() -> None:
                 or {},
             },
         )
-        summary = format_score_lab_filter_summary(summary_profile)
+        summary = format_profile_filter_summary(summary_profile)
     else:
         summary = "Filter nicht gesetzt"
     n_communities = len(get_selected_communities())

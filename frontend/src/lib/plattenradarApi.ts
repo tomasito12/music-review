@@ -20,7 +20,6 @@ export interface TasteCommunityOption {
 }
 
 export interface TasteFilterSettings {
-  community_spectrum_crossover: number;
   overall_weight_alpha: number;
   overall_weight_beta: number;
   overall_weight_gamma: number;
@@ -149,7 +148,6 @@ export const DEFAULT_BALANCED_FILTER_SETTINGS: TasteFilterSettings = {
   overall_weight_alpha: 0.5,
   overall_weight_beta: 0.25,
   overall_weight_gamma: 0.25,
-  community_spectrum_crossover: 0.5,
   sort_mode: "deterministic",
   serendipity: 0,
 };
@@ -469,9 +467,6 @@ export function normalizeFilterSettings(
     overall_weight_gamma:
       settings.overall_weight_gamma ??
       DEFAULT_BALANCED_FILTER_SETTINGS.overall_weight_gamma,
-    community_spectrum_crossover:
-      settings.community_spectrum_crossover ??
-      DEFAULT_BALANCED_FILTER_SETTINGS.community_spectrum_crossover,
     sort_mode: settings.sort_mode ?? DEFAULT_BALANCED_FILTER_SETTINGS.sort_mode,
     serendipity: settings.serendipity ?? DEFAULT_BALANCED_FILTER_SETTINGS.serendipity,
     year_min: settings.year_min ?? null,

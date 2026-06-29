@@ -2,12 +2,9 @@ import { describe, expect, it } from "vitest";
 
 import { DEFAULT_BALANCED_FILTER_SETTINGS } from "./plattenradarApi";
 import {
-  clampSpectrumCrossover,
   clearYearFilter,
-  describeSpectrumCrossover,
   enableYearFilter,
   hasYearFilter,
-  snapSpectrumCrossover,
   updateMinimumRating,
   updateStyleMatchMinPercent,
   updateYearFilter,
@@ -45,13 +42,5 @@ describe("year filter helpers", () => {
     const next = updateYearFilter(DEFAULT_BALANCED_FILTER_SETTINGS, 2018, 1990);
     expect(next.year_min).toBe(1990);
     expect(next.year_max).toBe(2018);
-  });
-});
-
-describe("spectrumCrossover helpers", () => {
-  it("keeps stored values continuous while labels use the nearest stop", () => {
-    expect(clampSpectrumCrossover(0.48)).toBe(0.48);
-    expect(snapSpectrumCrossover(0.48)).toBe(0.5);
-    expect(describeSpectrumCrossover(0.48)).toBe("Ausgewogen");
   });
 });

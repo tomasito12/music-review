@@ -160,52 +160,15 @@ def format_style_match_range_display(score_min: Any, score_max: Any) -> str:
     return f"{lo} % bis {hi} %"
 
 
-# Discrete Stil-Präferenz (community_spectrum_crossover): UI ohne Zahlen, Wert 0..1.
-SPECTRUM_CROSSOVER_STOPS: tuple[float, ...] = (0.0, 0.25, 0.5, 0.75, 1.0)
-
-_SPECTRUM_CROSSOVER_LABELS: tuple[str, ...] = (
-    "Starker Stil-Fokus",
-    "Eher Fokus",
-    "Ausgewogen",
-    "Eher Breite",
-    "Breite Abdeckung",
-)
-
-
-def snap_spectrum_crossover(raw: Any) -> float:
-    """Snap any stored crossover (0..1) to the nearest discrete UI stop."""
-    try:
-        v = float(raw)
-    except (TypeError, ValueError):
-        v = 0.5
-    v = max(0.0, min(1.0, v))
-    best = min(SPECTRUM_CROSSOVER_STOPS, key=lambda t: abs(t - v))
-    return float(best)
-
-
-def spectrum_crossover_option_label(stop: float) -> str:
-    """German label for one UI stop (``select_slider`` ``format_func``)."""
-    idx = SPECTRUM_CROSSOVER_STOPS.index(stop)
-    return _SPECTRUM_CROSSOVER_LABELS[idx]
-
-
-def spectrum_crossover_semantic_label(value: Any) -> str:
-    """German label for summaries (e.g. filter recap on the recommendations page)."""
-    return spectrum_crossover_option_label(snap_spectrum_crossover(value))
-
-
 def overall_weights_display_percents(
     style_share: float,
     rating_share: float,
-    spectrum_share: float,
+    breadth_share: float,
 ) -> tuple[int, int, int]:
-    """Integer percentages for Stil-Nähe, Rating, Stil-Präferenz (sum 100).
-
-    Uses largest-remainder so the three values add up to exactly 100.
-    """
+    """Integer percentages for Stilpassung, Rating, Stilbreite (sum 100)."""
     a = max(0.0, float(style_share))
     b = max(0.0, float(rating_share))
-    c = max(0.0, float(spectrum_share))
+    c = max(0.0, float(breadth_share))
     s = a + b + c
     if s <= 0.0:
         return (34, 33, 33)
@@ -227,15 +190,15 @@ def overall_weights_display_percents(
 def overall_weights_tradeoff_bar_html(
     style_share: float,
     rating_share: float,
-    spectrum_share: float,
+    breadth_share: float,
 ) -> str:
     """Horizontal stacked bar for normalized overall-score weights (Finetuning)."""
     pa, pb, pg = overall_weights_display_percents(
         style_share,
         rating_share,
-        spectrum_share,
+        breadth_share,
     )
-    label = f"Stil-Nähe {pa} %, Rating {pb} %, Stil-Präferenz (im Score) {pg} %"
+    label = f"Stil-Nähe {pa} %, Rating {pb} %, Stilbreite {pg} %"
     rl, rm, rd = (
         OVERALL_WEIGHT_TRADEOFF_RED_LIGHT,
         OVERALL_WEIGHT_TRADEOFF_RED_MID,
@@ -251,7 +214,7 @@ def overall_weights_tradeoff_bar_html(
         f'<span style="color:{rm};font-weight:600;">Rating {pb} %</span>'
         f"{dot}"
         f'<span style="color:{rd};font-weight:600;">'
-        f"Stil-Präferenz (Score) {pg} %</span>"
+        f"Stilbreite {pg} %</span>"
         "</p>"
         f'<div class="ow-tradeoff-bar" role="img" aria-label="{label}">'
         f'<span class="ow-tradeoff-seg" style="width:{pa}%;background:{rl};"></span>'
