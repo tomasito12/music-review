@@ -633,12 +633,16 @@ def _recommendation_from_row(
         )
         review_id = int(row.get("review_id", 0))
     overall = float(row.get("overall_score", 0.0))
+    style_fit = float(row.get("style_fit", row.get("score", 0.0)) or 0.0)
+    album_style_breadth = float(row.get("album_style_breadth", 0.0) or 0.0)
     return Recommendation(
         rank=rank,
         review_id=review_id,
         artist=artist,
         album=album,
         overall_score=overall,
+        style_fit=style_fit,
+        album_style_breadth=album_style_breadth,
         source=source,
         url=url,
         year=year,

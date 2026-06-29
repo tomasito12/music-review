@@ -293,6 +293,8 @@ class Recommendation(ApiModel):
     artist: str
     album: str
     overall_score: float
+    style_fit: float = 0.0
+    album_style_breadth: float = 0.0
     source: RecommendationSource = "archive"
     url: str | None = None
     year: int | None = None

@@ -57,9 +57,20 @@ export async function waitForAktuellHighlights(page: Page): Promise<void> {
     .waitFor({ timeout: 30_000 });
 }
 
-/** Wait until Entdecken rank 1 and the archive list are visible. */
+/** Wait until Entdecken highlights and the archive list are visible. */
 export async function waitForEntdeckenRanking(page: Page): Promise<void> {
-  await page.locator(".entdecken-lead-entry .recommendation-card, .highlight-tile").first().waitFor({
+  await page.waitForLoadState("networkidle");
+  await page.getByRole("heading", { name: "Im Archiv entdecken" }).waitFor({
+    timeout: 30_000,
+  });
+  await page.locator(".highlights-section, .results-list-prelude").first().waitFor({
+    timeout: 60_000,
+  });
+  const loading = page.locator(".highlights-section-loading");
+  if ((await loading.count()) > 0) {
+    await loading.waitFor({ state: "detached", timeout: 60_000 });
+  }
+  await page.getByRole("heading", { name: "Liste verfeinern" }).waitFor({
     timeout: 30_000,
   });
   await page.getByRole("heading", { name: "Alle Empfehlungen" }).waitFor({

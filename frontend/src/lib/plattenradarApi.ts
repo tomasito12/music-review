@@ -112,6 +112,8 @@ interface ApiRecommendation {
   labels: string;
   matched_tags: ApiCommunityMatch[];
   overall_score: number;
+  style_fit?: number;
+  album_style_breadth?: number;
   rank: number;
   rating: number | null;
   release_date: string | null;
@@ -488,6 +490,8 @@ function toRecommendation(
     year: item.year ?? 0,
     rating: item.rating ?? 0,
     score: item.overall_score,
+    styleFit: item.style_fit ?? item.overall_score,
+    albumStyleBreadth: item.album_style_breadth ?? 0,
     fitLabel: fitLabel(item.overall_score),
     fitPercent,
     releaseDate: item.release_date ?? undefined,

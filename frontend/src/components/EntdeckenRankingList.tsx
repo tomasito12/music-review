@@ -1,4 +1,4 @@
-import { useMemo, type ReactElement, type ReactNode } from "react";
+import { useMemo, type ReactElement } from "react";
 
 import { artistImageLookupKey } from "../lib/artistImageLookupKey";
 import { buildEntdeckenPhotoTileIndices } from "../lib/entdeckenPage";
@@ -10,31 +10,27 @@ import { RecommendationCard } from "./RecommendationCard";
 
 interface EntdeckenRankingListProps {
   canLoadMore?: boolean;
-  filterRegion: ReactNode;
+  excludedArtistLookupKeys?: ReadonlySet<string>;
   loadingMore?: boolean;
   onLoadMore?: () => void;
   recommendations: Recommendation[];
   showSaveAction?: boolean;
 }
 
-/** Entdecken ranking list with rank 1 first, filters second, and sparse photo tiles. */
+/** Entdecken ranking list with sparse photo tiles between dense cards. */
 export function EntdeckenRankingList({
   canLoadMore = false,
-  filterRegion,
+  excludedArtistLookupKeys = new Set(),
   loadingMore = false,
   onLoadMore,
   recommendations,
   showSaveAction = false,
 }: EntdeckenRankingListProps): ReactElement {
   const { imagesByLookupKey, loadingPhotoRanks, photoRanks } =
-    useEntdeckenPhotoSlots(recommendations);
+    useEntdeckenPhotoSlots(recommendations, excludedArtistLookupKeys);
   const photoTileIndices = useMemo(
     () => buildEntdeckenPhotoTileIndices(recommendations, photoRanks),
     [photoRanks, recommendations],
-  );
-  const leadRecommendation = recommendations.find((recommendation) => recommendation.rank === 1);
-  const remainingRecommendations = recommendations.filter(
-    (recommendation) => recommendation.rank !== 1,
   );
 
   function renderRecommendation(
@@ -73,38 +69,28 @@ export function EntdeckenRankingList({
   }
 
   return (
-    <>
-      {leadRecommendation !== undefined && (
-        <div className="entdecken-lead-entry">
-          {renderRecommendation(leadRecommendation, "lead")}
+    <section aria-labelledby="ranking-heading" className="ranking-section ranking-section-after-prelude">
+      <div className="ranking-heading">
+        <h2 id="ranking-heading">Alle Empfehlungen</h2>
+        <p>Sortiert nach Gesamtscore (Passung, Wertung und Stilbreite).</p>
+      </div>
+      <div className="recommendation-list">
+        {recommendations.map((recommendation) =>
+          renderRecommendation(recommendation, "list"),
+        )}
+      </div>
+      {canLoadMore && onLoadMore !== undefined && (
+        <div className="results-load-more">
+          <button
+            className="secondary-button"
+            disabled={loadingMore}
+            onClick={onLoadMore}
+            type="button"
+          >
+            {loadingMore ? "Weitere Alben werden geladen ..." : "Weitere Alben laden"}
+          </button>
         </div>
       )}
-
-      <div className="entdecken-list-prelude">{filterRegion}</div>
-
-      <section aria-labelledby="ranking-heading" className="ranking-section">
-        <div className="ranking-heading">
-          <h2 id="ranking-heading">Alle Empfehlungen</h2>
-          <p>Sortiert nach Gesamtscore (Passung, Wertung und Stilbreite).</p>
-        </div>
-        <div className="recommendation-list">
-          {remainingRecommendations.map((recommendation) =>
-            renderRecommendation(recommendation, "list"),
-          )}
-        </div>
-        {canLoadMore && onLoadMore !== undefined && (
-          <div className="results-load-more">
-            <button
-              className="secondary-button"
-              disabled={loadingMore}
-              onClick={onLoadMore}
-              type="button"
-            >
-              {loadingMore ? "Weitere Alben werden geladen ..." : "Weitere Alben laden"}
-            </button>
-          </div>
-        )}
-      </section>
-    </>
+    </section>
   );
 }

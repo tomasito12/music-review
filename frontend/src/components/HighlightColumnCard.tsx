@@ -41,7 +41,6 @@ type HighlightMediaMode = "photo" | "loading" | "textOnly";
 function resolveHighlightMediaMode(
   image: ArtistImageData | null,
   imageLoading: boolean,
-  variant: "highlight" | "ranked",
 ): HighlightMediaMode {
   if (image !== null) {
     return "photo";
@@ -49,7 +48,7 @@ function resolveHighlightMediaMode(
   if (imageLoading) {
     return "loading";
   }
-  return variant === "highlight" ? "textOnly" : "loading";
+  return "textOnly";
 }
 
 function HighlightTileMedia({
@@ -84,11 +83,16 @@ export function HighlightColumnCard(props: HighlightColumnCardProps): ReactEleme
     variant === "ranked"
       ? formatRankPhotoKicker(recommendation.rank)
       : props.highlight.label;
+  const showEntdeckenArchiveRank =
+    variant === "highlight" && recommendation.source === "entdecken";
   const description = variant === "ranked" ? null : props.highlight.description;
-  const isPrimary = variant !== "ranked" && props.highlight.label === "Beste Passung";
+  const isPrimary =
+    variant !== "ranked" &&
+    (props.highlight.label === "Beste Passung" ||
+      props.highlight.label === "Beste Gesamtpassung");
   const metaParts = recommendationCardMetaParts(recommendation);
   const tags = visibleRecommendationTags(recommendation.tags);
-  const mediaMode = resolveHighlightMediaMode(image, imageLoading, variant);
+  const mediaMode = resolveHighlightMediaMode(image, imageLoading);
   const { isSaved, isToggling, toggleSave } = useFavorites();
   const saved = isSaved(recommendation.reviewId);
   const tileClassName = [
@@ -133,7 +137,18 @@ export function HighlightColumnCard(props: HighlightColumnCardProps): ReactEleme
           />
         )}
 
-        <p className="highlight-tile-kicker">{label}</p>
+        <p className={`highlight-tile-kicker${showEntdeckenArchiveRank ? " highlight-tile-kicker-with-rank" : ""}`}>
+          {showEntdeckenArchiveRank ? (
+            <>
+              <span>{label}</span>
+              <span className="highlight-tile-kicker-rank">
+                {formatRankPhotoKicker(recommendation.rank)}
+              </span>
+            </>
+          ) : (
+            label
+          )}
+        </p>
         <h3 className="highlight-tile-title">
           <a href={recommendation.reviewUrl} rel="noreferrer" target="_blank">
             {recommendation.artist} – {recommendation.album}

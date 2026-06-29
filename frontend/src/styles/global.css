@@ -415,6 +415,25 @@ p {
   );
 }
 
+.results-list-prelude-header {
+  display: flex;
+  flex-direction: column;
+  gap: 0.45rem;
+  max-width: 42rem;
+}
+
+.results-list-prelude-header h2 {
+  margin: 0;
+  font-size: 1.35rem;
+  line-height: 1.2;
+}
+
+.results-list-prelude-header p:last-child {
+  margin: 0;
+  color: var(--ink-muted);
+  line-height: 1.55;
+}
+
 .entdecken-lead-entry {
   margin: 0;
 }
@@ -428,9 +447,16 @@ p {
   border-bottom: 1px solid rgba(23, 32, 51, 0.14);
 }
 
-.results-body-entdecken .entdecken-list-prelude .tag-legend {
+.results-body-entdecken .entdecken-list-prelude .tag-legend,
+.results-body-entdecken .results-list-prelude .tag-legend {
   margin: 0;
   padding: 0 0.15rem;
+}
+
+.results-body-entdecken .results-filter-region-after-highlights {
+  border-color: rgba(23, 32, 51, 0.16);
+  background: rgba(255, 253, 250, 0.94);
+  box-shadow: 0 8px 24px rgba(23, 32, 51, 0.04);
 }
 
 .results-body-entdecken .ranking-section {
@@ -849,6 +875,20 @@ p {
   font-weight: 600;
   letter-spacing: 0.04em;
   text-transform: uppercase;
+}
+
+.highlight-tile-kicker-with-rank {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 0.35rem 0.75rem;
+}
+
+.highlight-tile-kicker-rank {
+  color: var(--muted);
+  font-size: 0.72rem;
+  font-weight: 600;
+  letter-spacing: 0.06em;
 }
 
 .highlight-tile-title {

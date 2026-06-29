@@ -1,7 +1,18 @@
-import type { Recommendation } from "../types";
+import type { Recommendation, RecommendationHighlight } from "../types";
 
 import type { ArtistImageData } from "./artistImageApi";
 import { artistImageLookupKey } from "./artistImageLookupKey";
+
+/** Section copy for the Entdecken highlight hero. */
+export const ENTDECKEN_HIGHLIGHTS_SECTION = {
+  eyebrow: "Aus dem Archiv",
+  title: "Deine Top-Fundstücke",
+  intro:
+    "Vier starke Einstiege mit Künstlerfotos — danach kannst du die Reihenfolge mit Filtern und Gewichtungen anpassen.",
+} as const;
+
+/** How many ranked archive rows to scan when picking photo highlights. */
+export const ENTDECKEN_HIGHLIGHT_CANDIDATE_LIMIT = 200;
 
 const FIRST_PHOTO_SLOT_CANDIDATES = [1, 2, 3, 4, 5] as const;
 const RECURRING_PHOTO_ANCHOR_STEP = 6;
@@ -18,7 +29,10 @@ export function recurringPhotoSlotCandidates(anchorRank: number): number[] {
 }
 
 /** Groups of ranks to try when placing photo tiles in the Entdecken list. */
-export function entdeckenPhotoSlotGroups(maxRank: number): number[][] {
+export function entdeckenPhotoSlotGroups(
+  maxRank: number,
+  excludedRanks: ReadonlySet<number> = new Set(),
+): number[][] {
   if (maxRank <= 0) {
     return [];
   }
@@ -31,13 +45,17 @@ export function entdeckenPhotoSlotGroups(maxRank: number): number[][] {
   ) {
     groups.push(recurringPhotoSlotCandidates(anchor));
   }
-  return groups;
+  return groups
+    .map((group) => group.filter((rank) => !excludedRanks.has(rank)))
+    .filter((group) => group.length > 0);
 }
 
 /** Pick ranks that should render as photo tiles once image availability is known. */
 export function resolveEntdeckenPhotoRanks(
   recommendations: Recommendation[],
   hasPhoto: (recommendation: Recommendation) => boolean,
+  excludedRanks: ReadonlySet<number> = new Set(),
+  excludedArtistLookupKeys: ReadonlySet<string> = new Set(),
 ): Set<number> {
   if (recommendations.length === 0) {
     return new Set();
@@ -49,8 +67,9 @@ export function resolveEntdeckenPhotoRanks(
   const maxRank = Math.max(...recommendations.map((recommendation) => recommendation.rank));
   const photoRanks = new Set<number>();
   const claimedRanks = new Set<number>();
+  const claimedArtistLookupKeys = new Set(excludedArtistLookupKeys);
 
-  for (const candidates of entdeckenPhotoSlotGroups(maxRank)) {
+  for (const candidates of entdeckenPhotoSlotGroups(maxRank, excludedRanks)) {
     const selectedRank = candidates.find((rank) => {
       if (claimedRanks.has(rank)) {
         return false;
@@ -59,10 +78,21 @@ export function resolveEntdeckenPhotoRanks(
       if (recommendation === undefined) {
         return false;
       }
+      const lookupKey = recommendationArtistLookupKey(recommendation);
+      if (lookupKey.length === 0 || claimedArtistLookupKeys.has(lookupKey)) {
+        return false;
+      }
       return hasPhoto(recommendation);
     });
 
     if (selectedRank !== undefined) {
+      const recommendation = rankByNumber.get(selectedRank);
+      if (recommendation !== undefined) {
+        const lookupKey = recommendationArtistLookupKey(recommendation);
+        if (lookupKey.length > 0) {
+          claimedArtistLookupKeys.add(lookupKey);
+        }
+      }
       photoRanks.add(selectedRank);
       claimedRanks.add(selectedRank);
     }
@@ -74,6 +104,7 @@ export function resolveEntdeckenPhotoRanks(
 /** Recommendations that may need artist images for Entdecken photo tiles. */
 export function entdeckenPhotoLookupRecommendations(
   recommendations: Recommendation[],
+  excludedRanks: ReadonlySet<number> = new Set(),
 ): Recommendation[] {
   if (recommendations.length === 0) {
     return [];
@@ -85,7 +116,7 @@ export function entdeckenPhotoLookupRecommendations(
   const maxRank = Math.max(...recommendations.map((recommendation) => recommendation.rank));
   const candidateRanks = new Set<number>();
 
-  for (const group of entdeckenPhotoSlotGroups(maxRank)) {
+  for (const group of entdeckenPhotoSlotGroups(maxRank, excludedRanks)) {
     for (const rank of group) {
       candidateRanks.add(rank);
     }
@@ -100,6 +131,111 @@ export function entdeckenPhotoLookupRecommendations(
 /** Kicker label for ranked photo tiles in the Entdecken list. */
 export function formatRankPhotoKicker(rank: number): string {
   return `Platz ${rank.toString().padStart(2, "0")}`;
+}
+
+/** Category kicker for Entdecken highlight tiles, including archive rank. */
+export function formatEntdeckenHighlightKicker(label: string, rank: number): string {
+  return `${label} · ${formatRankPhotoKicker(rank)}`;
+}
+
+/** Stable artist key for Entdecken photo de-duplication. */
+export function recommendationArtistLookupKey(recommendation: Recommendation): string {
+  return artistImageLookupKey({
+    artistMbid: recommendation.artistMbid,
+    artistName: recommendation.artist,
+  });
+}
+
+/** Artist lookup keys already shown in Entdecken highlight cards. */
+export function entdeckenHighlightArtistLookupKeys(
+  highlights: RecommendationHighlight[],
+): Set<string> {
+  return new Set(
+    highlights
+      .map((highlight) => recommendationArtistLookupKey(highlight.recommendation))
+      .filter((lookupKey) => lookupKey.length > 0),
+  );
+}
+
+/** Ranks used by Entdecken highlight cards (excluded from list photo slots). */
+export function entdeckenHighlightRanks(
+  highlights: RecommendationHighlight[],
+): Set<number> {
+  return new Set(highlights.map((highlight) => highlight.recommendation.rank));
+}
+
+/** Derives four editorial Entdecken highlights from recommendations that have photos. */
+export function selectEntdeckenHighlightsFromPhotoPool(
+  recommendations: Recommendation[],
+): RecommendationHighlight[] {
+  if (recommendations.length === 0) {
+    return [];
+  }
+
+  const usedArtistLookupKeys = new Set<string>();
+  const highlights: RecommendationHighlight[] = [];
+
+  const albumKey = (recommendation: Recommendation): string =>
+    `${recommendation.artist}-${recommendation.album}`;
+
+  const addHighlight = (
+    label: string,
+    description: string,
+    recommendation: Recommendation | undefined,
+  ): void => {
+    if (recommendation === undefined) {
+      return;
+    }
+    const lookupKey = recommendationArtistLookupKey(recommendation);
+    if (lookupKey.length === 0 || usedArtistLookupKeys.has(lookupKey)) {
+      return;
+    }
+    usedArtistLookupKeys.add(lookupKey);
+    highlights.push({ label, description, recommendation });
+  };
+
+  const pickTopUnused = (
+    scoreFor: (item: Recommendation) => number,
+    exclude: Recommendation | undefined = undefined,
+  ): Recommendation | undefined => {
+    const excludeAlbumKey = exclude === undefined ? null : albumKey(exclude);
+    return [...recommendations]
+      .filter((item) => {
+        const lookupKey = recommendationArtistLookupKey(item);
+        if (lookupKey.length === 0 || usedArtistLookupKeys.has(lookupKey)) {
+          return false;
+        }
+        return excludeAlbumKey === null || albumKey(item) !== excludeAlbumKey;
+      })
+      .sort((left, right) => scoreFor(right) - scoreFor(left))[0];
+  };
+
+  const bestOverall = pickTopUnused((item) => item.score);
+  addHighlight(
+    "Beste Gesamtpassung",
+    "Der stärkste Gesamtscore aus Passung, Wertung und Stilbreite.",
+    bestOverall,
+  );
+
+  addHighlight(
+    "Kritikerfavorit",
+    "Besonders hoch bewertet bei plattentests.de.",
+    pickTopUnused((item) => item.rating, bestOverall),
+  );
+
+  addHighlight(
+    "Stilistisch breit",
+    "Hohe stilistische Vielfalt im Album.",
+    pickTopUnused((item) => item.albumStyleBreadth),
+  );
+
+  addHighlight(
+    "Höchste Passung",
+    "Die stärkste Stilpassung zu deinem Musikprofil.",
+    pickTopUnused((item) => item.styleFit),
+  );
+
+  return highlights;
 }
 
 /** Archive-specific header copy for the Entdecken results page. */

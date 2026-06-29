@@ -25,6 +25,7 @@ function recommendationLookupKey(recommendation: Recommendation): string {
 /** Resolve Entdecken photo slots one group at a time so the first tiles appear quickly. */
 export function useEntdeckenPhotoSlots(
   recommendations: Recommendation[],
+  excludedArtistLookupKeys: ReadonlySet<string> = new Set(),
 ): UseEntdeckenPhotoSlotsResult {
   const apiClient = useApiClient();
   const [imagesByLookupKey, setImagesByLookupKey] = useState<
@@ -44,6 +45,11 @@ export function useEntdeckenPhotoSlots(
     [recommendations],
   );
 
+  const excludedArtistSignature = useMemo(
+    () => [...excludedArtistLookupKeys].sort().join(","),
+    [excludedArtistLookupKeys],
+  );
+
   useEffect(() => {
     if (recommendations.length === 0) {
       setImagesByLookupKey(new Map());
@@ -61,6 +67,7 @@ export function useEntdeckenPhotoSlots(
     const resolvedImages = new Map<string, ArtistImageData | null>();
     const resolvedPhotoRanks = new Set<number>();
     const claimedRanks = new Set<number>();
+    const claimedArtistLookupKeys = new Set(excludedArtistLookupKeys);
 
     async function resolvePhotoSlots(): Promise<void> {
       const client = apiClient();
@@ -122,10 +129,21 @@ export function useEntdeckenPhotoSlots(
           if (recommendation === undefined) {
             return false;
           }
+          const lookupKey = recommendationLookupKey(recommendation);
+          if (lookupKey.length === 0 || claimedArtistLookupKeys.has(lookupKey)) {
+            return false;
+          }
           return entdeckenRecommendationHasPhoto(recommendation, resolvedImages);
         });
 
         if (selectedRank !== undefined) {
+          const recommendation = rankByNumber.get(selectedRank);
+          if (recommendation !== undefined) {
+            const lookupKey = recommendationLookupKey(recommendation);
+            if (lookupKey.length > 0) {
+              claimedArtistLookupKeys.add(lookupKey);
+            }
+          }
           resolvedPhotoRanks.add(selectedRank);
           claimedRanks.add(selectedRank);
           setPhotoRanks(new Set(resolvedPhotoRanks));
@@ -143,7 +161,7 @@ export function useEntdeckenPhotoSlots(
     return () => {
       active = false;
     };
-  }, [apiClient, recommendationSignature, recommendations]);
+  }, [apiClient, excludedArtistLookupKeys, excludedArtistSignature, recommendationSignature, recommendations]);
 
   return {
     imagesByLookupKey,

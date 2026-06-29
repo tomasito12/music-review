@@ -29,6 +29,8 @@ export interface Recommendation {
   year: number;
   rating: number;
   score: number;
+  styleFit: number;
+  albumStyleBreadth: number;
   fitLabel: string;
   fitPercent: number;
   releaseDate?: string;
