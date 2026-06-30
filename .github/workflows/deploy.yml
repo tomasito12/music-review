@@ -56,8 +56,8 @@ jobs:
       - name: Create empty CI env file
         run: touch .env
 
-      - name: Build application image
-        run: docker compose build music-review
+      - name: Build production images
+        run: docker compose build music-review frontend
 
   deploy:
     name: Deploy over SSH
@@ -88,8 +88,8 @@ jobs:
             && git fetch --prune origin \
             && git checkout '${DEPLOY_BRANCH}' \
             && git pull --ff-only origin '${DEPLOY_BRANCH}' \
-            && docker compose build music-review \
-            && docker compose up -d music-review caddy"
+            && docker compose build music-review frontend \
+            && docker compose up -d --remove-orphans --force-recreate music-review frontend caddy"
         env:
           DEPLOY_HOST: ${{ secrets.DEPLOY_HOST }}
           DEPLOY_PORT: ${{ secrets.DEPLOY_PORT || '22' }}
@@ -120,12 +120,21 @@ jobs:
           DEPLOY_USER: ${{ secrets.DEPLOY_USER }}
           DEPLOY_PATH: ${{ secrets.DEPLOY_PATH }}
 
-      - name: Check Streamlit health
+      - name: Check API health
         run: |
           ssh -p "${DEPLOY_PORT}" "${DEPLOY_USER}@${DEPLOY_HOST}" \
-            "cd '${DEPLOY_PATH}' \
-            && docker compose exec -T music-review \
-              curl --fail http://127.0.0.1:8501/_stcore/health"
+            "cd '${DEPLOY_PATH}' && ./scripts/check_deploy_api_health.sh"
+        env:
+          DEPLOY_HOST: ${{ secrets.DEPLOY_HOST }}
+          DEPLOY_PORT: ${{ secrets.DEPLOY_PORT || '22' }}
+          DEPLOY_USER: ${{ secrets.DEPLOY_USER }}
+          DEPLOY_PATH: ${{ secrets.DEPLOY_PATH }}
+
+
+      - name: Check frontend health
+        run: |
+          ssh -p "${DEPLOY_PORT}" "${DEPLOY_USER}@${DEPLOY_HOST}" \
+            "cd '${DEPLOY_PATH}' && ./scripts/check_deploy_frontend_health.sh"
         env:
           DEPLOY_HOST: ${{ secrets.DEPLOY_HOST }}
           DEPLOY_PORT: ${{ secrets.DEPLOY_PORT || '22' }}

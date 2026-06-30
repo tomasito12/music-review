@@ -68,8 +68,9 @@ Override via `.env.server` or `MUSIC_REVIEW_SYNC_*` variables (same as `sync_dat
 
 | Name | Role |
 |------|------|
-| `music-review` | Streamlit (always on) |
-| `music-review-caddy` | HTTPS reverse proxy |
+| `music-review` | FastAPI (always on, port 8000) |
+| `music-review-frontend` | React static site via nginx (always on) |
+| `music-review-caddy` | HTTPS reverse proxy for plattenradar.de |
 | `music-review-artist-image-batch` | Detached batch job (may be absent) |
 | `music-review-metadata-refresh` | Detached metadata job (may be absent) |
 

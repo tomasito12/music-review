@@ -1,0 +1,69 @@
+name: Pipeline or data issue
+description: Problems with scraping, enrichment, graph builds, or data quality
+title: "[Data]: "
+labels:
+  - data
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Use this template for pipeline runs, missing metadata, graph/community
+        artifacts, or data-quality report findings.
+
+  - type: dropdown
+    id: pipeline_step
+    attributes:
+      label: Pipeline step
+      options:
+        - Scraper (reviews.jsonl)
+        - fetch_metadata (metadata.jsonl)
+        - artist_genres / reference imputation
+        - Graph build / communities
+        - Community genre labels (OpenAI)
+        - Artist images
+        - update-db / prod-update orchestration
+        - Data-quality report
+        - Other
+    validations:
+      required: true
+
+  - type: textarea
+    id: summary
+    attributes:
+      label: Summary
+      description: What went wrong or looks incorrect in the data?
+    validations:
+      required: true
+
+  - type: textarea
+    id: command
+    attributes:
+      label: Command or workflow
+      description: Exact command, script, or GitHub Action workflow you ran.
+      placeholder: hatch run update-db -- --verbose
+      render: shell
+    validations:
+      required: true
+
+  - type: textarea
+    id: sample
+    attributes:
+      label: Example record or ID
+      description: Review ID, artist/album name, community ID, or file snippet.
+      placeholder: review_id=12345, artist=..., album=...
+
+  - type: textarea
+    id: logs
+    attributes:
+      label: Relevant log output
+      render: shell
+
+  - type: checkboxes
+    id: scope
+    attributes:
+      label: Scope
+      options:
+        - label: Reproducible on a fresh run with the same inputs
+          required: false
+        - label: Affects production data on the server
+          required: false

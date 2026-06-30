@@ -27,11 +27,19 @@ Open the `Deploy` workflow in GitHub Actions, choose the branch, and run it.
 The workflow verifies lint/tests first, then deploys over SSH:
 
 1. Fetch and fast-forward the selected branch on the server.
-2. Rebuild the `music-review` image.
-3. Restart `music-review` and `caddy`.
+2. Rebuild the `music-review` API image and the `frontend` static site image.
+3. Restart `music-review`, `frontend`, and `caddy`.
 4. Install production cron from `deploy/production.crontab` (idempotent).
 5. Optionally run `music-review-update`.
-6. Check the local Streamlit health endpoint in the container.
+6. Check the API via `./scripts/check_deploy_api_health.sh` (host curl on port 8000 with retries/logs) and the frontend nginx root via `./scripts/check_deploy_frontend_health.sh`.
+
+Public traffic at `https://plattenradar.de` is served by Caddy:
+
+- `/v1/*`, `/health`, and OpenAPI docs go to the FastAPI container on port 8000.
+- All other paths go to the React frontend (nginx with SPA fallback).
+
+Local Streamlit development remains available via `hatch run dashboard`; it is
+no longer part of the production Docker stack.
 
 ## Artist image batch (long-running)
 

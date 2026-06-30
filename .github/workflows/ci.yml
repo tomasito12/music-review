@@ -144,8 +144,8 @@ jobs:
       - name: Create empty CI env file
         run: touch .env
 
-      - name: Build application image
-        run: docker compose build music-review
+      - name: Build production images
+        run: docker compose build music-review frontend
 
       - name: Validate Compose config
         run: docker compose config --quiet

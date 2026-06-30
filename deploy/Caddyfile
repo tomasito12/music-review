@@ -1,3 +1,25 @@
 plattenradar.de, www.plattenradar.de {
-    reverse_proxy music-review:8501
+	handle /v1/* {
+		reverse_proxy music-review:8000
+	}
+
+	handle /health {
+		reverse_proxy music-review:8000
+	}
+
+	handle /docs* {
+		reverse_proxy music-review:8000
+	}
+
+	handle /redoc* {
+		reverse_proxy music-review:8000
+	}
+
+	handle /openapi.json {
+		reverse_proxy music-review:8000
+	}
+
+	handle {
+		reverse_proxy frontend:80
+	}
 }

@@ -3,10 +3,7 @@ FROM python:3.12-slim-bookworm
 ENV PYTHONDONTWRITEBYTECODE=1 \
     PYTHONUNBUFFERED=1 \
     PIP_NO_CACHE_DIR=1 \
-    MUSIC_REVIEW_PROJECT_ROOT=/app \
-    STREAMLIT_SERVER_ADDRESS=0.0.0.0 \
-    STREAMLIT_SERVER_PORT=8501 \
-    STREAMLIT_BROWSER_GATHER_USAGE_STATS=false
+    MUSIC_REVIEW_PROJECT_ROOT=/app
 
 WORKDIR /app
 
@@ -19,19 +16,20 @@ RUN apt-get update \
 
 COPY pyproject.toml README.md ./
 COPY src ./src
+COPY scripts ./scripts
 
 RUN python -m pip install --upgrade pip \
     && python -m pip install .
 
 COPY assets ./assets
-COPY pages ./pages
-COPY streamlit_app.py ./streamlit_app.py
+COPY deploy/docker-entrypoint-api.sh /usr/local/bin/docker-entrypoint-api.sh
 
-RUN mkdir -p /app/data
+RUN mkdir -p /app/data \
+    && chmod +x /usr/local/bin/docker-entrypoint-api.sh
 
-EXPOSE 8501
+EXPOSE 8000
 
-HEALTHCHECK --interval=30s --timeout=5s --start-period=30s --retries=3 \
-    CMD curl --fail http://127.0.0.1:8501/_stcore/health || exit 1
+HEALTHCHECK --interval=30s --timeout=5s --start-period=40s --retries=3 \
+    CMD curl --fail http://127.0.0.1:8000/health || exit 1
 
-CMD ["streamlit", "run", "streamlit_app.py"]
+CMD ["/usr/local/bin/docker-entrypoint-api.sh"]

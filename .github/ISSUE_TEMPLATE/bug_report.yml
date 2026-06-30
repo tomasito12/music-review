@@ -1,0 +1,94 @@
+name: Bug report
+description: Report something that is broken or incorrect
+title: "[Bug]: "
+labels:
+  - bug
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thanks for taking the time to report a bug. Please fill in what you can;
+        incomplete reports are still welcome.
+
+  - type: dropdown
+    id: area
+    attributes:
+      label: Area
+      description: Which part of the project is affected?
+      options:
+        - Python pipeline / scraper
+        - MusicBrainz / metadata enrichment
+        - Reference graph / communities
+        - FastAPI backend
+        - React frontend (Plattenradar)
+        - Streamlit dashboard
+        - CI / deployment / Docker
+        - Documentation
+        - Other
+    validations:
+      required: true
+
+  - type: textarea
+    id: description
+    attributes:
+      label: What happened?
+      description: Describe the bug clearly.
+      placeholder: When I run ..., I see ...
+    validations:
+      required: true
+
+  - type: textarea
+    id: expected
+    attributes:
+      label: What did you expect?
+      placeholder: I expected ...
+    validations:
+      required: true
+
+  - type: textarea
+    id: reproduce
+    attributes:
+      label: Steps to reproduce
+      description: Commands, URLs, or UI steps. Include versions if relevant.
+      placeholder: |
+        1. hatch run ...
+        2. Open ...
+        3. See error
+    validations:
+      required: true
+
+  - type: textarea
+    id: logs
+    attributes:
+      label: Logs or screenshots
+      description: Paste relevant log output or attach screenshots.
+      render: shell
+
+  - type: dropdown
+    id: environment
+    attributes:
+      label: Environment
+      options:
+        - Local development
+        - GitHub Actions / CI
+        - Production server
+        - Codex Cloud / remote agent
+        - Other
+    validations:
+      required: true
+
+  - type: input
+    id: python_version
+    attributes:
+      label: Python version (if applicable)
+      placeholder: "3.12.8"
+
+  - type: checkboxes
+    id: checks
+    attributes:
+      label: Pre-submission checklist
+      options:
+        - label: I searched existing issues for duplicates
+          required: true
+        - label: This is not a security vulnerability (use SECURITY.md instead)
+          required: true
