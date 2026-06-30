@@ -101,7 +101,7 @@ export function HighlightColumnCard(props: HighlightColumnCardProps): ReactEleme
   return (
     <article className={tileClassName}>
       <div className="highlight-tile-media">
-        {mediaMode === "photo" ? (
+        {mediaMode === "photo" && image !== null ? (
           <ArtistImage artistName={recommendation.artist} image={image} />
         ) : mediaMode === "loading" ? (
           <div

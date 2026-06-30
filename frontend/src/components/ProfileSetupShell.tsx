@@ -12,6 +12,7 @@ import {
   applyCommunityMapChoice,
   communityChoicesFromLikedIds,
   likedCommunityIds,
+  pruneCommunityMapChoices,
   resetCommunityMapChoices,
   summarizeCommunityMapChoices,
   type CommunityMapChoice,
