@@ -16,6 +16,10 @@ import { EntdeckenRankingList } from "./EntdeckenRankingList";
 import { RecommendationHighlights } from "./RecommendationHighlights";
 import { ResultsFilterPanel } from "./ResultsFilterPanel";
 import { ResultsListPrelude } from "./ResultsListPrelude";
+import {
+  shouldShowResultsListPrelude,
+  shouldShowStandaloneFilterRegion,
+} from "../lib/resultsListLayout";
 
 interface RecommendationListProps {
   aktuellBriefing?: AktuellBriefing;
@@ -77,20 +81,17 @@ export function RecommendationList({
   profileSession = null,
 }: RecommendationListProps): ReactElement {
   const [entdeckenHighlights, setEntdeckenHighlights] = useState<RecommendationHighlight[]>([]);
-  const [entdeckenHighlightsReady, setEntdeckenHighlightsReady] = useState(false);
 
   useEffect(() => {
     if (source !== "entdecken" || !isReloading) {
       return;
     }
     setEntdeckenHighlights([]);
-    setEntdeckenHighlightsReady(false);
   }, [isReloading, source]);
 
   const handleEntdeckenHighlightsResolved = useCallback(
     (resolved: RecommendationHighlight[]) => {
       setEntdeckenHighlights(resolved);
-      setEntdeckenHighlightsReady(true);
     },
     [],
   );
@@ -125,10 +126,11 @@ export function RecommendationList({
       : recommendations;
   const hasEditorialHighlights = activeHighlights !== undefined && activeHighlights.length > 0;
   const showEntdeckenHero = source === "entdecken" && recommendations.length > 0;
-  const showPrelude =
-    source === "aktuell"
-      ? hasEditorialHighlights
-      : entdeckenHighlights.length > 0 || entdeckenHighlightsReady;
+  const showPrelude = shouldShowResultsListPrelude(activeHighlights ?? []);
+  const showStandaloneFilters = shouldShowStandaloneFilterRegion(
+    showFilterPanel,
+    showPrelude,
+  );
   const entdeckenExcludedArtistLookupKeys =
     source === "entdecken" && activeHighlights !== undefined
       ? entdeckenHighlightArtistLookupKeys(activeHighlights)
@@ -253,6 +255,8 @@ export function RecommendationList({
         {showPrelude && (
           <ResultsListPrelude filterRegion={filterRegion} source={source} />
         )}
+
+        {showStandaloneFilters && filterRegion}
 
         {source === "entdecken" ? (
           <EntdeckenRankingList

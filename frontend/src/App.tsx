@@ -16,7 +16,7 @@ import {
   UPDATE_ROUND_OPTIONS,
 } from "./lib/aktuellPage";
 import { buildEntdeckenHeaderMessage } from "./lib/entdeckenPage";
-import { ApiClient, ApiError } from "./lib/apiClient";
+import { ApiClient, ApiError, createApiClient } from "./lib/apiClient";
 import { ApiClientProvider, useApiClient } from "./lib/apiClientContext";
 import { FavoritesProvider, useFavorites } from "./lib/favoritesContext";
 import { profileSaveUnauthorizedMessage } from "./lib/authForm";
@@ -152,7 +152,10 @@ export function App(): ReactElement {
     (route === "aktuell" || route === "entdecken") && temporaryProfile !== null;
   const resultsFilterOptions = useResultsFilterOptions(resultsFilterOptionsEnabled);
 
-  const apiClient = useApiClient();
+  const createClient = useCallback(
+    () => createApiClient(authSession?.accessToken),
+    [authSession?.accessToken],
+  );
 
   const pageTitle = useMemo(() => {
     switch (route) {
@@ -275,7 +278,7 @@ export function App(): ReactElement {
       offset: number,
       mode: "replace" | "append",
     ): Promise<void> => {
-      const result = await loadArchiveRecommendations(apiClient(), profile, {
+      const result = await loadArchiveRecommendations(createClient(), profile, {
         offset,
         limit: ARCHIVE_PAGE_SIZE,
       });
@@ -286,13 +289,13 @@ export function App(): ReactElement {
           : result.recommendations,
       );
     },
-    [apiClient],
+    [createClient],
   );
 
   const loadAktuellPage = useCallback(
     async (offset: number, mode: "replace" | "append"): Promise<void> => {
       const result = await loadNewReviewRecommendations(
-        apiClient(),
+        createClient(),
         temporaryProfile,
         {
           offset,
@@ -307,7 +310,7 @@ export function App(): ReactElement {
           : result.recommendations,
       );
     },
-    [apiClient, temporaryProfile, updateRounds],
+    [createClient, temporaryProfile, updateRounds],
   );
 
   useEffect(() => {
@@ -496,7 +499,7 @@ export function App(): ReactElement {
     setProfileChangesError(null);
     setProfileChangesSavedMessage(null);
     try {
-      const savedProfile = await saveTasteProfile(apiClient(), temporaryProfile);
+      const savedProfile = await saveTasteProfile(createClient(), temporaryProfile);
       setLastSavedProfile(cloneTasteProfile(savedProfile));
       const updatedSession: ProfileSetupResult = {
         presetId: profileSession?.presetId ?? "saved",

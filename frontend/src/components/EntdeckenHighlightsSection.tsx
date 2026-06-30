@@ -22,9 +22,10 @@ export function EntdeckenHighlightsSection({
     useEntdeckenHighlights(recommendations);
 
   useEffect(() => {
-    if (!loading || highlights.length > 0) {
-      onHighlightsResolved(highlights);
+    if (loading) {
+      return;
     }
+    onHighlightsResolved(highlights);
   }, [highlights, loading, onHighlightsResolved]);
 
   if (loading && highlights.length === 0) {

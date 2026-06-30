@@ -14,6 +14,11 @@ export function resolveApiBaseUrl(): string {
   return DEFAULT_API_BASE_URL;
 }
 
+/** Build an ApiClient, optionally attaching a bearer token. */
+export function createApiClient(accessToken?: string | null): ApiClient {
+  return new ApiClient({ token: accessToken ?? undefined });
+}
+
 export class ApiError extends Error {
   constructor(
     message: string,
