@@ -22,12 +22,14 @@ RUN python -m pip install --upgrade pip \
     && python -m pip install .
 
 COPY assets ./assets
+COPY deploy/docker-entrypoint-api.sh /usr/local/bin/docker-entrypoint-api.sh
 
-RUN mkdir -p /app/data
+RUN mkdir -p /app/data \
+    && chmod +x /usr/local/bin/docker-entrypoint-api.sh
 
 EXPOSE 8000
 
-HEALTHCHECK --interval=30s --timeout=5s --start-period=30s --retries=3 \
+HEALTHCHECK --interval=30s --timeout=5s --start-period=40s --retries=3 \
     CMD curl --fail http://127.0.0.1:8000/health || exit 1
 
-CMD ["uvicorn", "music_review.api.app:create_app", "--factory", "--host", "0.0.0.0", "--port", "8000"]
+CMD ["/usr/local/bin/docker-entrypoint-api.sh"]
