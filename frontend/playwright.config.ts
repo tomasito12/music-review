@@ -16,29 +16,27 @@ export default defineConfig({
     },
   },
   use: {
+    ...devices["Desktop Chrome"],
     baseURL,
     locale: "de-DE",
     timezoneId: "Europe/Berlin",
-    deviceScaleFactor: 1,
     colorScheme: "light",
-    ...devices["Desktop Chrome"],
+  },
+  webServer: {
+    command: "pnpm dev --host 127.0.0.1 --port 5173",
+    url: baseURL,
+    reuseExistingServer: !isCi,
+    timeout: 120_000,
   },
   projects: [
     {
       name: "mock",
       testMatch: /^(?!.*live-screenshots).*\.spec\.ts$/,
-      webServer: {
-        command: "pnpm dev --host 127.0.0.1 --port 5173",
-        url: baseURL,
-        reuseExistingServer: !isCi,
-        timeout: 120_000,
-      },
     },
     {
       name: "live",
       testMatch: /live-screenshots\.spec\.ts$/,
       use: {
-        ...devices["Desktop Chrome"],
         viewport: { width: 1280, height: 900 },
       },
     },

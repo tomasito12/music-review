@@ -762,6 +762,7 @@ export function App(): ReactElement {
           handleUpdateRoundsChange={handleUpdateRoundsChange}
           hasUnsavedProfileChanges={hasUnsavedProfileChanges}
           isAuthenticated={isAuthenticated}
+          isSavingProfileChanges={isSavingProfileChanges}
           lastSavedProfile={lastSavedProfile}
           loadMoreArchiveRecommendations={loadMoreArchiveRecommendations}
           loadMoreAktuellRecommendations={loadMoreAktuellRecommendations}
@@ -832,6 +833,7 @@ interface AppContentProps {
   handleUpdateRoundsChange: (value: string) => void;
   hasUnsavedProfileChanges: boolean;
   isAuthenticated: boolean;
+  isSavingProfileChanges: boolean;
   lastSavedProfile: TemporaryTasteProfile | null;
   loadMoreArchiveRecommendations: () => Promise<void>;
   loadMoreAktuellRecommendations: () => Promise<void>;
