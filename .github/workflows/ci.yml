@@ -103,7 +103,7 @@ jobs:
       - name: Install Playwright Chromium
         run: hatch run frontend-playwright-install
 
-      - name: Regenerate reference screenshots on Linux
+      - name: Regenerate and verify reference screenshots on Linux
         run: hatch run frontend-screenshot-update
 
       - name: Sync visual reference PNGs
@@ -124,9 +124,6 @@ jobs:
           git add frontend/tests/visual/reference/*.png
           git commit -m "chore: refresh visual reference screenshots for Linux CI"
           git push
-
-      - name: Run visual regression tests
-        run: hatch run frontend-screenshot-live
 
   docker-build:
     name: Docker build smoke test

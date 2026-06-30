@@ -21,6 +21,7 @@ const DEFAULT_SECTION_COPY: HighlightsSectionCopy = {
 };
 
 interface RecommendationHighlightsProps {
+  dataVisualHighlights?: "pending" | "ready";
   highlights: RecommendationHighlight[];
   imagesByLookupKey?: Map<string, ArtistImageData | null>;
   imagesLoading?: boolean;
@@ -30,6 +31,7 @@ interface RecommendationHighlightsProps {
 
 /** Editorial highlight section with full-width alternating tiles. */
 export function RecommendationHighlights({
+  dataVisualHighlights,
   highlights,
   imagesByLookupKey: preloadedImages,
   imagesLoading: preloadedLoading,
@@ -47,7 +49,11 @@ export function RecommendationHighlights({
   const imagesByLookupKey = preloadedImages ?? batch.imagesByLookupKey;
 
   return (
-    <section aria-labelledby="highlights-heading" className="highlights-section">
+    <section
+      aria-labelledby="highlights-heading"
+      className="highlights-section"
+      data-visual-highlights={dataVisualHighlights}
+    >
       <header className="highlights-section-header">
         <p className="eyebrow">{sectionCopy.eyebrow}</p>
         <h2 id="highlights-heading">{sectionCopy.title}</h2>

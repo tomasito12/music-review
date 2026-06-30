@@ -53,27 +53,38 @@ def main() -> None:
         _ensure_pnpm()
         _wait_for_url(API_URL)
         _wait_for_url(FRONTEND_URL)
-        playwright_cmd = [
-            "pnpm",
-            "exec",
-            "playwright",
-            "test",
-            "--project=live",
-        ]
-        if args.update_snapshots:
-            playwright_cmd.append("--update-snapshots")
-        result = subprocess.run(
-            playwright_cmd,
-            cwd=FRONTEND,
+        exit_code = _run_playwright(
+            update_snapshots=args.update_snapshots,
             env=frontend_env,
-            check=False,
         )
-        exit_code = result.returncode
+        if exit_code == 0 and args.update_snapshots:
+            LOGGER.info("Verifying refreshed live screenshots in the same session")
+            exit_code = _run_playwright(update_snapshots=False, env=frontend_env)
     finally:
         _terminate(frontend)
         _terminate(api)
 
     raise SystemExit(exit_code)
+
+
+def _run_playwright(*, update_snapshots: bool, env: dict[str, str]) -> int:
+    """Run the live Playwright project, optionally refreshing snapshots."""
+    playwright_cmd = [
+        "pnpm",
+        "exec",
+        "playwright",
+        "test",
+        "--project=live",
+    ]
+    if update_snapshots:
+        playwright_cmd.append("--update-snapshots")
+    result = subprocess.run(
+        playwright_cmd,
+        cwd=FRONTEND,
+        env=env,
+        check=False,
+    )
+    return result.returncode
 
 
 def _ensure_pnpm() -> None:

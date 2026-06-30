@@ -48,6 +48,7 @@ export function EntdeckenHighlightsSection({
 
   return (
     <RecommendationHighlights
+      dataVisualHighlights={loading ? "pending" : "ready"}
       highlights={highlights}
       imagesByLookupKey={imagesByLookupKey}
       imagesLoading={false}

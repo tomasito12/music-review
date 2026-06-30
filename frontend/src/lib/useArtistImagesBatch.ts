@@ -6,6 +6,7 @@ import {
   type ArtistImageData,
 } from "./artistImageApi";
 import { artistImageLookupKey } from "./artistImageLookupKey";
+import { isVisualTestMode } from "./visualTestMode";
 
 export interface ArtistImageLookup {
   artistMbid?: string;
@@ -100,7 +101,10 @@ export function useArtistImagesBatch(
     }
 
     let active = true;
-    setLoading(true);
+    const deferProgressiveUpdates = isVisualTestMode();
+    if (!deferProgressiveUpdates) {
+      setLoading(true);
+    }
 
     async function fetchImages(): Promise<void> {
       const mergedResults = new Map<string, ArtistImageData | null>();
@@ -114,6 +118,15 @@ export function useArtistImagesBatch(
           }
           for (const [lookupKey, image] of results) {
             mergedResults.set(lookupKey, image);
+          }
+          if (!deferProgressiveUpdates) {
+            setImagesByLookupKey((current) => {
+              const merged = new Map(current);
+              for (const [lookupKey, image] of mergedResults) {
+                merged.set(lookupKey, image);
+              }
+              return merged;
+            });
           }
         }
         if (!active) {

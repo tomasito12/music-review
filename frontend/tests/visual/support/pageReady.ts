@@ -21,24 +21,32 @@ const LAYOUT_STABLE_TIMEOUT_MS = 60_000;
 /** Seed the temporary taste profile used by visual regression tests. */
 export async function seedVisualProfileSession(page: Page): Promise<void> {
   await page.addInitScript(
-    ({ storageKey, session }) => {
+    ({ storageKey, session, styleContent }) => {
       window.sessionStorage.setItem(storageKey, JSON.stringify(session));
       document.documentElement.dataset.visualTest = "true";
+      const existingStyle = document.getElementById("plattenradar-visual-test-fonts");
+      if (existingStyle === null) {
+        const style = document.createElement("style");
+        style.id = "plattenradar-visual-test-fonts";
+        style.textContent = styleContent;
+        document.documentElement.appendChild(style);
+      }
     },
     {
       storageKey: VISUAL_PROFILE_STORAGE_KEY,
       session: VISUAL_PROFILE_SESSION,
+      styleContent: VISUAL_TEST_STYLE,
     },
   );
 }
 
 /** Normalize fonts and scroll position before taking screenshots. */
 export async function stabilizeVisualPage(page: Page): Promise<void> {
-  await page.addStyleTag({ content: VISUAL_TEST_STYLE });
   await page.evaluate(() => window.scrollTo(0, 0));
   await page.evaluate(async () => {
     await document.fonts.ready;
   });
+  await waitForVisualLayoutStable(page);
 }
 
 /** Wait until the app shell height stops changing between async layout passes. */
@@ -120,6 +128,10 @@ export async function waitForEntdeckenRanking(page: Page): Promise<void> {
     .locator(".recommendation-list .recommendation-card, .ranking-section .highlight-tile")
     .first()
     .waitFor({ timeout: 30_000 });
+
+  await page.locator('[data-visual-highlights="ready"]').waitFor({
+    timeout: 60_000,
+  });
 
   await page.locator('[data-visual-photo-slots="ready"]').waitFor({
     timeout: 60_000,

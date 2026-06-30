@@ -13,6 +13,7 @@ export default defineConfig({
     toHaveScreenshot: {
       maxDiffPixelRatio: 0.05,
       animations: "disabled",
+      timeout: 15_000,
     },
   },
   use: {
