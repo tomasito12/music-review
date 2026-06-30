@@ -1,5 +1,7 @@
 import type { Recommendation, RecommendationSource, SavedAlbum } from "../types";
 
+import { removeRemovedFavoriteId } from "./removedFavoritesStorage";
+
 export const LOCAL_FAVORITES_STORAGE_KEY = "plattenradar.local-favorites.v1";
 
 export interface LocalFavorite {
@@ -66,6 +68,7 @@ function writeLocalFavorites(items: LocalFavorite[]): void {
 
 /** Adds or updates one guest favorite in local storage. */
 export function addLocalFavorite(recommendation: Recommendation): LocalFavorite[] {
+  removeRemovedFavoriteId(recommendation.reviewId);
   const savedAt = new Date().toISOString().replace(/\.\d{3}Z$/, "Z");
   const nextFavorite: LocalFavorite = {
     reviewId: recommendation.reviewId,

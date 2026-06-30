@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from datetime import date
+from datetime import date, datetime
 from pathlib import Path
 
 from music_review.domain.models import Review, Track
@@ -33,6 +33,25 @@ def test_review_from_raw_minimal() -> None:
     assert r.tracklist == []
     assert r.release_date is None
     assert r.rating is None
+    assert r.first_seen_at is None
+
+
+def test_review_first_seen_at_round_trip() -> None:
+    """first_seen_at is preserved when serializing reviews."""
+    review = Review(
+        id=7,
+        url="https://example.com/7",
+        artist="Artist",
+        album="Album",
+        text="Review text.",
+        first_seen_at=datetime.fromisoformat("2026-06-28T10:15:00+00:00"),
+    )
+
+    raw = review_to_raw(review)
+    restored = review_from_raw(raw)
+
+    assert raw["first_seen_at"] == "2026-06-28T10:15:00+00:00"
+    assert restored.first_seen_at == review.first_seen_at
 
 
 def test_review_from_raw_with_optional_fields() -> None:

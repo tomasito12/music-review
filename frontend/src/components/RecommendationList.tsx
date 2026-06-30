@@ -59,7 +59,7 @@ export function RecommendationList({
   loadingMore = false,
   savePrompt = null,
   updateRoundOptions,
-  updateRounds = "4",
+  updateRounds = "1",
   onCreatePlaylist,
   onLoadMore,
   onUpdateRoundsChange,
@@ -201,7 +201,7 @@ export function RecommendationList({
               onClick={() => onCreatePlaylist(source)}
               type="button"
             >
-              Playlist aus Aktuell vorbereiten
+              Playlist aus Neuheiten vorbereiten
             </button>
           </div>
           <div className="aktuell-briefing-copy">
@@ -214,7 +214,7 @@ export function RecommendationList({
         <div className="results-header">
           <header className="page-header">
             <p className="eyebrow">
-              {source === "aktuell" ? "Neue Rezensionen" : "Archiv"}
+              {source === "aktuell" ? "Neuheiten" : "Archiv"}
             </p>
             <h1>{title}</h1>
             <p>{message}</p>

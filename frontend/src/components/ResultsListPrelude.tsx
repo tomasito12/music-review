@@ -24,7 +24,7 @@ export function ResultsListPrelude({
   return (
     <section aria-labelledby="list-tuning-heading" className="results-list-prelude">
       <header className="results-list-prelude-header">
-        <p className="eyebrow">Feintuning</p>
+        <p className="eyebrow">Fine-Tuning</p>
         <h2 id="list-tuning-heading">Liste verfeinern</h2>
         <p>{PRELUDE_COPY[source]}</p>
       </header>

@@ -38,7 +38,7 @@ def test_visual_app_serves_recommendations_and_artist_images() -> None:
 
     newest = client.post(
         "/v1/recommendations/new-reviews",
-        json={"profile": _PROFILE, "limit": 8, "offset": 0, "newest_count": 8},
+        json={"profile": _PROFILE, "limit": 8, "offset": 0, "update_rounds": 2},
     )
     assert newest.status_code == 200
     newest_artists = {item["artist"] for item in newest.json()["items"]}

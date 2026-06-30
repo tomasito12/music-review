@@ -32,6 +32,7 @@ from music_review.data_access.paths import (
     community_memberships_path,
     metadata_path,
     reviews_path,
+    update_batches_path,
 )
 from music_review.data_access.reviews import (
     YEAR_SLIDER_FALLBACK_FLOOR,
@@ -155,6 +156,7 @@ def _corpus_source_mtimes() -> tuple[float, ...]:
         communities_res_10_path(),
         community_genre_labels_res_10_path(),
         community_broad_categories_res_10_path(),
+        update_batches_path(),
     )
     return tuple(path.stat().st_mtime if path.is_file() else 0.0 for path in paths)
 

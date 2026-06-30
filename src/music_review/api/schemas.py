@@ -26,7 +26,8 @@ class RecommendationRequest(ApiModel):
 class NewReviewsRecommendationRequest(RecommendationRequest):
     """Request payload for recommendations from the latest reviews."""
 
-    newest_count: int = Field(default=20, ge=1, le=200)
+    update_rounds: int = Field(default=1, ge=1, le=20)
+    newest_count: int | None = Field(default=None, ge=1, le=200)
 
 
 class PlaylistExportRequest(ApiModel):
@@ -39,7 +40,8 @@ class PlaylistExportRequest(ApiModel):
     taste_exponent: float = Field(default=1.0, ge=1.0, le=5.0)
     selection_strategy: SelectionStrategy = "stratified"
     format: PlaylistExportFormat = "txt"
-    newest_count: int = Field(default=20, ge=1, le=200)
+    update_rounds: int = Field(default=1, ge=1, le=20)
+    newest_count: int | None = Field(default=None, ge=1, le=200)
     archive_limit: int = Field(default=200, ge=1, le=1000)
 
 

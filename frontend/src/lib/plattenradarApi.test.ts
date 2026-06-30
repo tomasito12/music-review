@@ -286,18 +286,34 @@ describe("loadNewReviewRecommendations", () => {
     const result = await loadNewReviewRecommendations(
       new ApiClient({ baseUrl: "https://api.example.test" }),
       createTemporaryTasteProfile(["C001"]),
-      { newestCount: 60, limit: 20, offset: 0 },
+      { updateRounds: 4, limit: 20, offset: 0 },
     );
 
     expect(result.total).toBe(1);
     expect(result.recommendations[0]?.source).toBe("aktuell");
     const requestBody = JSON.parse(String(fetchMock.mock.calls[0]?.[1]?.body));
     expect(requestBody).toMatchObject({
-      newest_count: 60,
+      update_rounds: 4,
       limit: 20,
       offset: 0,
       profile: temporaryProfileToApi(createTemporaryTasteProfile(["C001"])),
     });
+  });
+
+  it("defaults update_rounds to 1 when omitted", async () => {
+    const fetchMock = vi.fn().mockResolvedValue(
+      new Response(JSON.stringify({ total: 0, items: [] }), { status: 200 }),
+    );
+    vi.stubGlobal("fetch", fetchMock);
+
+    await loadNewReviewRecommendations(
+      new ApiClient({ baseUrl: "https://api.example.test" }),
+      createTemporaryTasteProfile(["C001"]),
+      { limit: 20, offset: 0 },
+    );
+
+    const requestBody = JSON.parse(String(fetchMock.mock.calls[0]?.[1]?.body));
+    expect(requestBody.update_rounds).toBe(1);
   });
 });
 

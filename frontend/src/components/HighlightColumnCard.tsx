@@ -11,7 +11,7 @@ import {
   visibleRecommendationTags,
 } from "../lib/recommendationTagStyles";
 import type { RecommendationHighlight } from "../types";
-import { formatRankPhotoKicker } from "../lib/entdeckenPage";
+import { formatRankPhotoKicker, shouldShowHighlightCategoryRank } from "../lib/entdeckenPage";
 
 import { ArtistImage } from "./ArtistImage";
 
@@ -83,8 +83,10 @@ export function HighlightColumnCard(props: HighlightColumnCardProps): ReactEleme
     variant === "ranked"
       ? formatRankPhotoKicker(recommendation.rank)
       : props.highlight.label;
-  const showEntdeckenArchiveRank =
-    variant === "highlight" && recommendation.source === "entdecken";
+  const showHighlightCategoryRank = shouldShowHighlightCategoryRank(
+    variant,
+    recommendation.source,
+  );
   const description = variant === "ranked" ? null : props.highlight.description;
   const isPrimary =
     variant !== "ranked" &&
@@ -137,8 +139,8 @@ export function HighlightColumnCard(props: HighlightColumnCardProps): ReactEleme
           />
         )}
 
-        <p className={`highlight-tile-kicker${showEntdeckenArchiveRank ? " highlight-tile-kicker-with-rank" : ""}`}>
-          {showEntdeckenArchiveRank ? (
+        <p className={`highlight-tile-kicker${showHighlightCategoryRank ? " highlight-tile-kicker-with-rank" : ""}`}>
+          {showHighlightCategoryRank ? (
             <>
               <span>{label}</span>
               <span className="highlight-tile-kicker-rank">

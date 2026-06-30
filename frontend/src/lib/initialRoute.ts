@@ -1,6 +1,6 @@
 import { readAuthSession } from "./authSessionStorage";
 import { readProfileSession } from "./profileSessionStorage";
-import { routeFromPath } from "./routes";
+import { pathForRoute, routeFromPath } from "./routes";
 
 import type { AppRoute } from "../types";
 
@@ -21,7 +21,7 @@ export function syncBrowserPath(route: AppRoute): void {
   if (typeof window === "undefined") {
     return;
   }
-  const nextPath = route === "willkommen" ? "/" : `/${route}`;
+  const nextPath = pathForRoute(route);
   if (window.location.pathname !== nextPath) {
     window.history.replaceState({}, "", nextPath);
   }

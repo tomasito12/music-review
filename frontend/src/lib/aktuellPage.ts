@@ -10,7 +10,7 @@ export const UPDATE_ROUND_OPTIONS = [
   { value: "8", label: "Letzte 8 Update-Runden" },
 ] as const;
 
-export const NEW_REVIEWS_PER_ROUND = 30;
+export const NEW_REVIEWS_PER_ROUND = 20;
 
 export interface AktuellBriefing {
   description: string;
@@ -18,7 +18,7 @@ export interface AktuellBriefing {
   title: string;
 }
 
-/** Maps UI update-round selection to the API newest_count parameter. */
+/** Estimate pool size when batch history is unavailable (fallback only). */
 export function newestCountFromUpdateRounds(rounds: number): number {
   return Math.min(200, Math.max(1, rounds) * NEW_REVIEWS_PER_ROUND);
 }
@@ -70,6 +70,9 @@ export function buildAktuellSummary(total: number): UpdateSummary {
   };
 }
 
+/** Profile-fit scores below this threshold qualify for the outside-profile highlight. */
+export const OUTSIDE_PROFILE_SCORE_MAX = 0.7;
+
 /** Derives editorial highlight cards from a ranked new-reviews list. */
 export function buildAktuellHighlights(
   recommendations: Recommendation[],
@@ -78,32 +81,26 @@ export function buildAktuellHighlights(
     return [];
   }
 
-  const matched = recommendations.filter((item) =>
-    item.tags.some((tag) => tag.matchesProfile),
-  );
-  const bestFit = pickTop(
-    matched.length > 0 ? matched : recommendations,
-    (item) => item.score,
-  );
-  const topRated = pickTop(recommendations, (item) => item.rating);
-  const outsidePool = recommendations.filter(
-    (item) => !item.tags.some((tag) => tag.matchesProfile),
-  );
-  const outside =
-    pickTop(outsidePool, (item) => item.rating) ??
-    recommendations.find((item) => item !== bestFit && item !== topRated) ??
-    topRated;
+  const bestFit = pickTopBy(recommendations, compareByScoreThenRating);
+  const remainingAfterBestFit = excludeRecommendations(recommendations, bestFit);
+  const criticFavorite = pickTopBy(remainingAfterBestFit, compareByRatingThenScore);
+  const outsidePool = excludeRecommendations(
+    remainingAfterBestFit,
+    criticFavorite,
+  ).filter((item) => item.score < OUTSIDE_PROFILE_SCORE_MAX);
+  const outsideProfile = pickTopBy(outsidePool, compareByRatingThenLowestScore);
 
   const highlights: RecommendationHighlight[] = [];
   const addHighlight = (
     label: string,
     description: string,
-    recommendation: Recommendation,
+    recommendation: Recommendation | undefined,
   ): void => {
-    const duplicate = highlights.some(
-      (item) =>
-        item.recommendation.artist === recommendation.artist &&
-        item.recommendation.album === recommendation.album,
+    if (recommendation === undefined) {
+      return;
+    }
+    const duplicate = highlights.some((item) =>
+      isSameRecommendation(item.recommendation, recommendation),
     );
     if (duplicate) {
       return;
@@ -113,26 +110,81 @@ export function buildAktuellHighlights(
 
   addHighlight(
     "Beste Passung",
-    "Die stärkste Verbindung zu deinem aktuellen Musikprofil.",
+    "Das Album mit dem höchsten Gesamtscore in diesem Update-Schwung.",
     bestFit,
   );
   addHighlight(
     "Kritikerfavorit",
-    "Besonders hoch bewertet in diesem Update-Schwung.",
-    topRated,
+    "Die höchste Plattentests-Bewertung unter den übrigen Neuerscheinungen.",
+    criticFavorite,
   );
   addHighlight(
     "Außerhalb deines Profils",
-    "Hoch bewertet, auch wenn es deinen Vorlieben weniger nahe ist.",
-    outside,
+    "Hoch bewertet, aber deutlich unter deiner üblichen Passung.",
+    outsideProfile,
   );
 
-  return highlights.slice(0, 3);
+  return highlights;
 }
 
-function pickTop(
+function isSameRecommendation(
+  left: Recommendation,
+  right: Recommendation,
+): boolean {
+  return left.artist === right.artist && left.album === right.album;
+}
+
+function excludeRecommendations(
   recommendations: Recommendation[],
-  scoreFor: (item: Recommendation) => number,
-): Recommendation {
-  return [...recommendations].sort((left, right) => scoreFor(right) - scoreFor(left))[0];
+  ...excluded: Array<Recommendation | undefined>
+): Recommendation[] {
+  const excludedItems = excluded.filter(
+    (item): item is Recommendation => item !== undefined,
+  );
+  return recommendations.filter(
+    (item) =>
+      !excludedItems.some((excludedItem) =>
+        isSameRecommendation(item, excludedItem),
+      ),
+  );
+}
+
+function compareByScoreThenRating(
+  left: Recommendation,
+  right: Recommendation,
+): number {
+  if (right.score !== left.score) {
+    return right.score - left.score;
+  }
+  return right.rating - left.rating;
+}
+
+function compareByRatingThenScore(
+  left: Recommendation,
+  right: Recommendation,
+): number {
+  if (right.rating !== left.rating) {
+    return right.rating - left.rating;
+  }
+  return right.score - left.score;
+}
+
+function compareByRatingThenLowestScore(
+  left: Recommendation,
+  right: Recommendation,
+): number {
+  if (right.rating !== left.rating) {
+    return right.rating - left.rating;
+  }
+  return left.score - right.score;
+}
+
+function pickTopBy(
+  recommendations: Recommendation[],
+  compare: (left: Recommendation, right: Recommendation) => number,
+): Recommendation | undefined {
+  if (recommendations.length === 0) {
+    return undefined;
+  }
+  return [...recommendations].sort(compare)[0];
 }

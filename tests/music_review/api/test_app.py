@@ -365,7 +365,7 @@ def test_new_reviews_endpoint_returns_latest_batch() -> None:
             "profile": _profile_payload(),
             "limit": 2,
             "offset": 0,
-            "newest_count": 2,
+            "update_rounds": 2,
         },
     )
 
@@ -388,7 +388,7 @@ def test_playlist_export_endpoint_returns_tunemymusic_text() -> None:
             "playlist_name": "API Playlist",
             "target_count": 2,
             "format": "txt",
-            "newest_count": 2,
+            "update_rounds": 2,
         },
     )
 
@@ -401,8 +401,8 @@ def test_playlist_export_endpoint_returns_tunemymusic_text() -> None:
     assert payload["items"]
 
 
-def test_playlist_export_accepts_large_newest_count() -> None:
-    """Playlist export must not fail when newest_count exceeds pagination limit."""
+def test_playlist_export_accepts_large_update_round_selection() -> None:
+    """Playlist export must not fail when the update-round pool is large."""
     response = _client().post(
         "/v1/playlists/export",
         json={
@@ -411,7 +411,7 @@ def test_playlist_export_accepts_large_newest_count() -> None:
             "playlist_name": "Large Pool",
             "target_count": 2,
             "format": "txt",
-            "newest_count": 200,
+            "update_rounds": 8,
             "taste_exponent": 3.0,
             "selection_strategy": "weighted_sample",
         },

@@ -197,6 +197,11 @@ def create_visual_artist_image_service() -> ArtistImageService:
 
 def create_visual_app() -> FastAPI:
     """Return a FastAPI app wired to deterministic visual fixtures."""
+    import music_review.application.newest_review_pool as newest_review_pool
+
+    newest_review_pool.update_batches_path = lambda: (
+        visual_fixtures_dir() / "update_batches.jsonl"
+    )
     app = create_app()
     app.dependency_overrides[get_corpus_provider] = lambda: VisualCorpusProvider()
     app.dependency_overrides[get_artist_image_service] = (

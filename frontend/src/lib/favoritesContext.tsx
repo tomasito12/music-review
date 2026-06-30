@@ -4,6 +4,7 @@ import {
   useContext,
   useEffect,
   useMemo,
+  useRef,
   useState,
   type ReactElement,
   type ReactNode,
@@ -13,6 +14,7 @@ import type { Recommendation, SavedAlbum } from "../types";
 
 import { useApiClient } from "./apiClientContext";
 import { ApiClient } from "./apiClient";
+import { createFavoritesSyncQueue } from "./favoritesSyncQueue";
 import {
   addLocalFavorite,
   clearLocalFavorites,
@@ -27,6 +29,11 @@ import {
   removeFavorite,
   saveFavorite,
 } from "./plattenradarApi";
+import {
+  addRemovedFavoriteId,
+  readRemovedFavoriteIds,
+  removeRemovedFavoriteId,
+} from "./removedFavoritesStorage";
 
 interface FavoritesContextValue {
   favorites: SavedAlbum[];
@@ -59,33 +66,48 @@ export function FavoritesProvider({
   );
   const [isLoading, setIsLoading] = useState(false);
   const [togglingIds, setTogglingIds] = useState<Set<number>>(() => new Set());
+  const enqueueSync = useMemo(() => createFavoritesSyncQueue(), []);
+  const hadAccessTokenRef = useRef(false);
 
   const refreshLocalFavorites = useCallback((): void => {
     setLocalFavorites(localFavoritesToSavedAlbums(readLocalFavorites()));
   }, []);
 
-  const loadServerFavorites = useCallback(async (): Promise<void> => {
+  const loadServerFavorites = useCallback(
+    async (options: { mergeGuest: boolean }): Promise<void> => {
+      if (accessToken === null) {
+        setServerFavorites([]);
+        return;
+      }
+      setIsLoading(true);
+      try {
+        const client = createClient();
+        if (options.mergeGuest) {
+          await mergeLocalFavoritesAfterLogin(client);
+          refreshLocalFavorites();
+        }
+        const items = await fetchFavorites(client);
+        setServerFavorites(items);
+      } catch {
+        setServerFavorites([]);
+      } finally {
+        setIsLoading(false);
+      }
+    },
+    [accessToken, createClient, refreshLocalFavorites],
+  );
+
+  useEffect(() => {
     if (accessToken === null) {
+      hadAccessTokenRef.current = false;
       setServerFavorites([]);
       return;
     }
-    setIsLoading(true);
-    try {
-      const client = createClient();
-      await mergeLocalFavoritesAfterLogin(client);
-      refreshLocalFavorites();
-      const items = await fetchFavorites(client);
-      setServerFavorites(items);
-    } catch {
-      setServerFavorites([]);
-    } finally {
-      setIsLoading(false);
-    }
-  }, [accessToken, createClient, refreshLocalFavorites]);
 
-  useEffect(() => {
-    void loadServerFavorites();
-  }, [loadServerFavorites]);
+    const shouldMergeGuest = !hadAccessTokenRef.current;
+    hadAccessTokenRef.current = true;
+    void enqueueSync(() => loadServerFavorites({ mergeGuest: shouldMergeGuest }));
+  }, [accessToken, enqueueSync, loadServerFavorites]);
 
   const favorites = isAuthenticated ? serverFavorites : localFavorites;
   const savedIds = useMemo(
@@ -112,47 +134,53 @@ export function FavoritesProvider({
       setToggling(reviewId, true);
 
       try {
-        if (!isAuthenticated) {
+        await enqueueSync(async () => {
+          if (!isAuthenticated) {
+            if (currentlySaved) {
+              removeLocalFavorite(reviewId);
+            } else {
+              addLocalFavorite(recommendation);
+            }
+            refreshLocalFavorites();
+            return;
+          }
+
+          const client = createClient();
           if (currentlySaved) {
             removeLocalFavorite(reviewId);
-          } else {
-            addLocalFavorite(recommendation);
+            addRemovedFavoriteId(reviewId);
+            setServerFavorites((current) =>
+              current.filter((item) => item.reviewId !== reviewId),
+            );
+            await removeFavorite(client, reviewId);
+            return;
           }
-          refreshLocalFavorites();
-          return;
-        }
 
-        const client = createClient();
-        if (currentlySaved) {
-          setServerFavorites((current) =>
-            current.filter((item) => item.reviewId !== reviewId),
-          );
-          await removeFavorite(client, reviewId);
-          return;
-        }
-
-        const optimistic: SavedAlbum = {
-          reviewId,
-          artist: recommendation.artist,
-          album: recommendation.album,
-          reviewUrl: recommendation.reviewUrl,
-          source: recommendation.source,
-          savedAt: new Date().toISOString().replace(/\.\d{3}Z$/, "Z"),
-        };
-        setServerFavorites((current) => [optimistic, ...current]);
-        const saved = await saveFavorite(client, reviewId, {
-          artist: recommendation.artist,
-          album: recommendation.album,
-          review_url: recommendation.reviewUrl,
-          source: recommendationSourceToApiSource(recommendation.source),
-        });
-        setServerFavorites((current) => {
-          const withoutCurrent = current.filter((item) => item.reviewId !== reviewId);
-          return [saved, ...withoutCurrent];
+          removeRemovedFavoriteId(reviewId);
+          removeLocalFavorite(reviewId);
+          const optimistic: SavedAlbum = {
+            reviewId,
+            artist: recommendation.artist,
+            album: recommendation.album,
+            reviewUrl: recommendation.reviewUrl,
+            source: recommendation.source,
+            savedAt: new Date().toISOString().replace(/\.\d{3}Z$/, "Z"),
+          };
+          setServerFavorites((current) => [optimistic, ...current]);
+          const saved = await saveFavorite(client, reviewId, {
+            artist: recommendation.artist,
+            album: recommendation.album,
+            review_url: recommendation.reviewUrl,
+            source: recommendationSourceToApiSource(recommendation.source),
+          });
+          setServerFavorites((current) => {
+            const withoutCurrent = current.filter((item) => item.reviewId !== reviewId);
+            return [saved, ...withoutCurrent];
+          });
         });
       } catch {
         if (isAuthenticated) {
-          await loadServerFavorites();
+          await enqueueSync(() => loadServerFavorites({ mergeGuest: false }));
         } else {
           refreshLocalFavorites();
         }
@@ -162,6 +190,7 @@ export function FavoritesProvider({
     },
     [
       createClient,
+      enqueueSync,
       isAuthenticated,
       loadServerFavorites,
       refreshLocalFavorites,
@@ -174,19 +203,24 @@ export function FavoritesProvider({
     async (reviewId: number): Promise<void> => {
       setToggling(reviewId, true);
       try {
-        if (!isAuthenticated) {
+        await enqueueSync(async () => {
+          if (!isAuthenticated) {
+            removeLocalFavorite(reviewId);
+            refreshLocalFavorites();
+            return;
+          }
+
           removeLocalFavorite(reviewId);
-          refreshLocalFavorites();
-          return;
-        }
-        setServerFavorites((current) =>
-          current.filter((item) => item.reviewId !== reviewId),
-        );
-        const client = createClient();
-        await removeFavorite(client, reviewId);
+          addRemovedFavoriteId(reviewId);
+          setServerFavorites((current) =>
+            current.filter((item) => item.reviewId !== reviewId),
+          );
+          const client = createClient();
+          await removeFavorite(client, reviewId);
+        });
       } catch {
         if (isAuthenticated) {
-          await loadServerFavorites();
+          await enqueueSync(() => loadServerFavorites({ mergeGuest: false }));
         } else {
           refreshLocalFavorites();
         }
@@ -194,7 +228,7 @@ export function FavoritesProvider({
         setToggling(reviewId, false);
       }
     },
-    [createClient, isAuthenticated, loadServerFavorites, refreshLocalFavorites, setToggling],
+    [createClient, enqueueSync, isAuthenticated, loadServerFavorites, refreshLocalFavorites, setToggling],
   );
 
   const value = useMemo(
@@ -235,7 +269,10 @@ export function useFavorites(): FavoritesContextValue {
 
 /** Merges guest favorites into the authenticated account after login. */
 export async function mergeLocalFavoritesAfterLogin(client: ApiClient): Promise<number> {
-  const localItems = readLocalFavorites();
+  const removedIds = readRemovedFavoriteIds();
+  const localItems = readLocalFavorites().filter(
+    (item) => !removedIds.has(item.reviewId),
+  );
   if (localItems.length === 0) {
     return 0;
   }

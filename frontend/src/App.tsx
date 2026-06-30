@@ -13,7 +13,6 @@ import { WelcomeScreen } from "./components/WelcomeScreen";
 import {
   buildAktuellBriefing,
   buildAktuellHighlights,
-  newestCountFromUpdateRounds,
   UPDATE_ROUND_OPTIONS,
 } from "./lib/aktuellPage";
 import { buildEntdeckenHeaderMessage } from "./lib/entdeckenPage";
@@ -54,6 +53,7 @@ import {
   shouldLandOnAktuell,
   syncBrowserPath,
 } from "./lib/initialRoute";
+import { pathForRoute } from "./lib/routes";
 import type {
   ProfileReturnRoute,
   ProfileSetupMode,
@@ -112,7 +112,7 @@ export function App(): ReactElement {
   const [archiveLoadingMore, setArchiveLoadingMore] = useState(false);
   const [archiveError, setArchiveError] = useState<string | null>(null);
   const [archiveReloadToken, setArchiveReloadToken] = useState(0);
-  const [updateRounds, setUpdateRounds] = useState("4");
+  const [updateRounds, setUpdateRounds] = useState("1");
   const [aktuellRecommendations, setAktuellRecommendations] = useState<
     Recommendation[] | null
   >(null);
@@ -157,7 +157,7 @@ export function App(): ReactElement {
   const pageTitle = useMemo(() => {
     switch (route) {
       case "aktuell":
-        return "Aktuell";
+        return "Neuheiten";
       case "entdecken":
         return "Entdecken";
       case "playlists":
@@ -291,14 +291,13 @@ export function App(): ReactElement {
 
   const loadAktuellPage = useCallback(
     async (offset: number, mode: "replace" | "append"): Promise<void> => {
-      const newestCount = newestCountFromUpdateRounds(Number(updateRounds));
       const result = await loadNewReviewRecommendations(
         apiClient(),
         temporaryProfile,
         {
           offset,
           limit: ARCHIVE_PAGE_SIZE,
-          newestCount,
+          updateRounds: Number(updateRounds),
         },
       );
       setAktuellTotal(result.total);
@@ -398,7 +397,7 @@ export function App(): ReactElement {
 
   function setAppRoute(nextRoute: AppRoute): void {
     setRoute(nextRoute);
-    window.history.pushState({}, "", nextRoute === "willkommen" ? "/" : `/${nextRoute}`);
+    window.history.pushState({}, "", pathForRoute(nextRoute));
   }
 
   function navigate(nextRoute: AppRoute): void {
@@ -1167,8 +1166,8 @@ function AktuellDiscoverPage({
   if (!profileExists) {
     return (
       <section className="empty-results">
-        <p className="eyebrow">Aktuell</p>
-        <h1>Neue Rezensionen brauchen dein Musikprofil</h1>
+        <p className="eyebrow">Neuheiten</p>
+        <h1>Neuheiten brauchen dein Musikprofil</h1>
         <p>
           Erstelle zuerst ein Profil, damit Plattenradar frische Rezensionen nach
           Passung sortieren kann.
@@ -1183,8 +1182,8 @@ function AktuellDiscoverPage({
   if (isLoading && recommendations === null && !isReloading) {
     return (
       <section className="empty-results">
-        <p className="eyebrow">Aktuell</p>
-        <h1>Neue Rezensionen werden geladen</h1>
+        <p className="eyebrow">Neuheiten</p>
+        <h1>Neuheiten werden geladen</h1>
       </section>
     );
   }
@@ -1192,8 +1191,8 @@ function AktuellDiscoverPage({
   if (error !== null && recommendations === null) {
     return (
       <section className="empty-results">
-        <p className="eyebrow">Aktuell</p>
-        <h1>Neue Rezensionen sind gerade nicht erreichbar</h1>
+        <p className="eyebrow">Neuheiten</p>
+        <h1>Neuheiten sind gerade nicht erreichbar</h1>
         <p>{error}</p>
         <button className="primary-button" onClick={onRetry} type="button">
           Erneut versuchen
@@ -1240,7 +1239,7 @@ function AktuellDiscoverPage({
         profileSession={profileSession}
         recommendations={recommendations ?? []}
         source="aktuell"
-        title="Neue Rezensionen für dich"
+        title="Neuheiten für dich"
         updateRoundOptions={UPDATE_ROUND_OPTIONS}
         updateRounds={updateRounds}
       />

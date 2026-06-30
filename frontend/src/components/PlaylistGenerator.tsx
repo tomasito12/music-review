@@ -129,7 +129,7 @@ export function PlaylistGenerator({
             }}
             value={source}
           >
-            <option value="aktuell">Den letzten Updates</option>
+            <option value="aktuell">Neuheiten</option>
             <option value="entdecken">Dem Plattentests-Archiv</option>
           </select>
         </label>

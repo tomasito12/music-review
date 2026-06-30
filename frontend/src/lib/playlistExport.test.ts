@@ -59,7 +59,7 @@ describe("buildPlaylistExportPayload", () => {
     });
 
     expect(payload.source).toBe("new_reviews");
-    expect(payload.newest_count).toBe(120);
+    expect(payload.update_rounds).toBe(4);
     expect(payload.taste_exponent).toBe(3);
   });
 });

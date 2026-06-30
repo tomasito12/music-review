@@ -22,7 +22,7 @@ test.describe("live API reference screenshots", () => {
   });
 
   test("aktuell desktop reference", async ({ page }) => {
-    await page.goto("/aktuell");
+    await page.goto("/neuheiten");
     await waitForAktuellHighlights(page);
     await stabilizeVisualPage(page);
     await expect(visualScreenshotTarget(page)).toHaveScreenshot(
@@ -56,7 +56,7 @@ test.describe("live API reference screenshots", () => {
 
   test("aktuell mobile reference", async ({ page }) => {
     await page.setViewportSize({ width: 390, height: 844 });
-    await page.goto("/aktuell");
+    await page.goto("/neuheiten");
     await waitForAktuellHighlights(page);
     await stabilizeVisualPage(page);
     await expect(visualScreenshotTarget(page)).toHaveScreenshot(

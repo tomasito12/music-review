@@ -138,6 +138,8 @@ export interface ArchivePageRequest {
 }
 
 export interface NewReviewsPageRequest extends ArchivePageRequest {
+  updateRounds?: number;
+  /** @deprecated Legacy fallback count; prefer updateRounds. */
   newestCount?: number;
 }
 
@@ -407,12 +409,15 @@ export async function loadNewReviewRecommendations(
 ): Promise<{ recommendations: Recommendation[]; total: number }> {
   const limit = page.limit ?? ARCHIVE_PAGE_SIZE;
   const offset = page.offset ?? 0;
-  const newestCount = page.newestCount ?? 120;
+  const updateRounds = page.updateRounds ?? 1;
   const payload: Record<string, unknown> = {
     limit,
     offset,
-    newest_count: newestCount,
+    update_rounds: updateRounds,
   };
+  if (page.newestCount !== undefined) {
+    payload.newest_count = page.newestCount;
+  }
   if (profile !== null) {
     payload.profile = temporaryProfileToApi(profile);
   }

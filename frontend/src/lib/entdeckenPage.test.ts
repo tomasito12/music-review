@@ -11,6 +11,7 @@ import {
   entdeckenPhotoTileStartIndex,
   entdeckenRecommendationHasPhoto,
   formatEntdeckenHighlightKicker,
+  shouldShowHighlightCategoryRank,
   formatRankPhotoKicker,
   recurringPhotoSlotCandidates,
   resolveEntdeckenPhotoRanks,
@@ -249,6 +250,18 @@ describe("formatEntdeckenHighlightKicker", () => {
     expect(formatEntdeckenHighlightKicker("Kritikerfavorit", 9)).toBe(
       "Kritikerfavorit · Platz 09",
     );
+  });
+});
+
+describe("shouldShowHighlightCategoryRank", () => {
+  it("shows ranks for Entdecken and Aktuell highlight tiles", () => {
+    expect(shouldShowHighlightCategoryRank("highlight", "entdecken")).toBe(true);
+    expect(shouldShowHighlightCategoryRank("highlight", "aktuell")).toBe(true);
+  });
+
+  it("hides ranks for ranked photo tiles", () => {
+    expect(shouldShowHighlightCategoryRank("ranked", "entdecken")).toBe(false);
+    expect(shouldShowHighlightCategoryRank("ranked", "aktuell")).toBe(false);
   });
 });
 

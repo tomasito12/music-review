@@ -53,6 +53,7 @@ from music_review.application.models import (
     TasteCommunity,
     TasteProfile,
 )
+from music_review.application.newest_review_pool import newest_reviews_for_update_rounds
 from music_review.application.newest_reviews_service import (
     NewestReviewsInputs,
     NewestReviewsService,
@@ -500,7 +501,10 @@ def _new_review_rows(
     profile: TasteProfile,
 ) -> list[dict[str, Any]]:
     """Compute newest-review rows from provider data."""
-    newest = provider.newest_reviews(request.newest_count)
+    newest = newest_reviews_for_update_rounds(
+        provider.reviews(),
+        request.update_rounds,
+    )
     affinity_by_id = provider.affinities_by_review_id()
     genre_labels = provider.genre_labels()
     comm_by_id = {
@@ -535,12 +539,12 @@ def _playlist_candidates(
     """Return reviews and optional ranking rows for playlist generation."""
     if request.source == "new_reviews":
         # Recommendation request ``limit`` is only for pagination; the playlist
-        # pool size comes from ``newest_count``. Keep ``limit`` within schema bounds.
+        # pool size comes from ``update_rounds``. Keep ``limit`` within schema bounds.
         new_request = NewReviewsRecommendationRequest(
             profile=profile,
-            limit=min(request.newest_count, 100),
+            limit=100,
             offset=0,
-            newest_count=request.newest_count,
+            update_rounds=request.update_rounds,
         )
         rows = _new_review_rows(provider, new_request, profile)
         return _reviews_from_rows(rows), _ranked_playlist_rows(rows)

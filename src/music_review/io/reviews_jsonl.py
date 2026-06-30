@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import json
 from collections.abc import Iterable
-from datetime import date
+from datetime import date, datetime
 from pathlib import Path
 from typing import Any
 
@@ -19,7 +19,24 @@ def _parse_date(value: str | None) -> date | None:
     return date.fromisoformat(value)
 
 
+def _parse_datetime(value: str | None) -> datetime | None:
+    """Parse an ISO-8601 timestamp used for first_seen_at."""
+    if not value:
+        return None
+    try:
+        parsed = datetime.fromisoformat(value.replace("Z", "+00:00"))
+    except ValueError:
+        return None
+    return parsed
+
+
 def _date_to_str(value: date | None) -> str | None:
+    if value is None:
+        return None
+    return value.isoformat()
+
+
+def _datetime_to_str(value: datetime | None) -> str | None:
     if value is None:
         return None
     return value.isoformat()
@@ -69,6 +86,7 @@ def review_from_raw(raw: dict[str, Any]) -> Review:
         total_duration=raw.get("total_duration"),
         references=list(raw.get("references", [])),
         raw_html=raw.get("raw_html"),
+        first_seen_at=_parse_datetime(raw.get("first_seen_at")),
         extra=dict(raw.get("extra", {})),
     )
 
@@ -93,6 +111,7 @@ def review_to_raw(review: Review) -> dict[str, Any]:
         "total_duration": review.total_duration,
         "references": review.references,
         "raw_html": review.raw_html,
+        "first_seen_at": _datetime_to_str(review.first_seen_at),
         "extra": review.extra,
     }
 

@@ -35,7 +35,7 @@ const profileSession = {
 
 for (const route of [
   { name: "entdecken-excerpt-fix", path: "/entdecken" },
-  { name: "aktuell-excerpt-fix", path: "/aktuell" },
+  { name: "aktuell-excerpt-fix", path: "/neuheiten" },
 ] as const) {
   test(`capture ${route.name} excerpt screen`, async ({ page }) => {
     await seedProfileSession(page);

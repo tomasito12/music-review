@@ -12,7 +12,7 @@ const routes = [
   { name: "willkommen", path: "/" },
   { name: "musikprofil", path: "/musikprofil" },
   { name: "entdecken", path: "/entdecken" },
-  { name: "aktuell", path: "/aktuell" },
+  { name: "aktuell", path: "/neuheiten" },
   { name: "playlists", path: "/playlists" },
 ] as const;
 
@@ -65,13 +65,55 @@ test("capture aktuell redesign reference screen", async ({ page }) => {
     );
   });
   await mockAktuellApi(page);
-  await page.goto("/aktuell");
+  await page.goto("/neuheiten");
   await page.waitForLoadState("domcontentloaded");
   await page.getByRole("heading", { name: "Deine Highlights" }).waitFor();
   await page.locator(".highlight-tile-photo").first().waitFor();
   await page.screenshot({
     path: path.join(screenshotDir, "aktuell-redesign.png"),
     fullPage: true,
+  });
+});
+
+test("capture aktuell fine-tuning panel", async ({ page }) => {
+  await page.addInitScript(() => {
+    window.sessionStorage.setItem(
+      "plattenradar.profile-session.v1",
+      JSON.stringify({
+        presetId: "balanced",
+        presetLabel: "Ausgewogen",
+        savedAt: "2026-06-27T12:00:00.000Z",
+        profile: {
+          name: "Temporäres Musikprofil",
+          selected_communities: ["C001", "C002", "C003"],
+          community_weights_raw: { C001: 0.5, C002: 0.5, C003: 0.5 },
+          filter_settings: {
+            rating_min: 6,
+            rating_max: 10,
+            score_min: 0.4,
+            score_max: 1,
+            overall_weight_alpha: 0.7,
+            overall_weight_beta: 0.1,
+            overall_weight_gamma: 0.2,
+            sort_mode: "deterministic",
+            serendipity: 0,
+          },
+        },
+      }),
+    );
+  });
+  await mockAktuellApi(page);
+  await page.goto("/neuheiten");
+  await page.waitForLoadState("domcontentloaded");
+  await page.getByRole("heading", { name: "Liste verfeinern" }).waitFor();
+  const prelude = page.locator(".results-list-prelude");
+  await prelude.scrollIntoViewIfNeeded();
+  await page.screenshot({
+    path: path.join(screenshotDir, "aktuell-fine-tuning-context.png"),
+    fullPage: false,
+  });
+  await prelude.screenshot({
+    path: path.join(screenshotDir, "aktuell-fine-tuning-panel.png"),
   });
 });
 

@@ -155,19 +155,40 @@ export const entdeckenRecommendations: Recommendation[] = [
 export const aktuellHighlights: RecommendationHighlight[] = [
   {
     label: "Beste Passung",
-    description: "Die stärkste Verbindung zu deinem aktuellen Musikprofil.",
+    description: "Das Album mit dem höchsten Gesamtscore in diesem Update-Schwung.",
     recommendation: aktuellRecommendations[0],
   },
   {
     label: "Kritikerfavorit",
-    description: "Besonders hoch bewertet und ein guter Einstieg in diesen Update-Schwung.",
+    description: "Die höchste Plattentests-Bewertung unter den übrigen Neuerscheinungen.",
     recommendation: aktuellRecommendations[1],
   },
   {
     label: "Außerhalb deines Profils",
-    description:
-      "Hoch bewertet, auch wenn es deinen aktuellen Vorlieben weniger nahe ist.",
-    recommendation: aktuellRecommendations[2],
+    description: "Hoch bewertet, aber deutlich unter deiner üblichen Passung.",
+    recommendation: {
+      rank: 4,
+      reviewId: 694,
+      artist: "Jawbox",
+      album: "For Your Own Special Sweetheart",
+      year: 1994,
+      releaseDate: "1994-02-08",
+      rating: 9,
+      score: 0.62,
+      styleFit: 0.62,
+      albumStyleBreadth: 0.41,
+      fitLabel: "Interessanter Randbereich",
+      fitPercent: 62,
+      recordLabel: "DeSoto",
+      excerpt:
+        "Nervös, rhythmisch, verkopft und trotzdem direkt: genau die Art Platte, die im Archiv leicht verschüttet wird ...",
+      reviewUrl: "https://www.plattentests.de/rezi.php?show=694",
+      tags: [
+        { label: "Post-Hardcore", affinity: 0.63, matchesProfile: false },
+        { label: "Indie Rock", affinity: 0.37, matchesProfile: true },
+      ],
+      source: "aktuell",
+    },
   },
 ];
 

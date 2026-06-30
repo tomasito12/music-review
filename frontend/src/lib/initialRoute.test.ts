@@ -8,6 +8,7 @@ describe("resolveInitialRoute", () => {
   it("keeps explicit deep links", () => {
     expect(resolveInitialRoute("/entdecken")).toBe("entdecken");
     expect(resolveInitialRoute("/playlists")).toBe("playlists");
+    expect(resolveInitialRoute("/neuheiten")).toBe("aktuell");
   });
 
   it("opens aktuell for returning logged-in users on the home path", () => {

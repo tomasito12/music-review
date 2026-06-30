@@ -5,7 +5,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass, field
-from datetime import date
+from datetime import date, datetime
 from typing import Any
 
 
@@ -40,4 +40,5 @@ class Review:
     total_duration: str | None = None
     references: list[str] = field(default_factory=list)
     raw_html: str | None = None
+    first_seen_at: datetime | None = None
     extra: dict[str, Any] = field(default_factory=dict)

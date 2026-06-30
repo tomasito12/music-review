@@ -13,6 +13,7 @@ describe("ResultsListPrelude", () => {
     );
 
     expect(screen.getByRole("heading", { name: "Liste verfeinern" })).toBeTruthy();
+    expect(screen.getByText("Fine-Tuning")).toBeTruthy();
     expect(screen.getByText(/die Highlights oben bleiben/i)).toBeTruthy();
     expect(screen.getByText("Filterbereich")).toBeTruthy();
   });

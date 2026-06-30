@@ -134,6 +134,14 @@ export function formatRankPhotoKicker(rank: number): string {
   return `Platz ${rank.toString().padStart(2, "0")}`;
 }
 
+/** Whether editorial highlight tiles should show their list rank beside the category. */
+export function shouldShowHighlightCategoryRank(
+  variant: "highlight" | "ranked",
+  source: Recommendation["source"],
+): boolean {
+  return variant === "highlight" && (source === "entdecken" || source === "aktuell");
+}
+
 /** Category kicker for Entdecken highlight tiles, including archive rank. */
 export function formatEntdeckenHighlightKicker(label: string, rank: number): string {
   return `${label} · ${formatRankPhotoKicker(rank)}`;

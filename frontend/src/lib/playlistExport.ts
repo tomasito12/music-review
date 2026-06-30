@@ -1,6 +1,5 @@
 import type { RecommendationSource } from "../types";
 import type { TemporaryTasteProfile } from "./plattenradarApi";
-import { newestCountFromUpdateRounds } from "./aktuellPage";
 import { temporaryProfileToApi } from "./plattenradarApi";
 
 export type PlaylistApiSource = "archive" | "new_reviews";
@@ -77,10 +76,7 @@ export function buildPlaylistExportPayload(
     taste_exponent: playlistTasteExponent(options.focus, options.variation),
     selection_strategy: playlistSelectionStrategy(options.source, options.focus),
     format: options.format,
-    newest_count:
-      apiSource === "new_reviews"
-        ? newestCountFromUpdateRounds(Number(options.updateRounds))
-        : 20,
+    update_rounds: Number(options.updateRounds),
     archive_limit: 200,
   };
 }
