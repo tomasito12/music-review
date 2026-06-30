@@ -31,14 +31,11 @@ export function useEntdeckenHighlights(
     })),
   );
   const highlights = useMemo(() => {
-    if (loading) {
-      return [];
-    }
     const withPhoto = candidates.filter((recommendation) =>
       entdeckenRecommendationHasPhoto(recommendation, imagesByLookupKey),
     );
     return selectEntdeckenHighlightsFromPhotoPool(withPhoto);
-  }, [candidates, imagesByLookupKey, loading]);
+  }, [candidates, imagesByLookupKey]);
 
   return {
     highlights,

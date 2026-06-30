@@ -22,12 +22,12 @@ export function EntdeckenHighlightsSection({
     useEntdeckenHighlights(recommendations);
 
   useEffect(() => {
-    if (!loading) {
+    if (!loading || highlights.length > 0) {
       onHighlightsResolved(highlights);
     }
   }, [highlights, loading, onHighlightsResolved]);
 
-  if (loading) {
+  if (loading && highlights.length === 0) {
     return (
       <section aria-busy="true" className="highlights-section highlights-section-loading">
         <header className="highlights-section-header">

@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState, type ReactElement } from "react";
+import { useCallback, useEffect, useState, type ReactElement } from "react";
 
 import type {
   Recommendation,
@@ -78,21 +78,14 @@ export function RecommendationList({
 }: RecommendationListProps): ReactElement {
   const [entdeckenHighlights, setEntdeckenHighlights] = useState<RecommendationHighlight[]>([]);
   const [entdeckenHighlightsReady, setEntdeckenHighlightsReady] = useState(false);
-  const recommendationSignature = useMemo(
-    () =>
-      recommendations
-        .map((item) => `${item.reviewId}:${item.rank}:${item.artist}:${item.album}`)
-        .join("|"),
-    [recommendations],
-  );
 
   useEffect(() => {
-    if (source !== "entdecken") {
+    if (source !== "entdecken" || !isReloading) {
       return;
     }
     setEntdeckenHighlights([]);
     setEntdeckenHighlightsReady(false);
-  }, [recommendationSignature, source]);
+  }, [isReloading, source]);
 
   const handleEntdeckenHighlightsResolved = useCallback(
     (resolved: RecommendationHighlight[]) => {
@@ -114,7 +107,7 @@ export function RecommendationList({
       : undefined;
   const activeHighlights =
     source === "entdecken"
-      ? entdeckenHighlightsReady && entdeckenHighlights.length > 0
+      ? entdeckenHighlights.length > 0
         ? entdeckenHighlights
         : undefined
       : aktuellHighlights;
@@ -133,7 +126,9 @@ export function RecommendationList({
   const hasEditorialHighlights = activeHighlights !== undefined && activeHighlights.length > 0;
   const showEntdeckenHero = source === "entdecken" && recommendations.length > 0;
   const showPrelude =
-    source === "aktuell" ? hasEditorialHighlights : entdeckenHighlightsReady;
+    source === "aktuell"
+      ? hasEditorialHighlights
+      : entdeckenHighlights.length > 0 || entdeckenHighlightsReady;
   const entdeckenExcludedArtistLookupKeys =
     source === "entdecken" && activeHighlights !== undefined
       ? entdeckenHighlightArtistLookupKeys(activeHighlights)
