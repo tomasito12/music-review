@@ -77,18 +77,22 @@ function HighlightTileMedia({
 /** One full-width highlight tile with alternating image placement. */
 export function HighlightColumnCard(props: HighlightColumnCardProps): ReactElement {
   const { image, imageLoading, imageOnStart, showSaveAction } = props;
-  const variant = props.variant ?? "highlight";
-  const recommendation =
-    variant === "ranked" ? props.recommendation : props.highlight.recommendation;
-  const label =
-    variant === "ranked"
-      ? formatRankPhotoKicker(recommendation.rank)
-      : props.highlight.label;
-  const description = variant === "ranked" ? null : props.highlight.description;
-  const isPrimary = variant !== "ranked" && props.highlight.label === "Beste Passung";
+  const isRanked = props.variant === "ranked";
+  const recommendation = isRanked
+    ? props.recommendation
+    : props.highlight.recommendation;
+  const label = isRanked
+    ? formatRankPhotoKicker(recommendation.rank)
+    : props.highlight.label;
+  const description = isRanked ? null : props.highlight.description;
+  const isPrimary = !isRanked && props.highlight.label === "Beste Passung";
   const metaParts = recommendationCardMetaParts(recommendation);
   const tags = visibleRecommendationTags(recommendation.tags);
-  const mediaMode = resolveHighlightMediaMode(image, imageLoading, variant);
+  const mediaMode = resolveHighlightMediaMode(
+    image,
+    imageLoading,
+    isRanked ? "ranked" : "highlight",
+  );
   const { isSaved, isToggling, toggleSave } = useFavorites();
   const saved = isSaved(recommendation.reviewId);
   const tileClassName = [
