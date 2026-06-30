@@ -97,6 +97,11 @@ export async function loadArtistImagesBatch(
           : toArtistImageData(item.image, client);
       artistImageCache.set(item.artist_mbid, mapped);
     }
+    for (const artist of pending) {
+      if (!artistImageCache.has(artist.lookupKey)) {
+        artistImageCache.set(artist.lookupKey, null);
+      }
+    }
   }
 
   const results = new Map<string, ArtistImageData | null>();

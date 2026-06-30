@@ -716,19 +716,66 @@ p {
   box-shadow: 0 16px 36px rgba(23, 32, 51, 0.08);
 }
 
-.highlight-tile-text-only {
-  grid-template-columns: minmax(0, 1fr);
-  min-height: auto;
+.highlight-tile-accent-panel {
+  display: flex;
+  flex: 1;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 0.35rem;
+  width: 100%;
+  min-height: 100%;
+  padding: 1.5rem;
+  text-align: center;
+  background:
+    linear-gradient(165deg, rgba(246, 227, 225, 0.55), rgba(255, 248, 236, 0.92)),
+    var(--paper-muted);
 }
 
-.highlight-tile-initials {
+.highlight-tile-primary .highlight-tile-accent-panel {
+  background:
+    linear-gradient(165deg, rgba(246, 227, 225, 0.72), rgba(255, 248, 236, 0.96)),
+    var(--accent-soft);
+}
+
+.highlight-tile-accent-rating {
+  display: flex;
+  align-items: flex-start;
+  gap: 0.12rem;
   margin: 0;
-  color: rgba(181, 29, 41, 0.2);
-  font-family: var(--font-display);
-  font-size: clamp(2rem, 4vw, 2.75rem);
-  font-weight: var(--font-weight-semibold);
-  letter-spacing: 0.05em;
+  color: var(--ink);
   line-height: 1;
+}
+
+.highlight-tile-accent-rating-value {
+  font-size: clamp(2.4rem, 5vw, 3.2rem);
+  font-weight: var(--font-weight-semibold);
+  font-variant-numeric: tabular-nums;
+  letter-spacing: -0.04em;
+}
+
+.highlight-tile-accent-rating-suffix {
+  margin-top: 0.35rem;
+  color: var(--muted);
+  font-size: 0.95rem;
+  font-weight: var(--font-weight-medium);
+}
+
+.highlight-tile-accent-fit {
+  margin: 0;
+  color: var(--accent);
+  font-size: 1.05rem;
+  font-weight: var(--font-weight-semibold);
+  font-variant-numeric: tabular-nums;
+}
+
+.highlight-tile-accent-fit-label {
+  margin: 0;
+  color: var(--muted);
+  font-size: 0.78rem;
+  font-weight: var(--font-weight-medium);
+  letter-spacing: 0.03em;
+  text-transform: uppercase;
 }
 
 .highlight-tile-image-end .highlight-tile-media {
@@ -998,6 +1045,41 @@ p {
 
 .recommendation-card-with-save {
   padding-right: 2.4rem;
+}
+
+.recommendation-card-with-thumbnail {
+  grid-template-columns: 2.35rem 6rem minmax(0, 1fr);
+}
+
+.recommendation-card-thumbnail {
+  display: block;
+  align-self: start;
+  width: 6rem;
+  height: 6rem;
+  object-fit: cover;
+  border-radius: 10px;
+  border: 1px solid rgba(23, 32, 51, 0.1);
+  background: rgba(244, 236, 224, 0.55);
+}
+
+.recommendation-card-thumbnail-loading {
+  background: linear-gradient(
+    135deg,
+    rgba(244, 236, 224, 0.75),
+    rgba(236, 229, 218, 0.95)
+  );
+  animation: recommendation-thumbnail-pulse 1.2s ease-in-out infinite;
+}
+
+@keyframes recommendation-thumbnail-pulse {
+  0%,
+  100% {
+    opacity: 0.72;
+  }
+
+  50% {
+    opacity: 1;
+  }
 }
 
 .card-save-heart {
@@ -2283,7 +2365,8 @@ select {
 
   .highlight-tile-photo,
   .highlight-tile-media-loading,
-  .highlight-tile-media-fallback {
+  .highlight-tile-media-fallback,
+  .highlight-tile-accent-panel {
     min-height: 11rem;
   }
 
@@ -2336,6 +2419,15 @@ select {
 
   .recommendation-card {
     grid-template-columns: 1fr;
+  }
+
+  .recommendation-card-with-thumbnail {
+    grid-template-columns: 2.35rem 4.5rem minmax(0, 1fr);
+  }
+
+  .recommendation-card-thumbnail {
+    width: 4.5rem;
+    height: 4.5rem;
   }
 
   .aktuell-briefing {

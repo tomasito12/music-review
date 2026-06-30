@@ -45,7 +45,6 @@ export function RecommendationHighlights({
       : [],
   );
   const imagesByLookupKey = preloadedImages ?? batch.imagesByLookupKey;
-  const loading = preloadedLoading ?? batch.loading;
 
   return (
     <section aria-labelledby="highlights-heading" className="highlights-section">
@@ -61,15 +60,17 @@ export function RecommendationHighlights({
             artistMbid: highlight.recommendation.artistMbid,
             artistName: highlight.recommendation.artist,
           });
+          const imageResolved = lookupKey ? imagesByLookupKey.has(lookupKey) : true;
           return (
             <HighlightColumnCard
               highlight={highlight}
               image={
                 lookupKey ? imagesByLookupKey.get(lookupKey) ?? null : null
               }
-              imageLoading={loading && Boolean(lookupKey)}
+              imageLoading={Boolean(lookupKey) && !imageResolved}
               imageOnStart={index % 2 === 0}
               key={highlight.label}
+              useAccentPanelWithoutPhoto
               showSaveAction={showSaveAction}
             />
           );

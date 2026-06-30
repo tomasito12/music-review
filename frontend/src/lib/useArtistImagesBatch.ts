@@ -39,6 +39,32 @@ export function pendingArtistImageLookups(
   });
 }
 
+const ARTIST_IMAGE_BATCH_SIZE = 10;
+
+/** Split artist lookups into API-sized chunks. */
+export function chunkArtistImageLookups<T>(lookups: T[]): T[][] {
+  const chunks: T[][] = [];
+  for (let offset = 0; offset < lookups.length; offset += ARTIST_IMAGE_BATCH_SIZE) {
+    chunks.push(lookups.slice(offset, offset + ARTIST_IMAGE_BATCH_SIZE));
+  }
+  return chunks;
+}
+
+/** Mark pending artist lookups as resolved without an image. */
+export function markPendingArtistImagesUnavailable(
+  pendingLookups: ArtistImageLookup[],
+  current: ReadonlyMap<string, ArtistImageData | null>,
+): Map<string, ArtistImageData | null> {
+  const merged = new Map(current);
+  for (const lookup of pendingLookups) {
+    const lookupKey = artistImageLookupKey(lookup);
+    if (lookupKey.length > 0 && !merged.has(lookupKey)) {
+      merged.set(lookupKey, null);
+    }
+  }
+  return merged;
+}
+
 /** Loads highlight artist thumbnails in one batch request. */
 export function useArtistImagesBatch(
   artists: ArtistImageLookup[],
@@ -77,14 +103,25 @@ export function useArtistImagesBatch(
     setLoading(true);
 
     async function fetchImages(): Promise<void> {
+      const mergedResults = new Map<string, ArtistImageData | null>();
+
       try {
-        const results = await loadArtistImagesBatch(apiClient(), pendingLookups);
+        const client = apiClient();
+        for (const chunk of chunkArtistImageLookups(pendingLookups)) {
+          const results = await loadArtistImagesBatch(client, chunk);
+          if (!active) {
+            return;
+          }
+          for (const [lookupKey, image] of results) {
+            mergedResults.set(lookupKey, image);
+          }
+        }
         if (!active) {
           return;
         }
         setImagesByLookupKey((current) => {
           const merged = new Map(current);
-          for (const [lookupKey, image] of results) {
+          for (const [lookupKey, image] of mergedResults) {
             merged.set(lookupKey, image);
           }
           return merged;
@@ -93,6 +130,9 @@ export function useArtistImagesBatch(
         if (!active) {
           return;
         }
+        setImagesByLookupKey((current) =>
+          markPendingArtistImagesUnavailable(pendingLookups, current),
+        );
       } finally {
         if (active) {
           setLoading(false);

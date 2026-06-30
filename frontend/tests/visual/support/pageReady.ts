@@ -9,7 +9,7 @@ const VISUAL_TEST_STYLE = `
   html[data-visual-test] :where(body, button, input, select, textarea, p, li, span, a) {
     font-family: "Liberation Sans", Arial, Helvetica, sans-serif !important;
   }
-  html[data-visual-test] :where(h1, h2, h3, .highlight-tile-initials) {
+  html[data-visual-test] :where(h1, h2, h3, .highlight-tile-title) {
     font-family: "Liberation Serif", "Times New Roman", Times, serif !important;
   }
 `;
@@ -40,9 +40,12 @@ export async function stabilizeVisualPage(page: Page): Promise<void> {
 /** Wait until recommendation content has rendered on a results page. */
 export async function waitForResultsPage(page: Page): Promise<void> {
   await page.waitForLoadState("networkidle");
-  await page.locator(".recommendation-list, .highlights-stack").first().waitFor({
-    timeout: 30_000,
-  });
+  await page
+    .locator(".recommendation-list, .highlights-stack, .ranking-section")
+    .first()
+    .waitFor({
+      timeout: 30_000,
+    });
 }
 
 /** Wait until Aktuell highlights have finished their image lookup pass. */
@@ -52,33 +55,42 @@ export async function waitForAktuellHighlights(page: Page): Promise<void> {
   });
   await page.locator(".highlight-tile").first().waitFor({ timeout: 30_000 });
   await page
-    .locator(".highlight-tile-photo, .highlight-tile-text-only")
+    .locator(".highlight-tile-photo, .highlight-tile-accent-panel")
     .first()
     .waitFor({ timeout: 30_000 });
 }
 
 /** Wait until Entdecken highlights and the archive list are visible. */
 export async function waitForEntdeckenRanking(page: Page): Promise<void> {
-  await page.waitForLoadState("networkidle");
   await page.getByRole("heading", { name: "Im Archiv entdecken" }).waitFor({
     timeout: 30_000,
   });
-  await page.locator(".highlights-section, .results-list-prelude").first().waitFor({
+
+  await page.getByRole("heading", { name: "Alle Empfehlungen" }).waitFor({
     timeout: 60_000,
   });
-  const loading = page.locator(".highlights-section-loading");
-  if ((await loading.count()) > 0) {
-    await loading.waitFor({ state: "detached", timeout: 60_000 });
+
+  const highlightsLoading = page.locator(".highlights-section-loading");
+  if ((await highlightsLoading.count()) > 0) {
+    await highlightsLoading.waitFor({ state: "detached", timeout: 60_000 });
   }
-  await page.getByRole("heading", { name: "Liste verfeinern" }).waitFor({
-    timeout: 30_000,
-  });
-  await page.getByRole("heading", { name: "Alle Empfehlungen" }).waitFor({
-    timeout: 30_000,
-  });
-  await page.locator(".recommendation-list .recommendation-card, .highlight-tile").first().waitFor({
-    timeout: 30_000,
-  });
+
+  const highlightSection = page.locator(".highlights-section");
+  if ((await highlightSection.count()) > 0) {
+    await highlightSection.locator(".highlight-tile").first().waitFor({
+      timeout: 30_000,
+    });
+    await page.getByRole("heading", { name: "Liste verfeinern" }).waitFor({
+      timeout: 30_000,
+    });
+  }
+
+  await page
+    .locator(".recommendation-list .recommendation-card, .ranking-section .highlight-tile")
+    .first()
+    .waitFor({ timeout: 30_000 });
+
+  await page.waitForLoadState("networkidle");
 }
 
 /** Root shell used for viewport screenshots in visual regression. */

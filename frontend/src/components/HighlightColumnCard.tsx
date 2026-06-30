@@ -1,6 +1,5 @@
 import type { ReactElement } from "react";
 
-import { artistInitials } from "../lib/artistInitials";
 import type { ArtistImageData } from "../lib/artistImageApi";
 import { CardExcerpt } from "./CardExcerpt";
 import { SaveHeartButton } from "./SaveHeartButton";
@@ -14,11 +13,14 @@ import type { RecommendationHighlight } from "../types";
 import { formatRankPhotoKicker, shouldShowHighlightCategoryRank } from "../lib/entdeckenPage";
 
 import { ArtistImage } from "./ArtistImage";
+import { HighlightAccentPanel } from "./HighlightAccentPanel";
 
 interface HighlightColumnCardBaseProps {
   image: ArtistImageData | null;
   imageLoading: boolean;
   imageOnStart: boolean;
+  /** Use a score panel instead of an empty media placeholder when no photo exists. */
+  useAccentPanelWithoutPhoto?: boolean;
   showSaveAction: boolean;
 }
 
@@ -36,74 +38,61 @@ type HighlightColumnCardProps =
   | HighlightColumnCardHighlightProps
   | HighlightColumnCardRankedProps;
 
-type HighlightMediaMode = "photo" | "loading" | "textOnly";
+type HighlightMediaMode = "photo" | "loading" | "accent";
 
 function resolveHighlightMediaMode(
   image: ArtistImageData | null,
   imageLoading: boolean,
+  useAccentPanelWithoutPhoto: boolean,
 ): HighlightMediaMode {
   if (image !== null) {
     return "photo";
   }
+  if (useAccentPanelWithoutPhoto) {
+    return "accent";
+  }
   if (imageLoading) {
     return "loading";
   }
-  return "textOnly";
-}
-
-function HighlightTileMedia({
-  artistName,
-  image,
-  imageLoading,
-}: {
-  artistName: string;
-  image: ArtistImageData | null;
-  imageLoading: boolean;
-}): ReactElement {
-  if (image !== null) {
-    return <ArtistImage artistName={artistName} image={image} />;
-  }
-  return (
-    <div
-      aria-hidden="true"
-      className={`highlight-tile-media-panel${
-        imageLoading ? " highlight-tile-media-loading" : " highlight-tile-media-fallback"
-      }`}
-    />
-  );
+  return "accent";
 }
 
 /** One full-width highlight tile with alternating image placement. */
 export function HighlightColumnCard(props: HighlightColumnCardProps): ReactElement {
-  const { image, imageLoading, imageOnStart, showSaveAction } = props;
-  const variant = props.variant ?? "highlight";
-  const recommendation =
-    variant === "ranked" ? props.recommendation : props.highlight.recommendation;
-  const label =
-    variant === "ranked"
-      ? formatRankPhotoKicker(recommendation.rank)
-      : props.highlight.label;
+  const {
+    image,
+    imageLoading,
+    imageOnStart,
+    useAccentPanelWithoutPhoto = false,
+    showSaveAction,
+  } = props;
+
+  const isRanked = props.variant === "ranked";
+  const recommendation = isRanked ? props.recommendation : props.highlight.recommendation;
+  const label = isRanked
+    ? formatRankPhotoKicker(recommendation.rank)
+    : props.highlight.label;
   const showHighlightCategoryRank = shouldShowHighlightCategoryRank(
-    variant,
+    isRanked ? "ranked" : "highlight",
     recommendation.source,
   );
-  const description = variant === "ranked" ? null : props.highlight.description;
+  const description = isRanked ? null : props.highlight.description;
   const isPrimary =
-    variant !== "ranked" &&
+    !isRanked &&
     (props.highlight.label === "Beste Passung" ||
       props.highlight.label === "Beste Gesamtpassung");
   const metaParts = recommendationCardMetaParts(recommendation);
   const tags = visibleRecommendationTags(recommendation.tags);
-  const mediaMode = resolveHighlightMediaMode(image, imageLoading);
+  const mediaMode = resolveHighlightMediaMode(
+    image,
+    imageLoading,
+    useAccentPanelWithoutPhoto,
+  );
   const { isSaved, isToggling, toggleSave } = useFavorites();
   const saved = isSaved(recommendation.reviewId);
   const tileClassName = [
     "highlight-tile",
-    mediaMode === "textOnly"
-      ? "highlight-tile-text-only"
-      : imageOnStart
-        ? "highlight-tile-image-start"
-        : "highlight-tile-image-end",
+    imageOnStart ? "highlight-tile-image-start" : "highlight-tile-image-end",
     isPrimary ? "highlight-tile-primary" : "",
   ]
     .filter(Boolean)
@@ -111,22 +100,24 @@ export function HighlightColumnCard(props: HighlightColumnCardProps): ReactEleme
 
   return (
     <article className={tileClassName}>
-      {mediaMode !== "textOnly" && (
-        <div className="highlight-tile-media">
-          <HighlightTileMedia
-            artistName={recommendation.artist}
-            image={image}
-            imageLoading={mediaMode === "loading"}
+      <div className="highlight-tile-media">
+        {mediaMode === "photo" ? (
+          <ArtistImage artistName={recommendation.artist} image={image} />
+        ) : mediaMode === "loading" ? (
+          <div
+            aria-hidden="true"
+            className="highlight-tile-media-panel highlight-tile-media-loading"
           />
-        </div>
-      )}
+        ) : (
+          <HighlightAccentPanel
+            fitLabel={recommendation.fitLabel}
+            fitPercent={recommendation.fitPercent}
+            rating={recommendation.rating}
+          />
+        )}
+      </div>
 
       <div className="highlight-tile-body">
-        {mediaMode === "textOnly" && (
-          <p aria-hidden="true" className="highlight-tile-initials">
-            {artistInitials(recommendation.artist)}
-          </p>
-        )}
 
         {showSaveAction && (
           <SaveHeartButton

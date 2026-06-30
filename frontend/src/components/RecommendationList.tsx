@@ -10,8 +10,8 @@ import { entdeckenHighlightArtistLookupKeys } from "../lib/entdeckenPage";
 import type { TasteCommunityOption, TasteFilterSettings, TastePreset } from "../lib/plattenradarApi";
 import type { ProfileSetupResult } from "../lib/profileSessionStorage";
 
+import { AktuellRankingList } from "./AktuellRankingList";
 import { EntdeckenHighlightsSection } from "./EntdeckenHighlightsSection";
-import { RecommendationCard } from "./RecommendationCard";
 import { EntdeckenRankingList } from "./EntdeckenRankingList";
 import { RecommendationHighlights } from "./RecommendationHighlights";
 import { ResultsFilterPanel } from "./ResultsFilterPanel";
@@ -135,12 +135,6 @@ export function RecommendationList({
     source === "entdecken" && activeHighlights !== undefined
       ? entdeckenHighlightArtistLookupKeys(activeHighlights)
       : new Set<string>();
-  const rankingTitle =
-    source === "aktuell" ? "Weitere neue Rezensionen" : "Alle Empfehlungen";
-  const rankingDescription =
-    source === "aktuell"
-      ? "Dichter sortiert, damit du den Update-Schwung schnell scannen kannst."
-      : "Sortiert nach Gesamtscore (Passung, Wertung und Stilbreite).";
   const filterRegion = (
     <div
       className={`results-filter-region${
@@ -248,7 +242,7 @@ export function RecommendationList({
           />
         )}
 
-        {source === "aktuell" && hasEditorialHighlights && (
+        {source === "aktuell" && aktuellHighlights !== undefined && (
           <RecommendationHighlights highlights={aktuellHighlights} showSaveAction />
         )}
 
@@ -268,38 +262,13 @@ export function RecommendationList({
             showSaveAction
           />
         ) : (
-          <section
-            aria-labelledby="ranking-heading"
-            className={`ranking-section${
-              hasEditorialHighlights ? " ranking-section-after-prelude" : ""
-            }`}
-          >
-            <div className="ranking-heading">
-              <h2 id="ranking-heading">{rankingTitle}</h2>
-              <p>{rankingDescription}</p>
-            </div>
-            <div className="recommendation-list">
-              {listRecommendations.map((item) => (
-                <RecommendationCard
-                  key={`${item.source}-${item.rank}`}
-                  recommendation={item}
-                  showSaveAction={source === "aktuell"}
-                />
-              ))}
-            </div>
-            {canLoadMore && onLoadMore !== undefined && (
-              <div className="results-load-more">
-                <button
-                  className="secondary-button"
-                  disabled={loadingMore}
-                  onClick={onLoadMore}
-                  type="button"
-                >
-                  {loadingMore ? "Weitere Alben werden geladen ..." : "Weitere Alben laden"}
-                </button>
-              </div>
-            )}
-          </section>
+          <AktuellRankingList
+            canLoadMore={canLoadMore}
+            loadingMore={loadingMore}
+            onLoadMore={onLoadMore}
+            recommendations={listRecommendations}
+            showSaveAction
+          />
         )}
       </div>
     </section>
