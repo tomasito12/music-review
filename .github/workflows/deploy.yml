@@ -89,7 +89,7 @@ jobs:
             && git checkout '${DEPLOY_BRANCH}' \
             && git pull --ff-only origin '${DEPLOY_BRANCH}' \
             && docker compose build music-review frontend \
-            && docker compose up -d music-review frontend caddy"
+            && docker compose up -d --remove-orphans --force-recreate music-review frontend caddy"
         env:
           DEPLOY_HOST: ${{ secrets.DEPLOY_HOST }}
           DEPLOY_PORT: ${{ secrets.DEPLOY_PORT || '22' }}
@@ -123,21 +123,18 @@ jobs:
       - name: Check API health
         run: |
           ssh -p "${DEPLOY_PORT}" "${DEPLOY_USER}@${DEPLOY_HOST}" \
-            "cd '${DEPLOY_PATH}' \
-            && docker compose exec -T [REDACTED] \
-              curl --fail http://127.0.0.1:8000/health"
+            "cd '${DEPLOY_PATH}' && ./scripts/check_deploy_api_health.sh"
         env:
           DEPLOY_HOST: ${{ secrets.DEPLOY_HOST }}
           DEPLOY_PORT: ${{ secrets.DEPLOY_PORT || '22' }}
           DEPLOY_USER: ${{ secrets.DEPLOY_USER }}
           DEPLOY_PATH: ${{ secrets.DEPLOY_PATH }}
 
+
       - name: Check frontend health
         run: |
           ssh -p "${DEPLOY_PORT}" "${DEPLOY_USER}@${DEPLOY_HOST}" \
-            "cd '${DEPLOY_PATH}' \
-            && docker compose exec -T frontend \
-              wget -q -O /dev/null http://127.0.0.1/"
+            "cd '${DEPLOY_PATH}' && ./scripts/check_deploy_frontend_health.sh"
         env:
           DEPLOY_HOST: ${{ secrets.DEPLOY_HOST }}
           DEPLOY_PORT: ${{ secrets.DEPLOY_PORT || '22' }}

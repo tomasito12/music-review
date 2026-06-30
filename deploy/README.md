@@ -31,7 +31,7 @@ The workflow verifies lint/tests first, then deploys over SSH:
 3. Restart `music-review`, `frontend`, and `caddy`.
 4. Install production cron from `deploy/production.crontab` (idempotent).
 5. Optionally run `music-review-update`.
-6. Check the API `/health` endpoint and the frontend nginx root inside the containers.
+6. Check the API via `./scripts/check_deploy_api_health.sh` (host curl on port 8000 with retries/logs) and the frontend nginx root via `./scripts/check_deploy_frontend_health.sh`.
 
 Public traffic at `https://plattenradar.de` is served by Caddy:
 
