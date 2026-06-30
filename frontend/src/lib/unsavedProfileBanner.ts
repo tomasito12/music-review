@@ -1,6 +1,7 @@
 export interface ProfileSaveBannerInput {
   isAuthenticated: boolean;
   hasUnsavedProfileChanges: boolean;
+  needsInitialAccountSave: boolean;
   isSavingProfileChanges: boolean;
   savedMessage: string | null;
   errorMessage: string | null;
@@ -27,16 +28,19 @@ export function resolveProfileSaveBannerState(
   const {
     isAuthenticated,
     hasUnsavedProfileChanges,
+    needsInitialAccountSave,
     isSavingProfileChanges,
     savedMessage,
     errorMessage,
   } = input;
 
+  const hasPendingProfileSave = hasUnsavedProfileChanges || needsInitialAccountSave;
+
   if (!isAuthenticated) {
     return { visible: false };
   }
 
-  if (savedMessage !== null && !hasUnsavedProfileChanges && !isSavingProfileChanges) {
+  if (savedMessage !== null && !hasPendingProfileSave && !isSavingProfileChanges) {
     return {
       visible: true,
       variant: "saved",
@@ -46,7 +50,7 @@ export function resolveProfileSaveBannerState(
     };
   }
 
-  if (!hasUnsavedProfileChanges && !isSavingProfileChanges) {
+  if (!hasPendingProfileSave && !isSavingProfileChanges) {
     return { visible: false };
   }
 
@@ -73,8 +77,10 @@ export function resolveProfileSaveBannerState(
   return {
     visible: true,
     variant: "unsaved",
-    message: "Profil geändert · noch nicht gespeichert",
+    message: needsInitialAccountSave
+      ? "Profil noch nicht in deinem Konto gespeichert"
+      : "Profil geändert · noch nicht gespeichert",
     showSaveButton: true,
-    showDiscardButton: true,
+    showDiscardButton: hasUnsavedProfileChanges,
   };
 }

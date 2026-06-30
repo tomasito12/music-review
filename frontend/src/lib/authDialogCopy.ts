@@ -13,15 +13,27 @@ export function authDialogTitle(mode: AuthDialogMode): string {
   return mode === "login" ? "Anmelden" : "Profil dauerhaft speichern";
 }
 
-export function authDialogIntro(mode: AuthDialogMode): string {
+export function authDialogIntro(
+  mode: AuthDialogMode,
+  savingProfile = false,
+): string {
   if (mode === "login") {
+    if (savingProfile) {
+      return "Melde dich an, um dein aktuelles Musikprofil in deinem bestehenden Konto zu speichern.";
+    }
     return "Melde dich mit E-Mail und Passwort an, damit Plattenradar dein gespeichertes Musikprofil laden kann.";
   }
   return "Lege ein Konto an und sichere dein aktuelles Musikprofil für den nächsten Besuch.";
 }
 
-export function authDialogSubmitLabel(mode: AuthDialogMode): string {
-  return mode === "login" ? "Einloggen" : "Konto erstellen";
+export function authDialogSubmitLabel(
+  mode: AuthDialogMode,
+  savingProfile = false,
+): string {
+  if (mode === "login") {
+    return savingProfile ? "Anmelden und speichern" : "Einloggen";
+  }
+  return "Konto erstellen";
 }
 
 export function authDialogSwitchPrompt(mode: AuthDialogMode): string {

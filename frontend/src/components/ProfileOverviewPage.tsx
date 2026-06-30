@@ -79,8 +79,10 @@ export function ProfileOverviewPage({
         <p>
           Hier siehst du deine aktuellen Stil- und Filter-Einstellungen. Änderungen
           wirken zuerst auf deine Empfehlungen
-          {isAuthenticated && hasSavedProfileReference
-            ? "; speichern kannst du sie oben im Banner."
+          {isAuthenticated
+            ? hasUnsavedProfileChanges || hasSavedProfileReference
+              ? "; speichern kannst du sie oben im Banner."
+              : "; speichere sie oben im Banner in deinem Konto."
             : "."}
         </p>
         <p className="profile-overview-status">{statusLabel}</p>

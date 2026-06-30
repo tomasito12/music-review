@@ -285,6 +285,28 @@ class TasteCommunity(ApiModel):
         return _str_tuple(value)
 
 
+class TasteCommunityMapNode(ApiModel):
+    """One community position on the style-world map."""
+
+    id: str
+    x: float = Field(ge=0.0, le=1.0)
+    y: float = Field(ge=0.0, le=1.0)
+    size: int = Field(ge=1)
+    neighbors: tuple[str, ...] = ()
+
+    @field_validator("neighbors", mode="before")
+    @classmethod
+    def _normalize_neighbors(cls, value: Any) -> tuple[str, ...]:
+        """Normalize neighbor id tuples."""
+        return _str_tuple(value)
+
+
+class TasteCommunityMap(ApiModel):
+    """Graph-derived 2D layout for taste communities."""
+
+    nodes: tuple[TasteCommunityMapNode, ...]
+
+
 class Recommendation(ApiModel):
     """One ranked album recommendation for a taste profile."""
 

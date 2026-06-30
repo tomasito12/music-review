@@ -12,6 +12,7 @@ import {
   registerAccount,
   temporaryProfileToApi,
   loadTasteCommunities,
+  loadTasteCommunityMap,
   loadTastePresets,
 } from "./plattenradarApi";
 
@@ -90,6 +91,38 @@ describe("loadTasteCommunities", () => {
     ]);
     expect(fetchMock).toHaveBeenCalledWith(
       "https://api.example.test/v1/taste-communities",
+      expect.objectContaining({ method: "GET" }),
+    );
+  });
+});
+
+describe("loadTasteCommunityMap", () => {
+  it("loads graph layout nodes from the API", async () => {
+    const fetchMock = vi.fn().mockResolvedValue(
+      new Response(
+        JSON.stringify({
+          nodes: [
+            {
+              id: "C001",
+              x: 0.2,
+              y: 0.4,
+              size: 12,
+              neighbors: ["C002"],
+            },
+          ],
+        }),
+        { status: 200 },
+      ),
+    );
+    vi.stubGlobal("fetch", fetchMock);
+
+    const map = await loadTasteCommunityMap(
+      new ApiClient({ baseUrl: "https://api.example.test" }),
+    );
+
+    expect(map.nodes[0]?.id).toBe("C001");
+    expect(fetchMock).toHaveBeenCalledWith(
+      "https://api.example.test/v1/taste-communities/map",
       expect.objectContaining({ method: "GET" }),
     );
   });

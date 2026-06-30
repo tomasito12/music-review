@@ -19,6 +19,18 @@ export interface TasteCommunityOption {
   label: string;
 }
 
+export interface TasteCommunityMapNode {
+  id: string;
+  neighbors: string[];
+  size: number;
+  x: number;
+  y: number;
+}
+
+export interface TasteCommunityMap {
+  nodes: TasteCommunityMapNode[];
+}
+
 export interface TasteFilterSettings {
   overall_weight_alpha: number;
   overall_weight_beta: number;
@@ -161,6 +173,13 @@ export async function loadTasteCommunities(
   client: ApiClient,
 ): Promise<TasteCommunityOption[]> {
   return client.get<TasteCommunityOption[]>("/v1/taste-communities");
+}
+
+/** Loads graph-derived 2D positions for the style-world map. */
+export async function loadTasteCommunityMap(
+  client: ApiClient,
+): Promise<TasteCommunityMap> {
+  return client.get<TasteCommunityMap>("/v1/taste-communities/map");
 }
 
 /** Loads taste presets for the profile setup step. */

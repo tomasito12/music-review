@@ -256,6 +256,22 @@ def test_taste_communities_endpoint_exposes_readable_profile_options() -> None:
     ]
 
 
+def test_taste_community_map_endpoint_returns_normalized_positions() -> None:
+    """The style map endpoint exposes stable coordinates for profile setup."""
+    response = _client().get("/v1/taste-communities/map")
+
+    assert response.status_code == 200
+    payload = response.json()
+    assert "nodes" in payload
+    assert len(payload["nodes"]) == 1
+    node = payload["nodes"][0]
+    assert node["id"] == "C001"
+    assert 0.0 <= node["x"] <= 1.0
+    assert 0.0 <= node["y"] <= 1.0
+    assert node["size"] >= 1
+    assert node["neighbors"] == []
+
+
 def test_community_example_artists_returns_up_to_three_names() -> None:
     """Example artists are trimmed and capped like the Streamlit profile cards."""
     assert _community_example_artists(

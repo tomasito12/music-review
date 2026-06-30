@@ -30,6 +30,11 @@ describe("authDialogCopy", () => {
     expect(authDialogSwitchPrompt("login")).toBe("Noch kein Konto?");
   });
 
+  it("uses login wording when saving an existing session profile", () => {
+    expect(authDialogIntro("login", true)).toContain("bestehenden Konto");
+    expect(authDialogSubmitLabel("login", true)).toBe("Anmelden und speichern");
+  });
+
   it("uses registration wording for save-profile mode", () => {
     expect(authDialogEyebrow("save-profile")).toBe("Konto anlegen");
     expect(authDialogTitle("save-profile")).toBe("Profil dauerhaft speichern");

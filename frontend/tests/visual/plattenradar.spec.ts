@@ -194,6 +194,21 @@ async function mockMusikprofilApi(page: Page): Promise<void> {
       });
       return;
     }
+    if (url.pathname === "/v1/taste-communities/map") {
+      await route.fulfill({
+        contentType: "application/json",
+        json: {
+          nodes: [
+            { id: "C001", x: 0.22, y: 0.34, size: 12, neighbors: ["C002", "C004"] },
+            { id: "C002", x: 0.42, y: 0.58, size: 10, neighbors: ["C001", "C003"] },
+            { id: "C003", x: 0.68, y: 0.44, size: 11, neighbors: ["C002", "C005"] },
+            { id: "C004", x: 0.31, y: 0.72, size: 9, neighbors: ["C001", "C005"] },
+            { id: "C005", x: 0.58, y: 0.78, size: 8, neighbors: ["C003", "C004"] },
+          ],
+        },
+      });
+      return;
+    }
     if (url.pathname === "/v1/presets") {
       await route.fulfill({
         contentType: "application/json",
@@ -406,6 +421,19 @@ async function mockAktuellApi(page: Page): Promise<void> {
             example_artists: ["Japanese Breakfast"],
           },
         ],
+      });
+      return;
+    }
+    if (url.pathname === "/v1/taste-communities/map") {
+      await route.fulfill({
+        contentType: "application/json",
+        json: {
+          nodes: [
+            { id: "C001", x: 0.25, y: 0.35, size: 12, neighbors: ["C002"] },
+            { id: "C002", x: 0.62, y: 0.48, size: 10, neighbors: ["C001", "C003"] },
+            { id: "C003", x: 0.48, y: 0.74, size: 9, neighbors: ["C002"] },
+          ],
+        },
       });
       return;
     }

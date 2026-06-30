@@ -134,6 +134,8 @@ export function App(): ReactElement {
 
   const temporaryProfile = profileSession?.profile ?? null;
   const isAuthenticated = authSession !== null;
+  const needsInitialAccountSave =
+    isAuthenticated && temporaryProfile !== null && lastSavedProfile === null;
   const hasUnsavedProfileChanges =
     isAuthenticated &&
     temporaryProfile !== null &&
@@ -143,6 +145,7 @@ export function App(): ReactElement {
   const profileSaveBanner = resolveProfileSaveBannerState({
     isAuthenticated,
     hasUnsavedProfileChanges,
+    needsInitialAccountSave,
     isSavingProfileChanges,
     savedMessage: profileChangesSavedMessage,
     errorMessage: profileChangesError,
@@ -237,7 +240,7 @@ export function App(): ReactElement {
     if (authSession === null) {
       return;
     }
-    if (hasUnsavedProfileChanges) {
+    if (hasUnsavedProfileChanges || needsInitialAccountSave) {
       setUserState("authenticated_unsaved_changes");
       return;
     }
@@ -246,7 +249,7 @@ export function App(): ReactElement {
       return;
     }
     setUserState("authenticated_no_profile");
-  }, [authSession, hasUnsavedProfileChanges, lastSavedProfile]);
+  }, [authSession, hasUnsavedProfileChanges, lastSavedProfile, needsInitialAccountSave]);
 
   useEffect(() => {
     if (
@@ -448,7 +451,12 @@ export function App(): ReactElement {
     setAuthOpen(true);
   }
 
-  function openSaveProfile(): void {
+  function openSaveProfileToExistingAccount(): void {
+    setAuthMode("login");
+    setAuthOpen(true);
+  }
+
+  function openCreateAccount(): void {
     setAuthMode("save-profile");
     setAuthOpen(true);
   }
@@ -733,8 +741,9 @@ export function App(): ReactElement {
     />
   ) : showSavePrompt ? (
     <SaveProfilePrompt
+      onCreateAccount={openCreateAccount}
       onDismiss={handleDismissSavePrompt}
-      onSave={openSaveProfile}
+      onSaveToExistingAccount={openSaveProfileToExistingAccount}
     />
   ) : null;
 
@@ -780,7 +789,6 @@ export function App(): ReactElement {
           openInitialProfileSetup={openInitialProfileSetup}
           openLogin={openLogin}
           openProfileOverview={openProfileOverview}
-          openSaveProfile={openSaveProfile}
           playlistSource={playlistSource}
           profileChangesError={profileChangesError}
           profileChangesSavedMessage={profileChangesSavedMessage}
@@ -850,7 +858,6 @@ interface AppContentProps {
   openInitialProfileSetup: () => void;
   openLogin: () => void;
   openProfileOverview: () => void;
-  openSaveProfile: () => void;
   playlistSource: RecommendationSource;
   profileChangesError: string | null;
   profileChangesSavedMessage: string | null;
@@ -917,7 +924,6 @@ function AppContent({
   openInitialProfileSetup,
   openLogin,
   openProfileOverview,
-  openSaveProfile,
   playlistSource,
   profileChangesError,
   profileChangesSavedMessage,
@@ -1094,7 +1100,6 @@ function AppContent({
       )}
       {authOpen && (
         <AuthDialog
-          lockMode
           mode={authMode}
           onClose={() => setAuthOpen(false)}
           onSuccess={handleAuthSuccess}

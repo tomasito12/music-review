@@ -42,6 +42,7 @@ from music_review.api.schemas import (
 from music_review.application.artist_image_lookup import artist_image_lookup_key
 from music_review.application.artist_image_models import ArtistImageRecord
 from music_review.application.artist_image_service import ArtistImageService
+from music_review.application.community_map_service import get_community_map_layout
 from music_review.application.community_tags import community_tags_from_entries
 from music_review.application.models import (
     CommunityMatch,
@@ -51,6 +52,8 @@ from music_review.application.models import (
     RecommendationSet,
     RecommendationSource,
     TasteCommunity,
+    TasteCommunityMap,
+    TasteCommunityMapNode,
     TasteProfile,
 )
 from music_review.application.newest_review_pool import newest_reviews_for_update_rounds
@@ -153,6 +156,28 @@ def create_app() -> FastAPI:
             if item.get("id")
         }
         return tuple(sorted(options, key=lambda option: option.label.casefold()))
+
+    @app.get("/v1/taste-communities/map", response_model=TasteCommunityMap)
+    def taste_community_map(
+        provider: CorpusProvider = CORPUS_PROVIDER_DEPENDENCY,
+    ) -> TasteCommunityMap:
+        """Return graph-derived 2D positions for the taste-community map."""
+        layout_nodes = get_community_map_layout(
+            communities=provider.communities(),
+            memberships=provider.memberships(),
+        )
+        return TasteCommunityMap(
+            nodes=tuple(
+                TasteCommunityMapNode(
+                    id=node.id,
+                    x=node.x,
+                    y=node.y,
+                    size=node.size,
+                    neighbors=node.neighbors,
+                )
+                for node in layout_nodes
+            ),
+        )
 
     @app.get("/v1/artists/{artist_mbid}/image", response_model=ArtistImageResponse)
     def artist_image(

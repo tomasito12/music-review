@@ -36,10 +36,9 @@ export function ResultsFilterPanel({
 }: ResultsFilterPanelProps): ReactElement {
   const { profile } = profileSession;
 
-  const introText =
-    isAuthenticated && hasSavedProfileReference
-      ? "Änderungen wirken sofort auf diese Liste. Dauerhaft speichern kannst du sie oben im Banner."
-      : "Änderungen wirken sofort auf diese Liste.";
+  const introText = isAuthenticated
+    ? "Änderungen wirken sofort auf diese Liste. Dauerhaft speichern kannst du sie oben im Banner."
+    : "Änderungen wirken sofort auf diese Liste.";
 
   return (
     <div className="results-filter-shell">

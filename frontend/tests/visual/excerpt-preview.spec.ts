@@ -157,6 +157,19 @@ async function mockRecommendationApi(page: Page): Promise<void> {
       });
       return;
     }
+    if (url.pathname === "/v1/taste-communities/map") {
+      await route.fulfill({
+        contentType: "application/json",
+        json: {
+          nodes: [
+            { id: "C001", x: 0.2, y: 0.35, size: 10, neighbors: ["C112"] },
+            { id: "C112", x: 0.55, y: 0.42, size: 9, neighbors: ["C001", "C015"] },
+            { id: "C015", x: 0.72, y: 0.68, size: 8, neighbors: ["C112"] },
+          ],
+        },
+      });
+      return;
+    }
     if (url.pathname === "/v1/presets") {
       await route.fulfill({ contentType: "application/json", json: [] });
       return;
