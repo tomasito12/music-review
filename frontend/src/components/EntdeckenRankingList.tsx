@@ -1,6 +1,7 @@
-import { useMemo, type ReactElement } from "react";
+import { useEffect, useMemo, type ReactElement } from "react";
 
 import { artistImageLookupKey } from "../lib/artistImageLookupKey";
+import { limitRecommendationsForVisualTest } from "../lib/visualTestListLimit";
 import { buildEntdeckenPhotoTileIndices } from "../lib/entdeckenPage";
 import { useEntdeckenPhotoSlots } from "../lib/useEntdeckenPhotoSlots";
 import type { Recommendation } from "../types";
@@ -13,6 +14,7 @@ interface EntdeckenRankingListProps {
   excludedArtistLookupKeys?: ReadonlySet<string>;
   loadingMore?: boolean;
   onLoadMore?: () => void;
+  onRankingReady?: () => void;
   recommendations: Recommendation[];
   showSaveAction?: boolean;
 }
@@ -23,15 +25,26 @@ export function EntdeckenRankingList({
   excludedArtistLookupKeys = new Set(),
   loadingMore = false,
   onLoadMore,
+  onRankingReady,
   recommendations,
   showSaveAction = false,
 }: EntdeckenRankingListProps): ReactElement {
-  const { imagesByLookupKey, loadingPhotoRanks, photoRanks, photoSlotsSettled } =
-    useEntdeckenPhotoSlots(recommendations, excludedArtistLookupKeys);
-  const photoTileIndices = useMemo(
-    () => buildEntdeckenPhotoTileIndices(recommendations, photoRanks),
-    [photoRanks, recommendations],
+  const visibleRecommendations = useMemo(
+    () => limitRecommendationsForVisualTest(recommendations),
+    [recommendations],
   );
+  const { imagesByLookupKey, loadingPhotoRanks, photoRanks, photoSlotsSettled } =
+    useEntdeckenPhotoSlots(visibleRecommendations, excludedArtistLookupKeys);
+  const photoTileIndices = useMemo(
+    () => buildEntdeckenPhotoTileIndices(visibleRecommendations, photoRanks),
+    [photoRanks, visibleRecommendations],
+  );
+
+  useEffect(() => {
+    if (photoSlotsSettled) {
+      onRankingReady?.();
+    }
+  }, [onRankingReady, photoSlotsSettled]);
 
   function renderRecommendation(
     recommendation: Recommendation,
@@ -79,11 +92,11 @@ export function EntdeckenRankingList({
         <p>Sortiert nach Gesamtscore (Passung, Wertung und Stilbreite).</p>
       </div>
       <div className="recommendation-list">
-        {recommendations.map((recommendation) =>
+        {visibleRecommendations.map((recommendation) =>
           renderRecommendation(recommendation, "list"),
         )}
       </div>
-      {canLoadMore && onLoadMore !== undefined && (
+      {canLoadMore && onLoadMore !== undefined && recommendations.length > visibleRecommendations.length && (
         <div className="results-load-more">
           <button
             className="secondary-button"

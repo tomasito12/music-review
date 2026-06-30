@@ -1,6 +1,7 @@
 import type { ReactElement } from "react";
 
 import type { ArtistImageData } from "../lib/artistImageApi";
+import { isVisualTestMode } from "../lib/visualTestMode";
 
 interface ArtistListThumbnailProps {
   artistName: string;
@@ -19,7 +20,7 @@ export function ArtistListThumbnail({
       alt={artistName}
       className="recommendation-card-thumbnail"
       decoding="async"
-      loading="lazy"
+      loading={isVisualTestMode() ? "eager" : "lazy"}
       onError={() => {
         onFailed?.();
       }}

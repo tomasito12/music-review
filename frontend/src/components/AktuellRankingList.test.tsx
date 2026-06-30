@@ -19,6 +19,7 @@ vi.mock("../lib/useArtistImagesBatch", () => ({
         },
       ],
     ]),
+    imagesSettled: true,
     loading: false,
   }),
 }));

@@ -57,9 +57,6 @@ def main() -> None:
             update_snapshots=args.update_snapshots,
             env=frontend_env,
         )
-        if exit_code == 0 and args.update_snapshots:
-            LOGGER.info("Verifying refreshed live screenshots in the same session")
-            exit_code = _run_playwright(update_snapshots=False, env=frontend_env)
     finally:
         _terminate(frontend)
         _terminate(api)

@@ -15,6 +15,7 @@ export interface ArtistImageLookup {
 
 export interface UseArtistImagesBatchResult {
   imagesByLookupKey: Map<string, ArtistImageData | null>;
+  imagesSettled: boolean;
   loading: boolean;
 }
 
@@ -77,6 +78,9 @@ export function useArtistImagesBatch(
   const [loading, setLoading] = useState(
     artists.some((artist) => artistImageLookupKey(artist).length > 0),
   );
+  const [imagesSettled, setImagesSettled] = useState(
+    !artists.some((artist) => artistImageLookupKey(artist).length > 0),
+  );
   const imagesRef = useRef(imagesByLookupKey);
   imagesRef.current = imagesByLookupKey;
 
@@ -90,6 +94,7 @@ export function useArtistImagesBatch(
     if (lookups.length === 0) {
       setImagesByLookupKey(new Map());
       setLoading(false);
+      setImagesSettled(true);
       return;
     }
 
@@ -97,11 +102,13 @@ export function useArtistImagesBatch(
 
     if (pendingLookups.length === 0) {
       setLoading(false);
+      setImagesSettled(true);
       return;
     }
 
     let active = true;
     const deferProgressiveUpdates = isVisualTestMode();
+    setImagesSettled(false);
     if (!deferProgressiveUpdates) {
       setLoading(true);
     }
@@ -149,6 +156,7 @@ export function useArtistImagesBatch(
       } finally {
         if (active) {
           setLoading(false);
+          setImagesSettled(true);
         }
       }
     }
@@ -160,5 +168,5 @@ export function useArtistImagesBatch(
     };
   }, [apiClient, artistSignature]);
 
-  return { imagesByLookupKey, loading };
+  return { imagesByLookupKey, imagesSettled, loading };
 }

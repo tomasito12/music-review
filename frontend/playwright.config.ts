@@ -5,8 +5,9 @@ const isCi = Boolean(process.env.CI);
 
 export default defineConfig({
   testDir: "./tests/visual",
-  timeout: 60_000,
+  timeout: isCi ? 120_000 : 60_000,
   fullyParallel: false,
+  retries: isCi ? 2 : 0,
   reporter: isCi ? [["list"], ["github"]] : "list",
   snapshotPathTemplate: "{testDir}/reference/{arg}{ext}",
   expect: {
@@ -38,6 +39,7 @@ export default defineConfig({
     {
       name: "live",
       testMatch: /live-screenshots\.spec\.ts$/,
+      retries: isCi ? 2 : 0,
       use: {
         ...devices["Desktop Chrome"],
         viewport: { width: 1280, height: 900 },

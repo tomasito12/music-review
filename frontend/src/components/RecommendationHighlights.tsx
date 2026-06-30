@@ -47,12 +47,21 @@ export function RecommendationHighlights({
       : [],
   );
   const imagesByLookupKey = preloadedImages ?? batch.imagesByLookupKey;
+  const highlightsReadyState =
+    dataVisualHighlights ??
+    (preloadedImages !== undefined
+      ? preloadedLoading
+        ? "pending"
+        : "ready"
+      : batch.imagesSettled
+        ? "ready"
+        : "pending");
 
   return (
     <section
       aria-labelledby="highlights-heading"
       className="highlights-section"
-      data-visual-highlights={dataVisualHighlights}
+      data-visual-highlights={highlightsReadyState}
     >
       <header className="highlights-section-header">
         <p className="eyebrow">{sectionCopy.eyebrow}</p>

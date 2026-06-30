@@ -82,13 +82,17 @@ export function RecommendationList({
 }: RecommendationListProps): ReactElement {
   const [entdeckenHighlights, setEntdeckenHighlights] = useState<RecommendationHighlight[]>([]);
   const [entdeckenHighlightsResolved, setEntdeckenHighlightsResolved] = useState(false);
+  const [rankingReady, setRankingReady] = useState(false);
 
   useEffect(() => {
-    if (source !== "entdecken" || !isReloading) {
+    if (!isReloading) {
       return;
     }
-    setEntdeckenHighlights([]);
-    setEntdeckenHighlightsResolved(false);
+    if (source === "entdecken") {
+      setEntdeckenHighlights([]);
+      setEntdeckenHighlightsResolved(false);
+    }
+    setRankingReady(false);
   }, [isReloading, source]);
 
   const handleEntdeckenHighlightsResolved = useCallback(
@@ -98,6 +102,10 @@ export function RecommendationList({
     },
     [],
   );
+
+  const handleRankingReady = useCallback(() => {
+    setRankingReady(true);
+  }, []);
 
   const showFilterPanel =
     profileSession !== null &&
@@ -138,6 +146,12 @@ export function RecommendationList({
     source === "entdecken" && activeHighlights !== undefined
       ? entdeckenHighlightArtistLookupKeys(activeHighlights)
       : new Set<string>();
+  const visualPageReady =
+    source === "entdecken"
+      ? entdeckenHighlightsResolved && rankingReady
+      : source === "aktuell"
+        ? rankingReady
+        : false;
   const filterRegion = (
     <div
       className={`results-filter-region${
@@ -236,6 +250,7 @@ export function RecommendationList({
         }${source === "aktuell" ? " results-body-aktuell" : ""}${
           source === "entdecken" ? " results-body-entdecken" : ""
         }`}
+        data-visual-page-ready={visualPageReady ? "true" : "pending"}
       >
         {showEntdeckenHero && (
           <EntdeckenHighlightsSection
@@ -262,6 +277,7 @@ export function RecommendationList({
               excludedArtistLookupKeys={entdeckenExcludedArtistLookupKeys}
               loadingMore={loadingMore}
               onLoadMore={onLoadMore}
+              onRankingReady={handleRankingReady}
               recommendations={listRecommendations}
               showSaveAction
             />
@@ -271,6 +287,7 @@ export function RecommendationList({
             canLoadMore={canLoadMore}
             loadingMore={loadingMore}
             onLoadMore={onLoadMore}
+            onRankingReady={handleRankingReady}
             recommendations={listRecommendations}
             showSaveAction
           />

@@ -103,8 +103,13 @@ jobs:
       - name: Install Playwright Chromium
         run: hatch run frontend-playwright-install
 
-      - name: Regenerate and verify reference screenshots on Linux
-        run: hatch run frontend-screenshot-update
+      - name: Run visual screenshot tests
+        run: |
+          if [ "${{ github.event_name }}" = "pull_request" ]; then
+            hatch run frontend-screenshot-live
+          else
+            hatch run frontend-screenshot-update
+          fi
 
       - name: Sync visual reference PNGs
         env:
