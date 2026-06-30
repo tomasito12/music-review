@@ -1347,6 +1347,10 @@ p {
   font-size: 1.65rem;
 }
 
+.setup-page-header h1 {
+  font-size: 1.85rem;
+}
+
 .setup-progress {
   display: flex;
   flex-wrap: wrap;
@@ -1534,8 +1538,44 @@ p {
 }
 
 .choice-grid-broad .choice-card {
-  min-height: 4.1rem;
+  min-height: 4.5rem;
   font-size: 0.88rem;
+  align-items: center;
+}
+
+.choice-grid-broad .choice-card-label {
+  display: -webkit-box;
+  overflow: hidden;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
+  line-height: 1.25;
+}
+
+.setup-selection-hint,
+.setup-filter-hint,
+.setup-match-total {
+  margin: 0.35rem 0 0;
+}
+
+.setup-match-total {
+  color: var(--ink);
+  font-size: 0.9rem;
+  font-weight: 550;
+}
+
+.setup-advanced-filters {
+  margin-top: 0.85rem;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  padding: 0.75rem 0.85rem;
+  background: rgba(255, 253, 250, 0.72);
+}
+
+.setup-advanced-filters > summary {
+  cursor: pointer;
+  color: var(--ink);
+  font-size: 0.9rem;
+  font-weight: 600;
 }
 
 .choice-card small {
@@ -2351,6 +2391,10 @@ select {
   .highlights-grid,
   .highlights-stack {
     gap: 1rem;
+  }
+
+  .setup-grid {
+    grid-template-columns: 1fr;
   }
 
   .highlight-tile {

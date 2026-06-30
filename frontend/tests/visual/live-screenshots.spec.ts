@@ -6,7 +6,6 @@ import {
   visualScreenshotTarget,
   waitForAktuellHighlights,
   waitForEntdeckenRanking,
-  waitForResultsPage,
 } from "./support/pageReady";
 
 function screenshotOptions(page: Page) {
@@ -30,11 +29,9 @@ test.describe("live API reference screenshots", () => {
       screenshotOptions(page),
     );
   });
-
   test("entdecken desktop reference", async ({ page }) => {
     await page.goto("/entdecken");
     await waitForEntdeckenRanking(page);
-    await waitForResultsPage(page);
     await stabilizeVisualPage(page);
     await expect(visualScreenshotTarget(page)).toHaveScreenshot(
       "entdecken-live-desktop.png",
@@ -46,7 +43,6 @@ test.describe("live API reference screenshots", () => {
     await page.setViewportSize({ width: 390, height: 844 });
     await page.goto("/entdecken");
     await waitForEntdeckenRanking(page);
-    await waitForResultsPage(page);
     await stabilizeVisualPage(page);
     await expect(visualScreenshotTarget(page)).toHaveScreenshot(
       "entdecken-live-mobile.png",

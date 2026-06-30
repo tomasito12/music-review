@@ -26,7 +26,7 @@ export function EntdeckenRankingList({
   recommendations,
   showSaveAction = false,
 }: EntdeckenRankingListProps): ReactElement {
-  const { imagesByLookupKey, loadingPhotoRanks, photoRanks } =
+  const { imagesByLookupKey, loadingPhotoRanks, photoRanks, photoSlotsSettled } =
     useEntdeckenPhotoSlots(recommendations, excludedArtistLookupKeys);
   const photoTileIndices = useMemo(
     () => buildEntdeckenPhotoTileIndices(recommendations, photoRanks),
@@ -69,7 +69,11 @@ export function EntdeckenRankingList({
   }
 
   return (
-    <section aria-labelledby="ranking-heading" className="ranking-section ranking-section-after-prelude">
+    <section
+      aria-labelledby="ranking-heading"
+      className="ranking-section ranking-section-after-prelude"
+      data-visual-photo-slots={photoSlotsSettled ? "ready" : "pending"}
+    >
       <div className="ranking-heading">
         <h2 id="ranking-heading">Alle Empfehlungen</h2>
         <p>Sortiert nach Gesamtscore (Passung, Wertung und Stilbreite).</p>

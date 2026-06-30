@@ -5,6 +5,7 @@ import { ApiClient } from "../lib/apiClient";
 import {
   normalizeCommunityWeights,
 } from "../lib/communityWeightMapping";
+import { pickExampleCommunityIds } from "../lib/profileSetupExampleCommunities";
 import { formatCommunityExampleArtists } from "../lib/profileFormatting";
 import type { ProfileEntryContext } from "../lib/profilePageEntry";
 import {
@@ -19,6 +20,7 @@ import {
 import {
   createTemporaryTasteProfile,
   filterSettingsFromPreset,
+  loadArchiveRecommendations,
   loadTasteCommunities,
   loadTasteFilterUi,
   loadTastePresets,
@@ -74,6 +76,8 @@ export function ProfileSetupShell({
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [hydratedFromProfile, setHydratedFromProfile] = useState(false);
+  const [archiveMatchTotal, setArchiveMatchTotal] = useState<number | null>(null);
+  const [archiveMatchLoading, setArchiveMatchLoading] = useState(false);
 
   const broadCategories = Array.from(
     new Set(
@@ -181,6 +185,60 @@ export function ProfileSetupShell({
     );
   }, [selectedCommunityIds]);
 
+  useEffect(() => {
+    if (step !== "filters" || selectedCommunityIds.length === 0) {
+      setArchiveMatchTotal(null);
+      setArchiveMatchLoading(false);
+      return;
+    }
+
+    const resolvedSettings =
+      filterSettings ??
+      (selectedPreset !== null ? filterSettingsFromPreset(selectedPreset) : null);
+    if (resolvedSettings === null) {
+      return;
+    }
+
+    let active = true;
+    const profile = createTemporaryTasteProfile(
+      selectedCommunityIds,
+      resolvedSettings,
+      communityWeightsRaw,
+    );
+
+    async function loadMatchTotal(): Promise<void> {
+      setArchiveMatchLoading(true);
+      try {
+        const result = await loadArchiveRecommendations(new ApiClient(), profile, {
+          limit: 1,
+          offset: 0,
+        });
+        if (active) {
+          setArchiveMatchTotal(result.total);
+        }
+      } catch {
+        if (active) {
+          setArchiveMatchTotal(null);
+        }
+      } finally {
+        if (active) {
+          setArchiveMatchLoading(false);
+        }
+      }
+    }
+
+    void loadMatchTotal();
+    return () => {
+      active = false;
+    };
+  }, [
+    communityWeightsRaw,
+    filterSettings,
+    selectedCommunityIds,
+    selectedPreset,
+    step,
+  ]);
+
   function buildProfile(
     settings: TasteFilterSettings | undefined,
   ): TemporaryTasteProfile {
@@ -260,7 +318,7 @@ export function ProfileSetupShell({
     if (!accepted) {
       return;
     }
-    const exampleIds = communities.slice(0, 3).map((community) => community.id);
+    const exampleIds = pickExampleCommunityIds(communities);
     const settings =
       filterSettings ??
       (selectedPreset !== null
@@ -322,8 +380,9 @@ export function ProfileSetupShell({
     entryContext,
     isSubmitting,
   });
-  const showSetupSummary = entryContext === "initial";
+  const showSetupSummary = entryContext === "initial" && step !== "broad";
   const showQuickTest = entryContext === "initial";
+  const simplifyInitialFilters = entryContext === "initial";
   const showBackToOverview =
     entryContext === "overview" && onBackToOverview !== undefined;
 
@@ -359,8 +418,7 @@ export function ProfileSetupShell({
           );
         })}
       </div>
-      <header className="page-header">
-        <p className="eyebrow">Musikprofil</p>
+      <header className="page-header setup-page-header">
         {step === "broad" && (
           <>
             <h1>Welche groben Richtungen passen zu dir?</h1>
@@ -405,10 +463,13 @@ export function ProfileSetupShell({
                     onClick={() => toggleBroadCategory(category)}
                     type="button"
                   >
-                    {category}
+                    <span className="choice-card-label">{category}</span>
                   </button>
                 ))}
               </div>
+              {selectedBroadCategories.length === 0 && !loading && (
+                <p className="field-hint">Wähle mindestens eine Richtung, um fortzufahren.</p>
+              )}
             </>
           )}
           {step === "details" && (
@@ -417,6 +478,11 @@ export function ProfileSetupShell({
                 {selectedCommunityIds.length} von {availableCommunities.length}{" "}
                 Detailstilen ausgewählt
               </p>
+              {selectedCommunityIds.length > 15 && (
+                <p className="field-hint setup-selection-hint">
+                  Viele Stile — Empfehlungen werden breiter.
+                </p>
+              )}
               <div className="choice-grid choice-grid-details">
                 {availableCommunities.map((community) => {
                   const exampleCaption = formatCommunityExampleArtists(
@@ -459,16 +525,43 @@ export function ProfileSetupShell({
                   </button>
                 ))}
               </div>
-              {filterSettings !== null && (
-                <TasteFilterControls
-                  communities={communities}
-                  communityWeights={communityWeightsRaw}
-                  filterSettings={filterSettings}
-                  onChange={setFilterSettings}
-                  onCommunityWeightsChange={setCommunityWeightsRaw}
-                  selectedCommunityIds={selectedCommunityIds}
-                />
+              {simplifyInitialFilters && (
+                <p className="field-hint setup-filter-hint">
+                  Feintuning kannst du später auf Aktuell und Entdecken vornehmen.
+                </p>
               )}
+              {archiveMatchLoading && (
+                <p className="field-hint setup-match-total">Treffer werden berechnet ...</p>
+              )}
+              {!archiveMatchLoading && archiveMatchTotal !== null && (
+                <p className="setup-match-total">
+                  Etwa {archiveMatchTotal.toLocaleString("de-DE")} Alben im Archiv passen zu
+                  dieser Auswahl.
+                </p>
+              )}
+              {filterSettings !== null &&
+                (simplifyInitialFilters ? (
+                  <details className="setup-advanced-filters">
+                    <summary>Erweitert anpassen</summary>
+                    <TasteFilterControls
+                      communities={communities}
+                      communityWeights={communityWeightsRaw}
+                      filterSettings={filterSettings}
+                      onChange={setFilterSettings}
+                      onCommunityWeightsChange={setCommunityWeightsRaw}
+                      selectedCommunityIds={selectedCommunityIds}
+                    />
+                  </details>
+                ) : (
+                  <TasteFilterControls
+                    communities={communities}
+                    communityWeights={communityWeightsRaw}
+                    filterSettings={filterSettings}
+                    onChange={setFilterSettings}
+                    onCommunityWeightsChange={setCommunityWeightsRaw}
+                    selectedCommunityIds={selectedCommunityIds}
+                  />
+                ))}
             </>
           )}
           {loading && <p className="field-hint">Stilrichtungen werden geladen ...</p>}
@@ -506,38 +599,27 @@ export function ProfileSetupShell({
           </div>
         </div>
         {showSetupSummary && (
-        <aside className="setup-summary setup-summary-subtle">
-          <h2>Dein Profil</h2>
-          <p>Noch nicht gespeichert</p>
-          <div className="setup-summary-section">
-            <strong>Richtungen</strong>
-            <span>
-              {selectedBroadCategories.length > 0
-                ? selectedBroadCategories.join(", ")
-                : "Noch keine Auswahl"}
-            </span>
-          </div>
-          <div className="setup-summary-section">
-            <strong>Detailstile</strong>
-            <span>
-              {selectedCommunityIds.length > 0
-                ? `${selectedCommunityIds.length} ausgewählt`
-                : "Folgen im nächsten Schritt"}
-            </span>
-          </div>
-          <div className="setup-summary-section">
-            <strong>Preset</strong>
-            <span>
-              {selectedPreset !== null
-                ? selectedPreset.label
-                : "Folgt in Schritt 3"}
-            </span>
-          </div>
-          <ul>
-            <li>Oben kannst du zu früheren Schritten springen.</li>
-            <li>Speichern bieten wir nach den ersten Empfehlungen an.</li>
-          </ul>
-        </aside>
+          <aside className="setup-summary setup-summary-subtle">
+            <h2>Dein Profil</h2>
+            <div className="setup-summary-section">
+              <strong>Richtungen</strong>
+              <span>{selectedBroadCategories.join(", ")}</span>
+            </div>
+            <div className="setup-summary-section">
+              <strong>Detailstile</strong>
+              <span>
+                {selectedCommunityIds.length > 0
+                  ? `${selectedCommunityIds.length} ausgewählt`
+                  : "Noch keine Auswahl"}
+              </span>
+            </div>
+            {step === "filters" && (
+              <div className="setup-summary-section">
+                <strong>Preset</strong>
+                <span>{selectedPreset?.label ?? "Ausgewogen"}</span>
+              </div>
+            )}
+          </aside>
         )}
       </div>
     </section>

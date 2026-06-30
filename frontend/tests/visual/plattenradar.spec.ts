@@ -27,6 +27,42 @@ for (const route of routes) {
   });
 }
 
+test("capture musikprofil wizard steps desktop", async ({ page }) => {
+  await page.setViewportSize({ width: 1280, height: 900 });
+  await page.addInitScript(() => {
+    window.sessionStorage.removeItem("plattenradar.profile-session.v1");
+  });
+  await mockMusikprofilApi(page);
+  await page.goto("/musikprofil");
+  await page.getByRole("heading", { name: "Welche groben Richtungen passen zu dir?" }).waitFor();
+  await page.screenshot({
+    path: path.join(screenshotDir, "musikprofil-step1-broad-desktop.png"),
+    fullPage: true,
+  });
+
+  await page.getByRole("button", { name: "Rock & Alternative" }).click();
+  await page.getByRole("button", { name: "Electronic & Dance" }).click();
+  await page.getByRole("button", { name: "Detailstile auswählen" }).click();
+  await page.getByRole("heading", { name: "Welche Detailstile sollen dein Profil prägen?" }).waitFor();
+  await page.getByRole("button", { name: "Indie Rock" }).click();
+  await page.getByRole("button", { name: "Elektronik" }).click();
+  await page.getByRole("button", { name: "Indie Pop" }).click();
+  await page.getByRole("button", { name: "Post-Punk" }).click();
+  await page.getByRole("button", { name: "Dream Pop" }).click();
+  await page.screenshot({
+    path: path.join(screenshotDir, "musikprofil-step2-details-desktop.png"),
+    fullPage: true,
+  });
+
+  await page.getByRole("button", { name: "Filter und Gewichtung" }).click();
+  await page.getByRole("heading", { name: "Wie sollen Empfehlungen gewichtet werden?" }).waitFor();
+  await page.getByText("Etwa 868 Alben im Archiv passen").waitFor();
+  await page.screenshot({
+    path: path.join(screenshotDir, "musikprofil-step3-filters-desktop.png"),
+    fullPage: true,
+  });
+});
+
 test("capture entdecken mobile navigation", async ({ page }) => {
   await page.setViewportSize({ width: 390, height: 844 });
   await page.goto("/entdecken");
@@ -116,6 +152,117 @@ test("capture aktuell fine-tuning panel", async ({ page }) => {
     path: path.join(screenshotDir, "aktuell-fine-tuning-panel.png"),
   });
 });
+
+async function mockMusikprofilApi(page: Page): Promise<void> {
+  await page.route("http://127.0.0.1:8000/v1/**", async (route) => {
+    const url = new URL(route.request().url());
+    if (url.pathname === "/v1/taste-communities") {
+      await route.fulfill({
+        contentType: "application/json",
+        json: [
+          {
+            id: "C001",
+            label: "Indie Rock",
+            broad_categories: ["Rock & Alternative"],
+            example_artists: ["The Notwist", "Big Thief"],
+          },
+          {
+            id: "C002",
+            label: "Post-Punk",
+            broad_categories: ["Rock & Alternative"],
+            example_artists: ["Dry Cleaning"],
+          },
+          {
+            id: "C003",
+            label: "Elektronik",
+            broad_categories: ["Electronic & Dance"],
+            example_artists: ["Low", "The Notwist"],
+          },
+          {
+            id: "C004",
+            label: "Indie Pop",
+            broad_categories: ["Electronic & Dance"],
+            example_artists: ["Japanese Breakfast"],
+          },
+          {
+            id: "C005",
+            label: "Dream Pop",
+            broad_categories: ["Electronic & Dance"],
+            example_artists: ["Beach House"],
+          },
+        ],
+      });
+      return;
+    }
+    if (url.pathname === "/v1/presets") {
+      await route.fulfill({
+        contentType: "application/json",
+        json: [
+          {
+            id: "balanced",
+            label: "Ausgewogen",
+            subtitle: "Der beste Startpunkt",
+            description: "Ausgewogene Gewichtung aus Stilpassung, Wertung und Album-Stilbreite.",
+            icon: "sliders-horizontal",
+            filter_settings: {
+              rating_min: 6,
+              rating_max: 10,
+              score_min: 0.4,
+              score_max: 1,
+              overall_weight_alpha: 0.7,
+              overall_weight_beta: 0.1,
+              overall_weight_gamma: 0.2,
+              sort_mode: "deterministic",
+              serendipity: 0,
+            },
+          },
+          {
+            id: "precise",
+            label: "Treffsicher",
+            subtitle: "Nah an deinem Profil",
+            description: "Sortiert stärker nach Stilpassung.",
+            icon: "crosshair",
+            filter_settings: {
+              rating_min: 6,
+              rating_max: 10,
+              score_min: 0.4,
+              score_max: 1,
+              overall_weight_alpha: 0.8,
+              overall_weight_beta: 0.05,
+              overall_weight_gamma: 0.1,
+              sort_mode: "deterministic",
+              serendipity: 0,
+            },
+          },
+        ],
+      });
+      return;
+    }
+    if (url.pathname === "/v1/taste-filter-ui") {
+      await route.fulfill({
+        contentType: "application/json",
+        json: {
+          default_preset_id: "balanced",
+          preset_display: "Ausgewogen",
+          preset_display_hint: "Wähle ein Preset als Startpunkt für Filter und Gewichtung.",
+          groups: [],
+        },
+      });
+      return;
+    }
+    if (url.pathname === "/v1/recommendations/archive") {
+      await route.fulfill({
+        contentType: "application/json",
+        json: {
+          total: 868,
+          items: [],
+        },
+      });
+      return;
+    }
+    await route.fulfill({ contentType: "application/json", json: {} });
+  });
+}
 
 async function mockAktuellApi(page: Page): Promise<void> {
   const highlightThumb = buildHighlightThumbDataUri();

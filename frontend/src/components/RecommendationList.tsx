@@ -81,17 +81,20 @@ export function RecommendationList({
   profileSession = null,
 }: RecommendationListProps): ReactElement {
   const [entdeckenHighlights, setEntdeckenHighlights] = useState<RecommendationHighlight[]>([]);
+  const [entdeckenHighlightsResolved, setEntdeckenHighlightsResolved] = useState(false);
 
   useEffect(() => {
     if (source !== "entdecken" || !isReloading) {
       return;
     }
     setEntdeckenHighlights([]);
+    setEntdeckenHighlightsResolved(false);
   }, [isReloading, source]);
 
   const handleEntdeckenHighlightsResolved = useCallback(
     (resolved: RecommendationHighlight[]) => {
       setEntdeckenHighlights(resolved);
+      setEntdeckenHighlightsResolved(true);
     },
     [],
   );
@@ -253,14 +256,16 @@ export function RecommendationList({
         {showStandaloneFilters && filterRegion}
 
         {source === "entdecken" ? (
-          <EntdeckenRankingList
-            canLoadMore={canLoadMore}
-            excludedArtistLookupKeys={entdeckenExcludedArtistLookupKeys}
-            loadingMore={loadingMore}
-            onLoadMore={onLoadMore}
-            recommendations={listRecommendations}
-            showSaveAction
-          />
+          entdeckenHighlightsResolved ? (
+            <EntdeckenRankingList
+              canLoadMore={canLoadMore}
+              excludedArtistLookupKeys={entdeckenExcludedArtistLookupKeys}
+              loadingMore={loadingMore}
+              onLoadMore={onLoadMore}
+              recommendations={listRecommendations}
+              showSaveAction
+            />
+          ) : null
         ) : (
           <AktuellRankingList
             canLoadMore={canLoadMore}

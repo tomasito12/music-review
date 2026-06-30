@@ -154,7 +154,7 @@ describe("buildAktuellHighlights", () => {
     expect(highlights[1]?.recommendation.artist).toBe("Gamma");
   });
 
-  it("omits outside-profile when no album is below the score threshold", () => {
+  it("omits outside-profile when fewer than three albums are available", () => {
     const highlights = buildAktuellHighlights([
       recommendation({
         artist: "Alpha",
@@ -175,6 +175,42 @@ describe("buildAktuellHighlights", () => {
       "Beste Passung",
       "Kritikerfavorit",
     ]);
+  });
+
+  it("falls back to the lowest-fit remaining album when none are below the score threshold", () => {
+    const highlights = buildAktuellHighlights([
+      recommendation({
+        artist: "Alpha",
+        album: "First",
+        rating: 8,
+        score: 0.92,
+      }),
+      recommendation({
+        artist: "Beta",
+        album: "Second",
+        rating: 9,
+        score: 0.88,
+      }),
+      recommendation({
+        artist: "Gamma",
+        album: "Third",
+        rating: 8,
+        score: 0.74,
+      }),
+      recommendation({
+        artist: "Delta",
+        album: "Fourth",
+        rating: 7,
+        score: 0.71,
+      }),
+    ]);
+
+    expect(highlights).toHaveLength(3);
+    expect(highlights[2]?.label).toBe("Außerhalb deines Profils");
+    expect(highlights[2]?.recommendation.artist).toBe("Delta");
+    expect(highlights[2]?.recommendation.score).toBeGreaterThanOrEqual(
+      OUTSIDE_PROFILE_SCORE_MAX,
+    );
   });
 
   it("returns an empty list when no recommendations are available", () => {

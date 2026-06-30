@@ -88,7 +88,9 @@ export function buildAktuellHighlights(
     remainingAfterBestFit,
     criticFavorite,
   ).filter((item) => item.score < OUTSIDE_PROFILE_SCORE_MAX);
-  const outsideProfile = pickTopBy(outsidePool, compareByRatingThenLowestScore);
+  const outsideProfile =
+    pickTopBy(outsidePool, compareByRatingThenLowestScore) ??
+    pickOutsideProfileFallback(remainingAfterBestFit, criticFavorite);
 
   const highlights: RecommendationHighlight[] = [];
   const addHighlight = (
@@ -177,6 +179,25 @@ function compareByRatingThenLowestScore(
     return right.rating - left.rating;
   }
   return left.score - right.score;
+}
+
+function compareByLowestScoreThenRating(
+  left: Recommendation,
+  right: Recommendation,
+): number {
+  if (left.score !== right.score) {
+    return left.score - right.score;
+  }
+  return right.rating - left.rating;
+}
+
+/** Pick the least fitting remaining album when none are below the strict threshold. */
+function pickOutsideProfileFallback(
+  remainingAfterBestFit: Recommendation[],
+  criticFavorite: Recommendation | undefined,
+): Recommendation | undefined {
+  const pool = excludeRecommendations(remainingAfterBestFit, criticFavorite);
+  return pickTopBy(pool, compareByLowestScoreThenRating);
 }
 
 function pickTopBy(
