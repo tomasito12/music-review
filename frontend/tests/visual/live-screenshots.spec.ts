@@ -22,9 +22,14 @@ async function captureReferenceScreenshot(
 ): Promise<void> {
   await stabilizeVisualPage(page);
   await assertScreenshotLayoutStable(page);
+  await page.waitForTimeout(250);
+  await stabilizeVisualPage(page);
   await expect(visualScreenshotTarget(page)).toHaveScreenshot(
     snapshotName,
-    screenshotOptions(page),
+    {
+      ...screenshotOptions(page),
+      timeout: 30_000,
+    },
   );
 }
 

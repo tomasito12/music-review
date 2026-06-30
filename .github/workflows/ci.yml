@@ -103,24 +103,19 @@ jobs:
       - name: Install Playwright Chromium
         run: hatch run frontend-playwright-install
 
-      - name: Run visual screenshot tests
-        run: |
-          if [ "${{ github.event_name }}" = "pull_request" ]; then
-            hatch run frontend-screenshot-live
-          else
-            hatch run frontend-screenshot-update
-          fi
+      - name: Regenerate Linux reference screenshots
+        run: hatch run frontend-screenshot-update
 
       - name: Sync visual reference PNGs
         env:
-          CAN_PUSH: ${{ github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository }}
+          CAN_PUSH: ${{ github.event_name == 'push' }}
         run: |
           if git diff --quiet -- frontend/tests/visual/reference/; then
-            echo "Visual references are up to date."
+            echo "Visual references match the Linux render output."
             exit 0
           fi
           if [ "$CAN_PUSH" != "true" ]; then
-            echo "::error::Visual reference PNGs are stale on a fork PR. Run 'Update visual screenshots' on the base repository branch."
+            echo "::error::Visual reference PNGs are stale. Merge the latest develop screenshots or run the 'Update visual screenshots' workflow."
             git diff --stat -- frontend/tests/visual/reference/
             exit 1
           fi

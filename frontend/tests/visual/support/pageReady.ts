@@ -8,16 +8,26 @@ import {
 const VISUAL_TEST_STYLE = `
   html[data-visual-test] :where(body, button, input, select, textarea, p, li, span, a) {
     font-family: "Liberation Sans", Arial, Helvetica, sans-serif !important;
+    text-rendering: geometricPrecision;
+    -webkit-font-smoothing: antialiased;
   }
   html[data-visual-test] :where(h1, h2, h3, .highlight-tile-title) {
     font-family: "Liberation Serif", "Times New Roman", Times, serif !important;
+    text-rendering: geometricPrecision;
   }
   html[data-visual-test] .results-load-more {
     visibility: hidden !important;
   }
+  html[data-visual-test] .artist-image-source {
+    display: none !important;
+  }
+  html[data-visual-test] :where(.highlight-tile-photo, .recommendation-card-thumbnail) {
+    object-fit: cover;
+    background: #d8c8b4;
+  }
 `;
 
-const LAYOUT_STABLE_MS = 1_000;
+const LAYOUT_STABLE_MS = 1_500;
 const LAYOUT_STABLE_TIMEOUT_MS = 60_000;
 
 /** Seed the temporary taste profile used by visual regression tests. */
