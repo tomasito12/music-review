@@ -105,14 +105,14 @@ jobs:
 
       - name: Visual regression screenshots
         env:
-          IS_DEVELOP_PUSH: ${{ github.event_name == 'push' && github.ref == 'refs/heads/develop' }}
+          CAN_AUTO_COMMIT: ${{ github.event_name == 'push' && github.ref == 'refs/heads/develop' }}
         run: |
-          if [ "$IS_DEVELOP_PUSH" = "true" ]; then
-            hatch run frontend-screenshot-update
-            if git diff --quiet -- frontend/tests/visual/reference/; then
-              echo "Visual references already match the Linux render output."
-              exit 0
-            fi
+          hatch run frontend-screenshot-update
+          if git diff --quiet -- frontend/tests/visual/reference/; then
+            echo "Visual references match the Linux render output."
+            exit 0
+          fi
+          if [ "$CAN_AUTO_COMMIT" = "true" ]; then
             git config user.name "github-actions[bot]"
             git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
             git add frontend/tests/visual/reference/*.png
@@ -120,7 +120,9 @@ jobs:
             git push
             exit 0
           fi
-          hatch run frontend-screenshot-live
+          echo "::error::Visual reference PNGs are stale. Merge the latest develop (bot screenshot refresh) or run the 'Update visual screenshots' workflow."
+          git diff --stat -- frontend/tests/visual/reference/
+          exit 1
 
   docker-build:
     name: Docker build smoke test
