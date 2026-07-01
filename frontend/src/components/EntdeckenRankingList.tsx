@@ -1,7 +1,7 @@
 import { useEffect, useMemo, type ReactElement } from "react";
 
 import { artistImageLookupKey } from "../lib/artistImageLookupKey";
-import { limitRecommendationsForVisualTest } from "../lib/visualTestListLimit";
+import { limitRecommendationsForVisualTest, shouldShowLoadMoreButton } from "../lib/visualTestListLimit";
 import { buildEntdeckenPhotoTileIndices } from "../lib/entdeckenPage";
 import { useEntdeckenPhotoSlots } from "../lib/useEntdeckenPhotoSlots";
 import type { Recommendation } from "../types";
@@ -96,7 +96,7 @@ export function EntdeckenRankingList({
           renderRecommendation(recommendation, "list"),
         )}
       </div>
-      {canLoadMore && onLoadMore !== undefined && recommendations.length > visibleRecommendations.length && (
+      {shouldShowLoadMoreButton(canLoadMore) && onLoadMore !== undefined && (
         <div className="results-load-more">
           <button
             className="secondary-button"

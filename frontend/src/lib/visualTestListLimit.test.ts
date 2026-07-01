@@ -5,6 +5,7 @@ import { afterEach, describe, expect, it } from "vitest";
 import type { Recommendation } from "../types";
 import {
   limitRecommendationsForVisualTest,
+  shouldShowLoadMoreButton,
   VISUAL_TEST_LIST_ITEM_LIMIT,
 } from "./visualTestListLimit";
 
@@ -50,5 +51,25 @@ describe("limitRecommendationsForVisualTest", () => {
     expect(limitRecommendationsForVisualTest(recommendations)).toHaveLength(
       VISUAL_TEST_LIST_ITEM_LIMIT,
     );
+  });
+});
+
+describe("shouldShowLoadMoreButton", () => {
+  afterEach(() => {
+    delete document.documentElement.dataset.visualTest;
+  });
+
+  it("shows load more when more items are available outside visual-test mode", () => {
+    expect(shouldShowLoadMoreButton(true)).toBe(true);
+  });
+
+  it("hides load more when no further items are available", () => {
+    expect(shouldShowLoadMoreButton(false)).toBe(false);
+  });
+
+  it("hides load more during visual regression runs", () => {
+    document.documentElement.dataset.visualTest = "true";
+
+    expect(shouldShowLoadMoreButton(true)).toBe(false);
   });
 });

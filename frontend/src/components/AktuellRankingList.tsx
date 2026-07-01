@@ -1,7 +1,7 @@
 import { useEffect, type ReactElement } from "react";
 
 import { artistImageLookupKey } from "../lib/artistImageLookupKey";
-import { limitRecommendationsForVisualTest } from "../lib/visualTestListLimit";
+import { limitRecommendationsForVisualTest, shouldShowLoadMoreButton } from "../lib/visualTestListLimit";
 import { useArtistImagesBatch } from "../lib/useArtistImagesBatch";
 import type { Recommendation } from "../types";
 
@@ -69,7 +69,7 @@ export function AktuellRankingList({
           );
         })}
       </div>
-      {canLoadMore && onLoadMore !== undefined && recommendations.length > visibleRecommendations.length && (
+      {shouldShowLoadMoreButton(canLoadMore) && onLoadMore !== undefined && (
         <div className="results-load-more">
           <button
             className="secondary-button"
