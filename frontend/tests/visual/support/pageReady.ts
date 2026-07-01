@@ -76,7 +76,7 @@ export async function waitForVisualLayoutStable(
   page: Page,
   timeoutMs: number = LAYOUT_STABLE_TIMEOUT_MS,
 ): Promise<void> {
-  const target = visualScreenshotTarget(page);
+  const target = visualLayoutProbe(page);
   let lastHeight = -1;
   let stableSince = Date.now();
   const deadline = Date.now() + timeoutMs;
@@ -135,14 +135,32 @@ export async function waitForEntdeckenRanking(page: Page): Promise<void> {
   await waitForVisualLayoutStable(page);
 }
 
-/** Main results surface used for live visual regression screenshots. */
-export function visualScreenshotTarget(page: Page) {
+/** Fixed viewport clip used for live visual regression screenshots. */
+export function visualScreenshotClip(page: Page): {
+  x: number;
+  height: number;
+  width: number;
+} {
+  const viewport = page.viewportSize();
+  if (viewport === null) {
+    throw new Error("Viewport size is not set");
+  }
+  return {
+    x: 0,
+    y: 0,
+    width: viewport.width,
+    height: viewport.height,
+  };
+}
+
+/** Main results surface polled until layout stops shifting before capture. */
+export function visualLayoutProbe(page: Page) {
   return page.locator(".results-page");
 }
 
 /** Assert that two consecutive captures would have the same height. */
 export async function assertScreenshotLayoutStable(page: Page): Promise<void> {
-  const target = visualScreenshotTarget(page);
+  const target = visualLayoutProbe(page);
   const firstHeight = await target.evaluate((element) => element.getBoundingClientRect().height);
   await page.waitForTimeout(300);
   await waitForVisualLayoutStable(page);

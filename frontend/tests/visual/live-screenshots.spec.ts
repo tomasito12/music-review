@@ -4,7 +4,7 @@ import {
   assertScreenshotLayoutStable,
   seedVisualProfileSession,
   stabilizeVisualPage,
-  visualScreenshotTarget,
+  visualScreenshotClip,
   waitForAktuellHighlights,
   waitForEntdeckenRanking,
 } from "./support/pageReady";
@@ -24,10 +24,11 @@ async function captureReferenceScreenshot(
   await assertScreenshotLayoutStable(page);
   await page.waitForTimeout(250);
   await stabilizeVisualPage(page);
-  await expect(visualScreenshotTarget(page)).toHaveScreenshot(
+  await expect(page).toHaveScreenshot(
     snapshotName,
     {
       ...screenshotOptions(page),
+      clip: visualScreenshotClip(page),
       timeout: 30_000,
     },
   );

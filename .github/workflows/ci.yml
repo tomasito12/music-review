@@ -103,27 +103,24 @@ jobs:
       - name: Install Playwright Chromium
         run: hatch run frontend-playwright-install
 
-      - name: Regenerate Linux reference screenshots
-        run: hatch run frontend-screenshot-update
-
-      - name: Sync visual reference PNGs
+      - name: Visual regression screenshots
         env:
-          CAN_PUSH: ${{ github.event_name == 'push' }}
+          IS_DEVELOP_PUSH: ${{ github.event_name == 'push' && github.ref == 'refs/heads/develop' }}
         run: |
-          if git diff --quiet -- frontend/tests/visual/reference/; then
-            echo "Visual references match the Linux render output."
+          if [ "$IS_DEVELOP_PUSH" = "true" ]; then
+            hatch run frontend-screenshot-update
+            if git diff --quiet -- frontend/tests/visual/reference/; then
+              echo "Visual references already match the Linux render output."
+              exit 0
+            fi
+            git config user.name "github-actions[bot]"
+            git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+            git add frontend/tests/visual/reference/*.png
+            git commit -m "chore: refresh visual reference screenshots for Linux CI"
+            git push
             exit 0
           fi
-          if [ "$CAN_PUSH" != "true" ]; then
-            echo "::error::Visual reference PNGs are stale. Merge the latest develop screenshots or run the 'Update visual screenshots' workflow."
-            git diff --stat -- frontend/tests/visual/reference/
-            exit 1
-          fi
-          git config user.name "github-actions[bot]"
-          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git add frontend/tests/visual/reference/*.png
-          git commit -m "chore: refresh visual reference screenshots for Linux CI"
-          git push
+          hatch run frontend-screenshot-live
 
   docker-build:
     name: Docker build smoke test
