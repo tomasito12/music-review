@@ -1,7 +1,9 @@
-import type { ReactElement } from "react";
+import { useEffect, useState, type ReactElement } from "react";
 
+import type { ArtistImageData } from "../lib/artistImageApi";
 import type { Recommendation } from "../types";
 
+import { ArtistListThumbnail } from "./ArtistListThumbnail";
 import { CardExcerpt } from "./CardExcerpt";
 import { SaveHeartButton } from "./SaveHeartButton";
 import { useFavorites } from "../lib/favoritesContext";
@@ -12,12 +14,14 @@ import {
 } from "../lib/recommendationTagStyles";
 
 interface RecommendationCardProps {
+  artistImage?: ArtistImageData | null;
   recommendation: Recommendation;
   showSaveAction?: boolean;
   variant?: "regular" | "feature";
 }
 
 export function RecommendationCard({
+  artistImage = null,
   recommendation,
   showSaveAction = false,
   variant = "regular",
@@ -26,11 +30,18 @@ export function RecommendationCard({
   const tags = visibleRecommendationTags(recommendation.tags);
   const { isSaved, isToggling, toggleSave } = useFavorites();
   const saved = isSaved(recommendation.reviewId);
+  const [thumbnailVisible, setThumbnailVisible] = useState(artistImage !== null);
+
+  useEffect(() => {
+    setThumbnailVisible(artistImage !== null);
+  }, [artistImage]);
+
+  const showThumbnail = artistImage !== null && thumbnailVisible;
   return (
     <article
       className={`recommendation-card recommendation-card-${variant}${
         showSaveAction ? " recommendation-card-with-save" : ""
-      }`}
+      }${showThumbnail ? " recommendation-card-with-thumbnail" : ""}`}
     >
       {showSaveAction && (
         <SaveHeartButton
@@ -44,6 +55,15 @@ export function RecommendationCard({
       <div className="rank" aria-label={`Listenposition ${recommendation.rank}`}>
         <span>{recommendation.rank.toString().padStart(2, "0")}</span>
       </div>
+      {showThumbnail && artistImage !== null && (
+        <ArtistListThumbnail
+          artistName={recommendation.artist}
+          image={artistImage}
+          onFailed={() => {
+            setThumbnailVisible(false);
+          }}
+        />
+      )}
       <div className="card-main">
         <h2>
           <a href={recommendation.reviewUrl} rel="noreferrer" target="_blank">

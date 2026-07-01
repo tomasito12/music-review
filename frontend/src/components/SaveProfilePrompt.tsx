@@ -1,26 +1,31 @@
 import type { ReactElement } from "react";
 
 interface SaveProfilePromptProps {
+  onCreateAccount: () => void;
   onDismiss: () => void;
-  onSave: () => void;
+  onSaveToExistingAccount: () => void;
 }
 
 export function SaveProfilePrompt({
+  onCreateAccount,
   onDismiss,
-  onSave,
+  onSaveToExistingAccount,
 }: SaveProfilePromptProps): ReactElement {
   return (
     <aside aria-label="Profil speichern" className="save-profile-prompt">
       <div>
         <strong>Dieses Musikprofil speichern?</strong>
         <p>
-          Dann bekommst du beim nächsten Besuch direkt neue Empfehlungen, ohne
-          alles neu auszuwählen.
+          Lege ein neues Konto an oder melde dich an, um dein aktuelles Profil in
+          deinem bestehenden Konto zu sichern.
         </p>
       </div>
       <div className="save-profile-prompt-actions">
-        <button className="primary-button" onClick={onSave} type="button">
-          Profil speichern
+        <button className="primary-button" onClick={onSaveToExistingAccount} type="button">
+          In bestehendes Konto speichern
+        </button>
+        <button className="secondary-button" onClick={onCreateAccount} type="button">
+          Konto anlegen
         </button>
         <button className="ghost-button" onClick={onDismiss} type="button">
           Später

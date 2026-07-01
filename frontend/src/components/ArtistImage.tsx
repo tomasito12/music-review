@@ -1,6 +1,7 @@
 import type { ReactElement } from "react";
 
 import type { ArtistImageData } from "../lib/artistImageApi";
+import { isVisualTestMode } from "../lib/visualTestMode";
 
 interface ArtistImageProps {
   artistName: string;
@@ -18,7 +19,7 @@ export function ArtistImage({
         alt={artistName}
         className="highlight-tile-photo"
         decoding="async"
-        loading="lazy"
+        loading={isVisualTestMode() ? "eager" : "lazy"}
         src={image.thumbnailUrl}
       />
       <details className="artist-image-source">

@@ -5,6 +5,7 @@ import { resolveProfileSaveBannerState } from "./unsavedProfileBanner";
 const baseInput = {
   isAuthenticated: true,
   hasUnsavedProfileChanges: false,
+  needsInitialAccountSave: false,
   isSavingProfileChanges: false,
   savedMessage: null,
   errorMessage: null,
@@ -33,6 +34,21 @@ describe("resolveProfileSaveBannerState", () => {
       message: "Profil geändert · noch nicht gespeichert",
       showSaveButton: true,
       showDiscardButton: true,
+    });
+  });
+
+  it("shows a first-save state without discard for logged-in users", () => {
+    expect(
+      resolveProfileSaveBannerState({
+        ...baseInput,
+        needsInitialAccountSave: true,
+      }),
+    ).toEqual({
+      visible: true,
+      variant: "unsaved",
+      message: "Profil noch nicht in deinem Konto gespeichert",
+      showSaveButton: true,
+      showDiscardButton: false,
     });
   });
 

@@ -19,7 +19,7 @@ export function SaveProfileConfirmation({
         </p>
       </div>
       <button className="secondary-button" onClick={onGoToAktuell} type="button">
-        Zu Aktuell wechseln
+        Zu Neuheiten wechseln
       </button>
     </aside>
   );

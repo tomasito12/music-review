@@ -3,11 +3,16 @@ import { describe, expect, it } from "vitest";
 import { ApiError } from "./apiClient";
 import {
   authErrorMessage,
+  profileSaveUnauthorizedMessage,
   validateLoginForm,
   validateSaveProfileForm,
 } from "./authForm";
 
 describe("authForm", () => {
+  it("explains expired sessions for profile saves", () => {
+    expect(profileSaveUnauthorizedMessage()).toContain("erneut ein");
+  });
+
   it("maps duplicate registration to a login hint", () => {
     expect(
       authErrorMessage(new ApiError("Conflict", 409), "save-profile"),

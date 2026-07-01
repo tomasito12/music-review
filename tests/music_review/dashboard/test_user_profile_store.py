@@ -367,12 +367,50 @@ def test_ensure_active_profile_hydrated_loads_from_db(_use_test_db) -> None:
     )
     save_profile(None, "ada", payload)
     session: dict[str, object] = {ACTIVE_PROFILE_SESSION_KEY: "ada"}
-    assert ensure_active_profile_hydrated(session) == ProfileHydrationResult.HYDRATED
-    assert session[ACTIVE_PROFILE_SESSION_KEY] == "ada"
+    result = ensure_active_profile_hydrated(session)
+    assert result == ProfileHydrationResult.APPLIED_FROM_DB
     assert session["selected_communities"] == {"7", "8"}
     assert session["filter_settings"]["year_min"] == 2000
     assert session["community_weights_raw"] == {"7": 0.25}
     assert TASTE_WIZARD_RESET_PENDING_KEY not in session
+
+
+def test_ensure_active_profile_hydrated_skips_db_when_session_has_prefs(
+    _use_test_db,
+) -> None:
+    conn = _use_test_db
+    _register(conn, "ada")
+    payload = build_profile_payload(
+        profile_slug="ada",
+        flow_mode="combined",
+        selected_communities={"7", "8"},
+        filter_settings={
+            "year_min": 2000,
+            "year_max": 2024,
+            "rating_min": 7,
+            "rating_max": 10,
+            "score_min": 0.7,
+            "score_max": 1.0,
+        },
+        community_weights_raw={"7": 0.25},
+    )
+    save_profile(None, "ada", payload)
+    session: dict[str, object] = {
+        ACTIVE_PROFILE_SESSION_KEY: "ada",
+        "selected_communities": {"7"},
+        "filter_settings": {
+            "year_min": 2000,
+            "year_max": 2024,
+            "rating_min": 7,
+            "rating_max": 10,
+            "score_min": 0.2,
+            "score_max": 1.0,
+        },
+        "community_weights_raw": {"7": 1.0},
+    }
+    assert ensure_active_profile_hydrated(session) == ProfileHydrationResult.HYDRATED
+    assert session["filter_settings"]["score_min"] == 0.2
+    assert session["community_weights_raw"] == {"7": 1.0}
 
 
 def test_ensure_active_profile_hydrated_missing_user_clears_slug(

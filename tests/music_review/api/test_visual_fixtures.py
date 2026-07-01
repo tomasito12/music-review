@@ -12,12 +12,11 @@ _PROFILE = {
     "filter_settings": {
         "rating_min": 6,
         "rating_max": 10,
-        "score_min": 0.4,
+        "score_min": 0.0,
         "score_max": 1,
         "overall_weight_alpha": 0.5,
         "overall_weight_beta": 0.25,
         "overall_weight_gamma": 0.25,
-        "community_spectrum_crossover": 0.5,
         "sort_mode": "deterministic",
         "serendipity": 0,
     },
@@ -39,12 +38,13 @@ def test_visual_app_serves_recommendations_and_artist_images() -> None:
 
     newest = client.post(
         "/v1/recommendations/new-reviews",
-        json={"profile": _PROFILE, "limit": 6, "offset": 0, "newest_count": 8},
+        json={"profile": _PROFILE, "limit": 8, "offset": 0, "update_rounds": 2},
     )
     assert newest.status_code == 200
     newest_artists = {item["artist"] for item in newest.json()["items"]}
-    assert "Wolf Alice" in newest_artists
+    assert len(newest_artists) == 8
     assert "The Notwist" in newest_artists
+    assert "Big Thief" in newest_artists
 
     images = client.post(
         "/v1/artists/images",

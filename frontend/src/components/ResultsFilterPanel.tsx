@@ -1,6 +1,7 @@
 import type { ReactElement } from "react";
 
 import type { TasteCommunityOption, TasteFilterSettings, TastePreset } from "../lib/plattenradarApi";
+import { normalizeFilterSettings } from "../lib/plattenradarApi";
 import type { ProfileSetupResult } from "../lib/profileSessionStorage";
 
 import { PresetPillBar } from "./PresetPillBar";
@@ -35,10 +36,9 @@ export function ResultsFilterPanel({
 }: ResultsFilterPanelProps): ReactElement {
   const { profile } = profileSession;
 
-  const introText =
-    isAuthenticated && hasSavedProfileReference
-      ? "Änderungen wirken sofort auf diese Liste. Dauerhaft speichern kannst du sie oben im Banner."
-      : "Änderungen wirken sofort auf diese Liste.";
+  const introText = isAuthenticated
+    ? "Änderungen wirken sofort auf diese Liste. Dauerhaft speichern kannst du sie oben im Banner."
+    : "Änderungen wirken sofort auf diese Liste.";
 
   return (
     <div className="results-filter-shell">
@@ -61,7 +61,7 @@ export function ResultsFilterPanel({
           <TasteFilterControls
             communities={communities}
             communityWeights={profile.community_weights_raw}
-            filterSettings={profile.filter_settings}
+            filterSettings={normalizeFilterSettings(profile.filter_settings)}
             onChange={onFilterSettingsChange}
             onCommunityWeightsChange={onCommunityWeightsChange}
             selectedCommunityIds={profile.selected_communities}

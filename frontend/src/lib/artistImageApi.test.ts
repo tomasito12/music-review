@@ -117,6 +117,26 @@ describe("loadArtistImagesBatch", () => {
     expect(fetchMock).toHaveBeenCalledOnce();
     expect(second.get("mbid-1")?.artistName).toBe("Radiohead");
   });
+
+  it("caches a null result for artists missing from the batch response", async () => {
+    const fetchMock = vi.fn().mockResolvedValue(
+      new Response(JSON.stringify({ items: [] }), { status: 200 }),
+    );
+    vi.stubGlobal("fetch", fetchMock);
+    const client = new ApiClient({ baseUrl: "https://api.example.test" });
+
+    const result = await loadArtistImagesBatch(client, [
+      { artistMbid: "mbid-missing", artistName: "Missing" },
+    ]);
+
+    expect(result.get("mbid-missing")).toBeNull();
+    expect(fetchMock).toHaveBeenCalledOnce();
+    const second = await loadArtistImagesBatch(client, [
+      { artistMbid: "mbid-missing", artistName: "Missing" },
+    ]);
+    expect(second.get("mbid-missing")).toBeNull();
+    expect(fetchMock).toHaveBeenCalledOnce();
+  });
 });
 
 describe("loadArtistImage", () => {

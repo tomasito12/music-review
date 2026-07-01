@@ -40,3 +40,15 @@ def test_wait_for_url_raises_when_service_stays_down() -> None:
         pytest.raises(TimeoutError, match="Timed out waiting for"),
     ):
         module._wait_for_url("http://127.0.0.1:9", timeout_seconds=0.6)
+
+
+def test_run_playwright_invokes_live_project() -> None:
+    module = _load_run_live_screenshots_module()
+    completed = MagicMock(returncode=0)
+    with patch.object(module.subprocess, "run", return_value=completed) as run_mock:
+        exit_code = module._run_playwright(update_snapshots=True, env={"CI": "true"})
+    assert exit_code == 0
+    run_mock.assert_called_once()
+    command = run_mock.call_args.args[0]
+    assert "--project=live" in command
+    assert "--update-snapshots" in command

@@ -1,4 +1,4 @@
-import type { ReactElement } from "react";
+import { useCallback, useEffect, useState, type ReactElement } from "react";
 
 import type {
   Recommendation,
@@ -6,14 +6,20 @@ import type {
   RecommendationSource,
 } from "../types";
 import type { AktuellBriefing } from "../lib/aktuellPage";
+import { entdeckenHighlightArtistLookupKeys } from "../lib/entdeckenPage";
 import type { TasteCommunityOption, TasteFilterSettings, TastePreset } from "../lib/plattenradarApi";
 import type { ProfileSetupResult } from "../lib/profileSessionStorage";
 
-import { RecommendationCard } from "./RecommendationCard";
+import { AktuellRankingList } from "./AktuellRankingList";
+import { EntdeckenHighlightsSection } from "./EntdeckenHighlightsSection";
 import { EntdeckenRankingList } from "./EntdeckenRankingList";
 import { RecommendationHighlights } from "./RecommendationHighlights";
-import { RecommendationTagLegend } from "./RecommendationTagLegend";
 import { ResultsFilterPanel } from "./ResultsFilterPanel";
+import { ResultsListPrelude } from "./ResultsListPrelude";
+import {
+  shouldShowResultsListPrelude,
+  shouldShowStandaloneFilterRegion,
+} from "../lib/resultsListLayout";
 
 interface RecommendationListProps {
   aktuellBriefing?: AktuellBriefing;
@@ -57,7 +63,7 @@ export function RecommendationList({
   loadingMore = false,
   savePrompt = null,
   updateRoundOptions,
-  updateRounds = "4",
+  updateRounds = "1",
   onCreatePlaylist,
   onLoadMore,
   onUpdateRoundsChange,
@@ -74,34 +80,82 @@ export function RecommendationList({
   onPresetSelect,
   profileSession = null,
 }: RecommendationListProps): ReactElement {
+  const [entdeckenHighlights, setEntdeckenHighlights] = useState<RecommendationHighlight[]>([]);
+  const [entdeckenHighlightsResolved, setEntdeckenHighlightsResolved] = useState(false);
+  const [rankingReady, setRankingReady] = useState(false);
+
+  useEffect(() => {
+    if (!isReloading) {
+      return;
+    }
+    if (source === "entdecken") {
+      setEntdeckenHighlights([]);
+      setEntdeckenHighlightsResolved(false);
+    }
+    setRankingReady(false);
+  }, [isReloading, source]);
+
+  const handleEntdeckenHighlightsResolved = useCallback(
+    (resolved: RecommendationHighlight[]) => {
+      setEntdeckenHighlights(resolved);
+      setEntdeckenHighlightsResolved(true);
+    },
+    [],
+  );
+
+  const handleRankingReady = useCallback(() => {
+    setRankingReady(true);
+  }, []);
+
   const showFilterPanel =
     profileSession !== null &&
     onPresetSelect !== undefined &&
     onFilterSettingsChange !== undefined &&
     onFilterCommunityWeightsChange !== undefined &&
     onEditProfile !== undefined;
+  const aktuellHighlights =
+    source === "aktuell" && highlights !== undefined && highlights.length > 0
+      ? highlights
+      : undefined;
+  const activeHighlights =
+    source === "entdecken"
+      ? entdeckenHighlights.length > 0
+        ? entdeckenHighlights
+        : undefined
+      : aktuellHighlights;
   const topRecommendationIds = new Set(
-    (source === "aktuell" && highlights !== undefined ? highlights : []).map(
+    (activeHighlights ?? []).map(
       (highlight) =>
         `${highlight.recommendation.artist}-${highlight.recommendation.album}`,
     ),
   );
   const listRecommendations =
-    source === "aktuell" && recommendations.length > topRecommendationIds.size
+    activeHighlights !== undefined && recommendations.length > topRecommendationIds.size
       ? recommendations.filter(
           (item) => !topRecommendationIds.has(`${item.artist}-${item.album}`),
         )
       : recommendations;
-  const rankingTitle =
-    source === "aktuell" ? "Weitere neue Rezensionen" : "Alle Empfehlungen";
-  const rankingDescription =
-    source === "aktuell"
-      ? "Dichter sortiert, damit du den Update-Schwung schnell scannen kannst."
-      : "Sortiert nach der Passung zu deinem Musikprofil.";
+  const hasEditorialHighlights = activeHighlights !== undefined && activeHighlights.length > 0;
+  const showEntdeckenHero = source === "entdecken" && recommendations.length > 0;
+  const showPrelude = shouldShowResultsListPrelude(activeHighlights ?? []);
+  const showStandaloneFilters = shouldShowStandaloneFilterRegion(
+    showFilterPanel,
+    showPrelude,
+  );
+  const entdeckenExcludedArtistLookupKeys =
+    source === "entdecken" && activeHighlights !== undefined
+      ? entdeckenHighlightArtistLookupKeys(activeHighlights)
+      : new Set<string>();
+  const visualPageReady =
+    source === "entdecken"
+      ? entdeckenHighlightsResolved && rankingReady
+      : source === "aktuell"
+        ? rankingReady
+        : false;
   const filterRegion = (
     <div
       className={`results-filter-region${
-        source === "aktuell" ? " results-filter-region-after-highlights" : ""
+        hasEditorialHighlights ? " results-filter-region-after-highlights" : ""
       }`}
     >
       <div className="results-toolbar">
@@ -149,12 +203,6 @@ export function RecommendationList({
       )}
     </div>
   );
-  const entdeckenFilterRegion = (
-    <>
-      {filterRegion}
-      <RecommendationTagLegend />
-    </>
-  );
 
   return (
     <section className="results-page page-shell">
@@ -166,7 +214,7 @@ export function RecommendationList({
               onClick={() => onCreatePlaylist(source)}
               type="button"
             >
-              Playlist aus Aktuell vorbereiten
+              Playlist aus Neuheiten vorbereiten
             </button>
           </div>
           <div className="aktuell-briefing-copy">
@@ -179,7 +227,7 @@ export function RecommendationList({
         <div className="results-header">
           <header className="page-header">
             <p className="eyebrow">
-              {source === "aktuell" ? "Neue Rezensionen" : "Archiv"}
+              {source === "aktuell" ? "Neuheiten" : "Archiv"}
             </p>
             <h1>{title}</h1>
             <p>{message}</p>
@@ -202,61 +250,48 @@ export function RecommendationList({
         }${source === "aktuell" ? " results-body-aktuell" : ""}${
           source === "entdecken" ? " results-body-entdecken" : ""
         }`}
+        data-visual-page-ready={visualPageReady ? "true" : "pending"}
       >
-      {highlights !== undefined && highlights.length > 0 && (
-        <RecommendationHighlights highlights={highlights} showSaveAction />
-      )}
-
-      {source === "aktuell" && (
-        <div className="results-list-prelude">
-          {filterRegion}
-          <RecommendationTagLegend />
-        </div>
-      )}
-
-      {source === "entdecken" ? (
-        <EntdeckenRankingList
-          canLoadMore={canLoadMore}
-          filterRegion={entdeckenFilterRegion}
-          loadingMore={loadingMore}
-          onLoadMore={onLoadMore}
-          recommendations={listRecommendations}
-          showSaveAction
-        />
-      ) : (
-      <section
-        aria-labelledby="ranking-heading"
-        className={`ranking-section${
-          source === "aktuell" ? " ranking-section-after-prelude" : ""
-        }`}
-      >
-        <div className="ranking-heading">
-          <h2 id="ranking-heading">{rankingTitle}</h2>
-          <p>{rankingDescription}</p>
-        </div>
-        <div className="recommendation-list">
-          {listRecommendations.map((item) => (
-            <RecommendationCard
-              key={`${item.source}-${item.rank}`}
-              recommendation={item}
-              showSaveAction={source === "aktuell"}
-            />
-          ))}
-        </div>
-        {canLoadMore && onLoadMore !== undefined && (
-          <div className="results-load-more">
-            <button
-              className="secondary-button"
-              disabled={loadingMore}
-              onClick={onLoadMore}
-              type="button"
-            >
-              {loadingMore ? "Weitere Alben werden geladen ..." : "Weitere Alben laden"}
-            </button>
-          </div>
+        {showEntdeckenHero && (
+          <EntdeckenHighlightsSection
+            onHighlightsResolved={handleEntdeckenHighlightsResolved}
+            recommendations={recommendations}
+            showSaveAction
+          />
         )}
-      </section>
-      )}
+
+        {source === "aktuell" && aktuellHighlights !== undefined && (
+          <RecommendationHighlights highlights={aktuellHighlights} showSaveAction />
+        )}
+
+        {showPrelude && (
+          <ResultsListPrelude filterRegion={filterRegion} source={source} />
+        )}
+
+        {showStandaloneFilters && filterRegion}
+
+        {source === "entdecken" ? (
+          entdeckenHighlightsResolved ? (
+            <EntdeckenRankingList
+              canLoadMore={canLoadMore}
+              excludedArtistLookupKeys={entdeckenExcludedArtistLookupKeys}
+              loadingMore={loadingMore}
+              onLoadMore={onLoadMore}
+              onRankingReady={handleRankingReady}
+              recommendations={listRecommendations}
+              showSaveAction
+            />
+          ) : null
+        ) : (
+          <AktuellRankingList
+            canLoadMore={canLoadMore}
+            loadingMore={loadingMore}
+            onLoadMore={onLoadMore}
+            onRankingReady={handleRankingReady}
+            recommendations={listRecommendations}
+            showSaveAction
+          />
+        )}
       </div>
     </section>
   );

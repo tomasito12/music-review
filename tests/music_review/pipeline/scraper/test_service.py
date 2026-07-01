@@ -76,7 +76,7 @@ class TestProcessSingle:
                 return_value=review,
             ),
             patch(
-                "music_review.pipeline.scraper.service.append_review",
+                "music_review.pipeline.scraper.service.append_jsonl_line",
             ) as mock_append,
         ):
             _process_single(
@@ -88,13 +88,25 @@ class TestProcessSingle:
                 result=result,
             )
 
-        mock_append.assert_called_once_with(path, review)
+        mock_append.assert_called_once()
+        written = mock_append.call_args[0][1]
+        assert written["id"] == 42
+        assert written["first_seen_at"]
         assert result.processed == 1
         assert result.scraped_ids == [42]
 
     def test_updates_corpus_on_update_mode(self, tmp_path: Path) -> None:
         path = tmp_path / "reviews.jsonl"
-        corpus: dict[int, dict[str, Any]] = {}
+        corpus: dict[int, dict[str, Any]] = {
+            7: {
+                "id": 7,
+                "url": "u",
+                "artist": "Artist 7",
+                "album": "Album 7",
+                "text": "t",
+                "first_seen_at": "2026-06-01T10:00:00Z",
+            },
+        }
         result = ScrapeResult()
         review = _make_review(7)
 
@@ -104,8 +116,7 @@ class TestProcessSingle:
         ):
             _process_single(7, "<html/>", path, corpus, update_mode=True, result=result)
 
-        assert 7 in corpus
-        assert corpus[7]["artist"] == "Artist 7"
+        assert corpus[7]["first_seen_at"] == "2026-06-01T10:00:00Z"
         assert result.processed == 1
 
     def test_skips_if_parse_returns_none(self, tmp_path: Path) -> None:
@@ -137,18 +148,27 @@ class TestFinalizeCorpus:
         written_reviews = mock_write.call_args[0][1]
         assert [r["id"] for r in written_reviews] == [1, 3]
 
-    def test_noop_in_append_mode(self, tmp_path: Path) -> None:
+    def test_records_update_batch_in_append_mode(self, tmp_path: Path) -> None:
         result = ScrapeResult()
-        with patch(
-            "music_review.pipeline.scraper.service.write_corpus",
-        ) as mock_write:
+        result.scraped_ids = [9, 10]
+
+        with (
+            patch(
+                "music_review.pipeline.scraper.service.write_corpus",
+            ) as mock_write,
+            patch(
+                "music_review.pipeline.scraper.service.append_update_batch",
+            ) as mock_batch,
+        ):
             _finalize_corpus(
                 None,
                 update_mode=False,
-                output_path=tmp_path / "x",
+                output_path=tmp_path / "reviews.jsonl",
                 result=result,
             )
+
         mock_write.assert_not_called()
+        mock_batch.assert_called_once_with([9, 10])
 
 
 class TestScrapeUntilGap:

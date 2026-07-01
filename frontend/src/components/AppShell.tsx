@@ -19,7 +19,7 @@ interface AppShellProps {
 }
 
 const navItems: Array<{ route: AppRoute; label: string }> = [
-  { route: "aktuell", label: "Aktuell" },
+  { route: "aktuell", label: "Neuheiten" },
   { route: "entdecken", label: "Entdecken" },
   { route: "playlists", label: "Playlists" },
   { route: "musikprofil", label: "Musikprofil" },

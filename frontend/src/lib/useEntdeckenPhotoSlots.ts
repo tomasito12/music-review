@@ -2,17 +2,19 @@ import { useEffect, useMemo, useState } from "react";
 
 import { useApiClient } from "./apiClientContext";
 import { loadArtistImagesBatch, type ArtistImageData } from "./artistImageApi";
-import { artistImageLookupKey } from "./artistImageLookupKey";
+import { artistImageLookupKey, claimArtist, isArtistClaimed } from "./artistImageLookupKey";
 import {
   entdeckenPhotoSlotGroups,
   entdeckenRecommendationHasPhoto,
 } from "./entdeckenPage";
+import { isVisualTestMode } from "./visualTestMode";
 import type { Recommendation } from "../types";
 
 export interface UseEntdeckenPhotoSlotsResult {
   imagesByLookupKey: Map<string, ArtistImageData | null>;
   loadingPhotoRanks: Set<number>;
   photoRanks: Set<number>;
+  photoSlotsSettled: boolean;
 }
 
 function recommendationLookupKey(recommendation: Recommendation): string {
@@ -25,6 +27,7 @@ function recommendationLookupKey(recommendation: Recommendation): string {
 /** Resolve Entdecken photo slots one group at a time so the first tiles appear quickly. */
 export function useEntdeckenPhotoSlots(
   recommendations: Recommendation[],
+  excludedArtistLookupKeys: ReadonlySet<string> = new Set(),
 ): UseEntdeckenPhotoSlotsResult {
   const apiClient = useApiClient();
   const [imagesByLookupKey, setImagesByLookupKey] = useState<
@@ -32,6 +35,9 @@ export function useEntdeckenPhotoSlots(
   >(new Map());
   const [loadingPhotoRanks, setLoadingPhotoRanks] = useState<Set<number>>(new Set());
   const [photoRanks, setPhotoRanks] = useState<Set<number>>(new Set());
+  const [photoSlotsSettled, setPhotoSlotsSettled] = useState(
+    recommendations.length === 0,
+  );
 
   const recommendationSignature = useMemo(
     () =>
@@ -44,15 +50,25 @@ export function useEntdeckenPhotoSlots(
     [recommendations],
   );
 
+  const excludedArtistSignature = useMemo(
+    () => [...excludedArtistLookupKeys].sort().join(","),
+    [excludedArtistLookupKeys],
+  );
+
   useEffect(() => {
     if (recommendations.length === 0) {
       setImagesByLookupKey(new Map());
       setLoadingPhotoRanks(new Set());
       setPhotoRanks(new Set());
+      setPhotoSlotsSettled(true);
       return;
     }
 
     let active = true;
+    const deferProgressiveUpdates = isVisualTestMode();
+    setPhotoSlotsSettled(false);
+    setLoadingPhotoRanks(new Set());
+
     const rankByNumber = new Map(
       recommendations.map((recommendation) => [recommendation.rank, recommendation]),
     );
@@ -61,80 +77,128 @@ export function useEntdeckenPhotoSlots(
     const resolvedImages = new Map<string, ArtistImageData | null>();
     const resolvedPhotoRanks = new Set<number>();
     const claimedRanks = new Set<number>();
+    const claimedArtistLookupKeys = new Set(excludedArtistLookupKeys);
 
     async function resolvePhotoSlots(): Promise<void> {
       const client = apiClient();
 
-      for (const candidates of slotGroups) {
+      try {
+        for (const candidates of slotGroups) {
+          if (!active) {
+            return;
+          }
+
+          const availableCandidates = candidates.filter((rank) => {
+            if (claimedRanks.has(rank)) {
+              return false;
+            }
+            return rankByNumber.has(rank);
+          });
+          if (availableCandidates.length === 0) {
+            continue;
+          }
+
+          const lookupRecommendations = availableCandidates
+            .map((rank) => rankByNumber.get(rank))
+            .filter(
+              (recommendation): recommendation is Recommendation =>
+                recommendation !== undefined,
+            )
+            .filter((recommendation) => recommendationLookupKey(recommendation).length > 0);
+
+          const pendingLookupKeys = lookupRecommendations
+            .map((recommendation) => recommendationLookupKey(recommendation))
+            .filter((lookupKey) => !resolvedImages.has(lookupKey));
+
+          const primaryCandidate = availableCandidates[0];
+          if (
+            !deferProgressiveUpdates &&
+            primaryCandidate !== undefined &&
+            pendingLookupKeys.length > 0
+          ) {
+            setLoadingPhotoRanks(new Set([primaryCandidate]));
+          }
+
+          if (lookupRecommendations.length > 0 && pendingLookupKeys.length > 0) {
+            try {
+              const batchResults = await loadArtistImagesBatch(
+                client,
+                lookupRecommendations.map((recommendation) => ({
+                  artistMbid: recommendation.artistMbid,
+                  artistName: recommendation.artist,
+                })),
+              );
+              if (!active) {
+                return;
+              }
+              for (const [lookupKey, image] of batchResults) {
+                resolvedImages.set(lookupKey, image);
+              }
+              if (!deferProgressiveUpdates) {
+                setImagesByLookupKey(new Map(resolvedImages));
+              }
+            } catch {
+              if (!active) {
+                return;
+              }
+            }
+          }
+
+          const selectedRank = availableCandidates.find((rank) => {
+            const recommendation = rankByNumber.get(rank);
+            if (recommendation === undefined) {
+              return false;
+            }
+            if (
+              recommendationLookupKey(recommendation).length === 0 ||
+              isArtistClaimed(
+                {
+                  artistMbid: recommendation.artistMbid,
+                  artistName: recommendation.artist,
+                },
+                claimedArtistLookupKeys,
+              )
+            ) {
+              return false;
+            }
+            return entdeckenRecommendationHasPhoto(recommendation, resolvedImages);
+          });
+
+          if (selectedRank !== undefined) {
+            const recommendation = rankByNumber.get(selectedRank);
+            if (recommendation !== undefined) {
+              claimArtist(
+                {
+                  artistMbid: recommendation.artistMbid,
+                  artistName: recommendation.artist,
+                },
+                claimedArtistLookupKeys,
+              );
+            }
+            resolvedPhotoRanks.add(selectedRank);
+            claimedRanks.add(selectedRank);
+            if (!deferProgressiveUpdates) {
+              setPhotoRanks(new Set(resolvedPhotoRanks));
+            }
+          }
+
+          if (!deferProgressiveUpdates && active) {
+            setLoadingPhotoRanks(new Set());
+          }
+        }
+
         if (!active) {
           return;
         }
 
-        const availableCandidates = candidates.filter((rank) => {
-          if (claimedRanks.has(rank)) {
-            return false;
-          }
-          return rankByNumber.has(rank);
-        });
-        if (availableCandidates.length === 0) {
-          continue;
-        }
-
-        const lookupRecommendations = availableCandidates
-          .map((rank) => rankByNumber.get(rank))
-          .filter((recommendation): recommendation is Recommendation => recommendation !== undefined)
-          .filter((recommendation) => recommendationLookupKey(recommendation).length > 0);
-
-        const pendingLookupKeys = lookupRecommendations
-          .map((recommendation) => recommendationLookupKey(recommendation))
-          .filter((lookupKey) => !resolvedImages.has(lookupKey));
-
-        const primaryCandidate = availableCandidates[0];
-        if (primaryCandidate !== undefined && pendingLookupKeys.length > 0) {
-          setLoadingPhotoRanks(new Set([primaryCandidate]));
-        }
-
-        if (lookupRecommendations.length > 0 && pendingLookupKeys.length > 0) {
-          try {
-            const batchResults = await loadArtistImagesBatch(
-              client,
-              lookupRecommendations.map((recommendation) => ({
-                artistMbid: recommendation.artistMbid,
-                artistName: recommendation.artist,
-              })),
-            );
-            if (!active) {
-              return;
-            }
-            for (const [lookupKey, image] of batchResults) {
-              resolvedImages.set(lookupKey, image);
-            }
-            setImagesByLookupKey(new Map(resolvedImages));
-          } catch {
-            if (!active) {
-              return;
-            }
-          }
-        }
-
-        const selectedRank = availableCandidates.find((rank) => {
-          const recommendation = rankByNumber.get(rank);
-          if (recommendation === undefined) {
-            return false;
-          }
-          return entdeckenRecommendationHasPhoto(recommendation, resolvedImages);
-        });
-
-        if (selectedRank !== undefined) {
-          resolvedPhotoRanks.add(selectedRank);
-          claimedRanks.add(selectedRank);
-          setPhotoRanks(new Set(resolvedPhotoRanks));
-        }
-
-        if (!active) {
-          return;
-        }
+        setImagesByLookupKey(new Map(resolvedImages));
+        setPhotoRanks(new Set(resolvedPhotoRanks));
         setLoadingPhotoRanks(new Set());
+      } finally {
+        if (active) {
+          setLoadingPhotoRanks(new Set());
+          setPhotoSlotsSettled(true);
+        }
       }
     }
 
@@ -143,11 +207,12 @@ export function useEntdeckenPhotoSlots(
     return () => {
       active = false;
     };
-  }, [apiClient, recommendationSignature, recommendations]);
+  }, [apiClient, excludedArtistLookupKeys, excludedArtistSignature, recommendationSignature, recommendations]);
 
   return {
     imagesByLookupKey,
     loadingPhotoRanks,
     photoRanks,
+    photoSlotsSettled,
   };
 }

@@ -56,7 +56,7 @@ def _service() -> RecommendationService:
         metadata={1: {"labels": ["Metadata Label"]}},
         affinities=[
             _affinity(1, ("C001", 0.9), ("C002", 0.2)),
-            _affinity(2, ("C001", 0.4)),
+            _affinity(2, ("C001", 0.4), ("C002", 0.3)),
             _affinity(3, ("C001", 0.95)),
         ],
         memberships={},
@@ -105,13 +105,69 @@ def test_archive_recommendations_filter_and_sort_without_streamlit() -> None:
 
     assert [row["review_id"] for row in rows] == [1, 2]
     assert rows[0]["artist"] == "Strong"
+    assert rows[1]["artist"] == "Weak"
     assert rows[0]["labels"] == "Metadata Label"
     assert rows[0]["top_communities"][0]["label"] == "Indie Rock"
-    assert rows[1]["artist"] == "Weak"
+
+
+def test_archive_recommendations_sorted_by_overall_score_descending() -> None:
+    """Archive rows stay in strict overall-score order for pagination."""
+    profile = TasteProfile(
+        selected_communities=("C001",),
+        community_weights_raw={"C001": 1.0},
+        filter_settings=TasteFilterSettings(score_min=0.0, rating_min=6),
+    )
+    rows = _service().compute_archive_recommendations(profile)
+    overall_scores = [float(row["overall_score"]) for row in rows]
+    assert overall_scores == sorted(overall_scores, reverse=True)
+
+
+def test_archive_discovery_mode_keeps_overall_score_order() -> None:
+    """List variation settings must not reshuffle ranked archive recommendations."""
+    profile = TasteProfile(
+        selected_communities=("C001",),
+        community_weights_raw={"C001": 1.0},
+        filter_settings=TasteFilterSettings(
+            score_min=0.0,
+            rating_min=6,
+            sort_mode="discovery",
+            serendipity=1.0,
+        ),
+    )
+    service = _service()
+    first = service.compute_archive_recommendations(profile)
+    second = service.compute_archive_recommendations(profile)
+    assert [row["review_id"] for row in first] == [row["review_id"] for row in second]
+    overall_scores = [float(row["overall_score"]) for row in first]
+    assert overall_scores == sorted(overall_scores, reverse=True)
 
 
 def test_archive_recommendations_apply_score_and_label_filters() -> None:
     """Hard filters come from the profile settings instead of Streamlit state."""
+    service = RecommendationService(
+        RecommendationInputs(
+            reviews=[
+                _review(1, artist="Balanced", rating=9, labels=["Sub Pop"]),
+                _review(2, artist="Skewed", rating=9, labels=["Sub Pop"]),
+                _review(3, artist="Filtered", rating=5, labels=["Sub Pop"]),
+            ],
+            metadata={},
+            affinities=[
+                _affinity(1, ("C001", 1.0)),
+                _affinity(2, ("C001", 0.5), ("C003", 0.5)),
+                _affinity(3, ("C001", 0.95)),
+            ],
+            memberships={},
+            communities=[
+                {"id": "C001", "centroid": "Rock"},
+                {"id": "C002", "centroid": "Pop"},
+            ],
+            genre_labels={},
+            plattenlabels=["Sub Pop", "Matador"],
+            year_floor=1999,
+            year_cap=2026,
+        ),
+    )
     profile = TasteProfile(
         selected_communities=("C001",),
         community_weights_raw={"C001": 1.0},
@@ -122,6 +178,61 @@ def test_archive_recommendations_apply_score_and_label_filters() -> None:
         ),
     )
 
-    rows = _service().compute_archive_recommendations(profile)
+    rows = service.compute_archive_recommendations(profile)
 
     assert [row["review_id"] for row in rows] == [1]
+
+
+def test_archive_recommendations_reorder_when_gamma_weight_changes() -> None:
+    """Higher gamma weight should prefer stylistically broader albums."""
+    service = RecommendationService(
+        RecommendationInputs(
+            reviews=[
+                _review(1, artist="Pure", rating=8),
+                _review(2, artist="Mixed", rating=8),
+            ],
+            metadata={},
+            affinities=[
+                _affinity(1, ("C001", 1.0)),
+                _affinity(2, ("C001", 0.5), ("C002", 0.5)),
+            ],
+            memberships={},
+            communities=[
+                {"id": "C001", "centroid": "Rock"},
+                {"id": "C002", "centroid": "Pop"},
+            ],
+            genre_labels={},
+            plattenlabels=[],
+            year_floor=1999,
+            year_cap=2026,
+        ),
+    )
+    fit_profile = TasteProfile(
+        selected_communities=("C001",),
+        community_weights_raw={"C001": 1.0},
+        filter_settings=TasteFilterSettings(
+            score_min=0.0,
+            rating_min=6,
+            overall_weight_alpha=1.0,
+            overall_weight_beta=0.0,
+            overall_weight_gamma=0.0,
+        ),
+    )
+    breadth_profile = fit_profile.model_copy(
+        update={
+            "filter_settings": fit_profile.filter_settings.model_copy(
+                update={
+                    "overall_weight_alpha": 0.0,
+                    "overall_weight_beta": 0.0,
+                    "overall_weight_gamma": 1.0,
+                },
+            ),
+        },
+    )
+
+    fit_rows = service.compute_archive_recommendations(fit_profile)
+    breadth_rows = service.compute_archive_recommendations(breadth_profile)
+
+    assert fit_rows[0]["review_id"] == 1
+    assert breadth_rows[0]["review_id"] == 2
+    assert fit_rows[0]["album_style_breadth"] < breadth_rows[0]["album_style_breadth"]

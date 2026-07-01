@@ -209,9 +209,11 @@ def test_presets_endpoint_returns_default_modes() -> None:
     preset_ids = [item["id"] for item in response.json()]
     assert "balanced" in preset_ids
     assert "precise" in preset_ids
+    assert "style_pure" in preset_ids
     balanced = next(item for item in response.json() if item["id"] == "balanced")
     assert balanced["icon"] == "sliders-horizontal"
     assert balanced["filter_settings"]["score_min"] == 0.4
+    assert balanced["filter_settings"]["overall_weight_alpha"] == 0.7
 
 
 def test_taste_filter_ui_endpoint_exposes_frontend_labels() -> None:
@@ -252,6 +254,22 @@ def test_taste_communities_endpoint_exposes_readable_profile_options() -> None:
             "example_artists": ["Radiohead", "The National", "Arcade Fire"],
         },
     ]
+
+
+def test_taste_community_map_endpoint_returns_normalized_positions() -> None:
+    """The style map endpoint exposes stable coordinates for profile setup."""
+    response = _client().get("/v1/taste-communities/map")
+
+    assert response.status_code == 200
+    payload = response.json()
+    assert "nodes" in payload
+    assert len(payload["nodes"]) == 1
+    node = payload["nodes"][0]
+    assert node["id"] == "C001"
+    assert 0.0 <= node["x"] <= 1.0
+    assert 0.0 <= node["y"] <= 1.0
+    assert node["size"] >= 1
+    assert node["neighbors"] == []
 
 
 def test_community_example_artists_returns_up_to_three_names() -> None:
@@ -363,7 +381,7 @@ def test_new_reviews_endpoint_returns_latest_batch() -> None:
             "profile": _profile_payload(),
             "limit": 2,
             "offset": 0,
-            "newest_count": 2,
+            "update_rounds": 2,
         },
     )
 
@@ -386,7 +404,7 @@ def test_playlist_export_endpoint_returns_tunemymusic_text() -> None:
             "playlist_name": "API Playlist",
             "target_count": 2,
             "format": "txt",
-            "newest_count": 2,
+            "update_rounds": 2,
         },
     )
 
@@ -399,8 +417,8 @@ def test_playlist_export_endpoint_returns_tunemymusic_text() -> None:
     assert payload["items"]
 
 
-def test_playlist_export_accepts_large_newest_count() -> None:
-    """Playlist export must not fail when newest_count exceeds pagination limit."""
+def test_playlist_export_accepts_large_update_round_selection() -> None:
+    """Playlist export must not fail when the update-round pool is large."""
     response = _client().post(
         "/v1/playlists/export",
         json={
@@ -409,7 +427,7 @@ def test_playlist_export_accepts_large_newest_count() -> None:
             "playlist_name": "Large Pool",
             "target_count": 2,
             "format": "txt",
-            "newest_count": 200,
+            "update_rounds": 8,
             "taste_exponent": 3.0,
             "selection_strategy": "weighted_sample",
         },

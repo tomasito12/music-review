@@ -42,6 +42,7 @@ from music_review.api.schemas import (
 from music_review.application.artist_image_lookup import artist_image_lookup_key
 from music_review.application.artist_image_models import ArtistImageRecord
 from music_review.application.artist_image_service import ArtistImageService
+from music_review.application.community_map_service import get_community_map_layout
 from music_review.application.community_tags import community_tags_from_entries
 from music_review.application.models import (
     CommunityMatch,
@@ -51,8 +52,11 @@ from music_review.application.models import (
     RecommendationSet,
     RecommendationSource,
     TasteCommunity,
+    TasteCommunityMap,
+    TasteCommunityMapNode,
     TasteProfile,
 )
+from music_review.application.newest_review_pool import newest_reviews_for_update_rounds
 from music_review.application.newest_reviews_service import (
     NewestReviewsInputs,
     NewestReviewsService,
@@ -107,6 +111,8 @@ def create_app() -> FastAPI:
         allow_origins=[
             "http://127.0.0.1:5173",
             "http://127.0.0.1:5174",
+            "http://localhost:5173",
+            "http://localhost:5174",
             "https://plattenradar.de",
             "https://www.plattenradar.de",
         ],
@@ -152,6 +158,28 @@ def create_app() -> FastAPI:
             if item.get("id")
         }
         return tuple(sorted(options, key=lambda option: option.label.casefold()))
+
+    @app.get("/v1/taste-communities/map", response_model=TasteCommunityMap)
+    def taste_community_map(
+        provider: CorpusProvider = CORPUS_PROVIDER_DEPENDENCY,
+    ) -> TasteCommunityMap:
+        """Return graph-derived 2D positions for the taste-community map."""
+        layout_nodes = get_community_map_layout(
+            communities=provider.communities(),
+            memberships=provider.memberships(),
+        )
+        return TasteCommunityMap(
+            nodes=tuple(
+                TasteCommunityMapNode(
+                    id=node.id,
+                    x=node.x,
+                    y=node.y,
+                    size=node.size,
+                    neighbors=node.neighbors,
+                )
+                for node in layout_nodes
+            ),
+        )
 
     @app.get("/v1/artists/{artist_mbid}/image", response_model=ArtistImageResponse)
     def artist_image(
@@ -500,7 +528,10 @@ def _new_review_rows(
     profile: TasteProfile,
 ) -> list[dict[str, Any]]:
     """Compute newest-review rows from provider data."""
-    newest = provider.newest_reviews(request.newest_count)
+    newest = newest_reviews_for_update_rounds(
+        provider.reviews(),
+        request.update_rounds,
+    )
     affinity_by_id = provider.affinities_by_review_id()
     genre_labels = provider.genre_labels()
     comm_by_id = {
@@ -510,7 +541,6 @@ def _new_review_rows(
         newest_reviews=newest,
         affinity_by_review_id=affinity_by_id,
         memberships=provider.memberships(),
-        all_reviews_for_breadth_norm=provider.reviews(),
     )
     rows = NewestReviewsService(inputs).compute_ranked_rows(profile)
     if rows is None:
@@ -536,12 +566,12 @@ def _playlist_candidates(
     """Return reviews and optional ranking rows for playlist generation."""
     if request.source == "new_reviews":
         # Recommendation request ``limit`` is only for pagination; the playlist
-        # pool size comes from ``newest_count``. Keep ``limit`` within schema bounds.
+        # pool size comes from ``update_rounds``. Keep ``limit`` within schema bounds.
         new_request = NewReviewsRecommendationRequest(
             profile=profile,
-            limit=min(request.newest_count, 100),
+            limit=100,
             offset=0,
-            newest_count=request.newest_count,
+            update_rounds=request.update_rounds,
         )
         rows = _new_review_rows(provider, new_request, profile)
         return _reviews_from_rows(rows), _ranked_playlist_rows(rows)
@@ -634,12 +664,16 @@ def _recommendation_from_row(
         )
         review_id = int(row.get("review_id", 0))
     overall = float(row.get("overall_score", 0.0))
+    style_fit = float(row.get("style_fit", row.get("score", 0.0)) or 0.0)
+    album_style_breadth = float(row.get("album_style_breadth", 0.0) or 0.0)
     return Recommendation(
         rank=rank,
         review_id=review_id,
         artist=artist,
         album=album,
         overall_score=overall,
+        style_fit=style_fit,
+        album_style_breadth=album_style_breadth,
         source=source,
         url=url,
         year=year,

@@ -24,10 +24,9 @@ const profileSession = {
       rating_max: 10,
       score_min: 0.4,
       score_max: 1,
-      overall_weight_alpha: 0.5,
-      overall_weight_beta: 0.25,
-      overall_weight_gamma: 0.25,
-      community_spectrum_crossover: 0.5,
+      overall_weight_alpha: 0.7,
+      overall_weight_beta: 0.1,
+      overall_weight_gamma: 0.2,
       sort_mode: "deterministic",
       serendipity: 0,
     },
@@ -36,7 +35,7 @@ const profileSession = {
 
 for (const route of [
   { name: "entdecken-excerpt-fix", path: "/entdecken" },
-  { name: "aktuell-excerpt-fix", path: "/aktuell" },
+  { name: "aktuell-excerpt-fix", path: "/neuheiten" },
 ] as const) {
   test(`capture ${route.name} excerpt screen`, async ({ page }) => {
     await seedProfileSession(page);
@@ -155,6 +154,19 @@ async function mockRecommendationApi(page: Page): Promise<void> {
             example_artists: ["Big Thief"],
           },
         ],
+      });
+      return;
+    }
+    if (url.pathname === "/v1/taste-communities/map") {
+      await route.fulfill({
+        contentType: "application/json",
+        json: {
+          nodes: [
+            { id: "C001", x: 0.2, y: 0.35, size: 10, neighbors: ["C112"] },
+            { id: "C112", x: 0.55, y: 0.42, size: 9, neighbors: ["C001", "C015"] },
+            { id: "C015", x: 0.72, y: 0.68, size: 8, neighbors: ["C112"] },
+          ],
+        },
       });
       return;
     }

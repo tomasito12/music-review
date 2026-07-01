@@ -13,20 +13,15 @@ from pages.filter_state import (
     FILTER_FLOW_WIDGET_KEY_OVERALL_BETA,
     FILTER_FLOW_WIDGET_KEY_OVERALL_GAMMA,
     FILTER_FLOW_WIDGET_KEY_RATING_RANGE,
-    FILTER_FLOW_WIDGET_KEY_SPECTRUM,
     FILTER_FLOW_WIDGET_KEY_STYLE_MATCH_PCT,
     FILTER_FLOW_WIDGET_KEY_YEAR_RANGE,
     FILTER_PLATTENLABEL_MULTISELECT_KEY,
     clamp_plattentests_rating_filter_range,
     clamp_year_filter_bounds,
 )
-from pages.page_formatting import (
-    snap_spectrum_crossover,
-    style_match_percent_tuple_for_slider,
-)
+from pages.page_formatting import style_match_percent_tuple_for_slider
 
 from music_review.config import (
-    RECOMMENDATION_DEFAULT_COMMUNITY_CROSSOVER,
     RECOMMENDATION_DEFAULT_COMMUNITY_WEIGHT_RAW,
     RECOMMENDATION_OVERALL_ALPHA,
     RECOMMENDATION_OVERALL_BETA,
@@ -74,11 +69,9 @@ def _seed_filter_flow_main_sliders(state: MutableMapping[str, Any]) -> None:
         DEFAULT_PLATTENTESTS_RATING_FILTER_MAX,
     )
     pct_lo, pct_hi = style_match_percent_tuple_for_slider(0.0, 1.0)
-    spectrum_val = snap_spectrum_crossover(RECOMMENDATION_DEFAULT_COMMUNITY_CROSSOVER)
     state[FILTER_FLOW_WIDGET_KEY_YEAR_RANGE] = (y_lo, y_hi)
     state[FILTER_FLOW_WIDGET_KEY_RATING_RANGE] = (r_lo, r_hi)
     state[FILTER_FLOW_WIDGET_KEY_STYLE_MATCH_PCT] = (pct_lo, pct_hi)
-    state[FILTER_FLOW_WIDGET_KEY_SPECTRUM] = spectrum_val
     state[FILTER_FLOW_WIDGET_KEY_OVERALL_ALPHA] = float(RECOMMENDATION_OVERALL_ALPHA)
     state[FILTER_FLOW_WIDGET_KEY_OVERALL_BETA] = float(RECOMMENDATION_OVERALL_BETA)
     state[FILTER_FLOW_WIDGET_KEY_OVERALL_GAMMA] = float(RECOMMENDATION_OVERALL_GAMMA)

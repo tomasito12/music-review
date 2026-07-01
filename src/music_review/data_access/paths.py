@@ -17,6 +17,7 @@ DATA_COMMUNITY_GENRE_LABELS_RES_10 = "data/community_genre_labels_res_10.json"
 DATA_COMMUNITY_BROAD_CATEGORIES_RES_10 = "data/community_broad_categories_res_10.json"
 DATA_PIPELINE_HEALTH_REPORT = "data/pipeline_health_report.json"
 DATA_PRODUCTION_UPDATE_LOCK = "data/.production_update.lock"
+DATA_UPDATE_BATCHES = "data/update_batches.jsonl"
 DATA_ARTIST_REFERENCE_GRAPH = "data/artist_reference_graph.graphml"
 DATA_COMMUNITY_RESOLUTION_SCAN = "data/community_resolution_scan.json"
 DATA_ARTIST_IMAGES = "data/artist_images.jsonl"
@@ -82,6 +83,11 @@ def pipeline_health_report_path() -> Path:
 def production_update_lock_path() -> Path:
     """Resolved path to the production update lock file."""
     return resolve_data_path(DATA_PRODUCTION_UPDATE_LOCK)
+
+
+def update_batches_path() -> Path:
+    """Resolved path to the production scrape batch history JSONL."""
+    return resolve_data_path(DATA_UPDATE_BATCHES)
 
 
 def artist_reference_graph_path() -> Path:

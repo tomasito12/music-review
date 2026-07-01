@@ -74,10 +74,9 @@ class TasteFilterSettings(ApiModel):
     rating_max: float = 10.0
     score_min: float = 0.0
     score_max: float = 1.0
-    community_spectrum_crossover: float = 0.5
-    overall_weight_alpha: float = 0.5
-    overall_weight_beta: float = 0.25
-    overall_weight_gamma: float = 0.25
+    overall_weight_alpha: float = 0.70
+    overall_weight_beta: float = 0.10
+    overall_weight_gamma: float = 0.20
     plattenlabel_selection: tuple[str, ...] | None = None
     sort_mode: SortMode = "deterministic"
     serendipity: float = Field(default=0.0, ge=0.0, le=1.0)
@@ -105,7 +104,6 @@ class TasteFilterSettings(ApiModel):
     @field_validator(
         "score_min",
         "score_max",
-        "community_spectrum_crossover",
         "overall_weight_alpha",
         "overall_weight_beta",
         "overall_weight_gamma",
@@ -118,10 +116,9 @@ class TasteFilterSettings(ApiModel):
         defaults = {
             "score_min": 0.0,
             "score_max": 1.0,
-            "community_spectrum_crossover": 0.5,
-            "overall_weight_alpha": 0.5,
-            "overall_weight_beta": 0.25,
-            "overall_weight_gamma": 0.25,
+            "overall_weight_alpha": 0.70,
+            "overall_weight_beta": 0.10,
+            "overall_weight_gamma": 0.20,
             "serendipity": 0.0,
         }
         field_name = info.field_name or ""
@@ -288,6 +285,28 @@ class TasteCommunity(ApiModel):
         return _str_tuple(value)
 
 
+class TasteCommunityMapNode(ApiModel):
+    """One community position on the style-world map."""
+
+    id: str
+    x: float = Field(ge=0.0, le=1.0)
+    y: float = Field(ge=0.0, le=1.0)
+    size: int = Field(ge=1)
+    neighbors: tuple[str, ...] = ()
+
+    @field_validator("neighbors", mode="before")
+    @classmethod
+    def _normalize_neighbors(cls, value: Any) -> tuple[str, ...]:
+        """Normalize neighbor id tuples."""
+        return _str_tuple(value)
+
+
+class TasteCommunityMap(ApiModel):
+    """Graph-derived 2D layout for taste communities."""
+
+    nodes: tuple[TasteCommunityMapNode, ...]
+
+
 class Recommendation(ApiModel):
     """One ranked album recommendation for a taste profile."""
 
@@ -296,6 +315,8 @@ class Recommendation(ApiModel):
     artist: str
     album: str
     overall_score: float
+    style_fit: float = 0.0
+    album_style_breadth: float = 0.0
     source: RecommendationSource = "archive"
     url: str | None = None
     year: int | None = None

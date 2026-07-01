@@ -5,12 +5,9 @@ import {
   DEFAULT_YEAR_MIN,
   MAX_PLATTENTESTS_RATING,
   STYLE_MATCH_PERCENT_STEP,
-  clampSpectrumCrossover,
   clearYearFilter,
-  describeSpectrumCrossover,
   enableYearFilter,
   hasYearFilter,
-  overallWeightQuestion,
   readYearBound,
   sortModeLabel,
   styleMatchMinPercent,
@@ -26,6 +23,8 @@ import {
   type SliderApplyMode,
 } from "../lib/useCommittedRangeValue";
 import { CommunityStyleWeights } from "./CommunityStyleWeights";
+import { OverallScoreWeightControl } from "./OverallScoreWeightControl";
+import { ThresholdSlider } from "./ThresholdSlider";
 
 interface CommittedRangeInputProps
   extends Omit<InputHTMLAttributes<HTMLInputElement>, "type" | "value" | "onChange"> {
@@ -84,9 +83,6 @@ export function TasteFilterControls({
 }: TasteFilterControlsProps): ReactElement {
   const yearFilterActive = hasYearFilter(filterSettings);
   const styleMinPercent = styleMatchMinPercent(filterSettings);
-  const spectrumValue = clampSpectrumCrossover(
-    filterSettings.community_spectrum_crossover,
-  );
 
   return (
     <div className="filter-advanced">
@@ -174,13 +170,16 @@ export function TasteFilterControls({
             <span className="threshold-value">
               Mindestens {Math.round(filterSettings.rating_min)}
             </span>
-            <CommittedRangeInput
+            <ThresholdSlider
               applyMode={sliderApplyMode}
+              formatValue={(nextValue) => String(Math.round(nextValue))}
+              keptLabel="Höhere Wertungen bleiben sichtbar"
               max={MAX_PLATTENTESTS_RATING}
               min={0}
               onValueCommit={(nextValue) => {
                 onChange(updateMinimumRating(filterSettings, nextValue));
               }}
+              rejectedLabel="Darunter ausgeblendet"
               step={1}
               value={filterSettings.rating_min}
             />
@@ -195,13 +194,16 @@ export function TasteFilterControls({
           </p>
           <label className="threshold-control">
             <span className="threshold-value">Mindestens {styleMinPercent} %</span>
-            <CommittedRangeInput
+            <ThresholdSlider
               applyMode={sliderApplyMode}
+              formatValue={(nextValue) => `${Math.round(nextValue)} %`}
+              keptLabel="Stärkere Passung bleibt sichtbar"
               max={100}
               min={0}
               onValueCommit={(nextValue) => {
                 onChange(updateStyleMatchMinPercent(filterSettings, nextValue));
               }}
+              rejectedLabel="Schwächere Passung ausgeblendet"
               step={STYLE_MATCH_PERCENT_STEP}
               value={styleMinPercent}
             />
@@ -217,76 +219,12 @@ export function TasteFilterControls({
         </p>
 
         <section className="filter-section">
-          <h3>Stil-Präferenz</h3>
-          <p className="field-hint">
-            Steuert, ob stilreine Alben oder Alben mit mehreren passenden
-            Stilrichtungen stärker profitieren.
-          </p>
-          <div className="spectrum-scale-row">
-            <span>
-              Klare Präferenz:
-              <strong> ein gewählter Stil dominiert</strong>
-            </span>
-            <span className="spectrum-mid">Ausgewogen</span>
-            <span>
-              Breite Präferenz:
-              <strong> möglichst viele Stilrichtungen zugleich</strong>
-            </span>
-          </div>
-          <label className="spectrum-slider threshold-control">
-            <span className="threshold-value">
-              {describeSpectrumCrossover(spectrumValue)}
-            </span>
-            <CommittedRangeInput
-              applyMode={sliderApplyMode}
-              aria-label="Stil-Präferenz"
-              max={1}
-              min={0}
-              onValueCommit={(nextValue) => {
-                onChange(
-                  updateFilterSettingsField(
-                    filterSettings,
-                    "community_spectrum_crossover",
-                    clampSpectrumCrossover(nextValue),
-                  ),
-                );
-              }}
-              step={0.05}
-              value={spectrumValue}
-            />
-          </label>
-        </section>
-
-        <section className="filter-section">
           <h3>Gewichtung des Gesamtscores</h3>
-          {(
-            [
-              "overall_weight_alpha",
-              "overall_weight_beta",
-              "overall_weight_gamma",
-            ] as const
-          ).map((field) => (
-            <label className="weight-control" key={field}>
-              <span>{overallWeightQuestion(field)}</span>
-              <div className="weight-control-row">
-                <CommittedRangeInput
-                  applyMode={sliderApplyMode}
-                  max={1}
-                  min={0}
-                  onValueCommit={(nextValue) => {
-                    onChange(
-                      updateFilterSettingsField(filterSettings, field, nextValue),
-                    );
-                  }}
-                  step={0.05}
-                  value={filterSettings[field]}
-                />
-                <span className="threshold-value">
-                  {Math.round(filterSettings[field] * 100)} %
-                </span>
-              </div>
-            </label>
-          ))}
+          <OverallScoreWeightControl
+            applyMode={sliderApplyMode}
+            filterSettings={filterSettings}
+            onChange={onChange}
+          />
         </section>
 
         <section className="filter-section">

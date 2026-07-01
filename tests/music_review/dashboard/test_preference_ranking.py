@@ -4,6 +4,8 @@ from __future__ import annotations
 
 import random
 
+import pytest
+
 from music_review.dashboard.preference_ranking import (
     global_breadth_norm_by_review_id,
     preference_ranked_rows,
@@ -75,24 +77,22 @@ def test_rank_keeps_no_match_reviews_but_sorts_them_lower() -> None:
     assert out[1].id == 1
 
 
-def test_global_breadth_norm_by_review_id_empty_without_selection() -> None:
-    r = _review(1)
-    assert (
-        global_breadth_norm_by_review_id(
-            [r],
-            memberships={},
-            selected_comms=set(),
-            weights_raw={},
-        )
-        == {}
-    )
+def test_global_breadth_norm_by_review_id_empty_without_affinities() -> None:
+    assert global_breadth_norm_by_review_id({}) == {}
 
 
-def test_global_breadth_map_overrides_batch_breadth_norm() -> None:
+def test_album_style_breadth_drives_overall_score_term() -> None:
     r1, r2 = _review(1), _review(2)
     aff = {
-        1: {"communities": {"res_10": [{"id": "c1", "score": 0.5}]}},
-        2: {"communities": {"res_10": [{"id": "c1", "score": 0.5}]}},
+        1: {"communities": {"res_10": [{"id": "c1", "score": 1.0}]}},
+        2: {
+            "communities": {
+                "res_10": [
+                    {"id": "c1", "score": 0.5},
+                    {"id": "c2", "score": 0.5},
+                ],
+            },
+        },
     }
     rows = preference_ranked_rows(
         [r1, r2],
@@ -104,9 +104,93 @@ def test_global_breadth_map_overrides_batch_breadth_norm() -> None:
         apply_serendipity=False,
         global_breadth_norm_by_review_id={1: 0.0, 2: 1.0},
     )
-    by_id = {r["review_id"]: r["breadth_norm"] for r in rows}
-    assert by_id[1] == 0.0
-    assert by_id[2] == 1.0
+    by_id = {r["review_id"]: r["album_style_breadth"] for r in rows}
+    assert by_id[1] == pytest.approx(0.0)
+    assert by_id[2] == pytest.approx(1.0)
+
+
+def test_gamma_weight_reorders_by_style_breadth() -> None:
+    r_pure, r_mixed = _review(1), _review(2)
+    aff = {
+        1: {"communities": {"res_10": [{"id": "c1", "score": 1.0}]}},
+        2: {
+            "communities": {
+                "res_10": [
+                    {"id": "c1", "score": 0.5},
+                    {"id": "c2", "score": 0.5},
+                ],
+            },
+        },
+    }
+    common = {
+        "affinity_by_review_id": aff,
+        "memberships": {},
+        "selected_comms": {"c1"},
+        "weights_raw": {"c1": 1.0},
+        "apply_serendipity": False,
+    }
+    breadth_focus = preference_ranked_rows(
+        [r_pure, r_mixed],
+        filter_settings={
+            "overall_weight_alpha": 0.0,
+            "overall_weight_beta": 0.0,
+            "overall_weight_gamma": 1.0,
+        },
+        **common,
+    )
+    fit_focus = preference_ranked_rows(
+        [r_pure, r_mixed],
+        filter_settings={
+            "overall_weight_alpha": 1.0,
+            "overall_weight_beta": 0.0,
+            "overall_weight_gamma": 0.0,
+        },
+        **common,
+    )
+    assert [row["review_id"] for row in breadth_focus] == [2, 1]
+    assert [row["review_id"] for row in fit_focus] == [1, 2]
+
+
+def test_changing_gamma_changes_overall_score_order() -> None:
+    r_pure, r_mixed = _review(1), _review(2)
+    aff = {
+        1: {"communities": {"res_10": [{"id": "c1", "score": 1.0}]}},
+        2: {
+            "communities": {
+                "res_10": [
+                    {"id": "c1", "score": 0.5},
+                    {"id": "c2", "score": 0.5},
+                ],
+            },
+        },
+    }
+    common = {
+        "affinity_by_review_id": aff,
+        "memberships": {},
+        "selected_comms": {"c1"},
+        "weights_raw": {"c1": 1.0},
+        "apply_serendipity": False,
+    }
+    low_gamma = preference_ranked_rows(
+        [r_pure, r_mixed],
+        filter_settings={
+            "overall_weight_alpha": 0.5,
+            "overall_weight_beta": 0.0,
+            "overall_weight_gamma": 0.0,
+        },
+        **common,
+    )
+    high_gamma = preference_ranked_rows(
+        [r_pure, r_mixed],
+        filter_settings={
+            "overall_weight_alpha": 0.0,
+            "overall_weight_beta": 0.0,
+            "overall_weight_gamma": 1.0,
+        },
+        **common,
+    )
+    assert [row["review_id"] for row in low_gamma] == [1, 2]
+    assert [row["review_id"] for row in high_gamma] == [2, 1]
 
 
 def test_preference_ranked_rows_skips_serendipity_when_disabled() -> None:
@@ -146,14 +230,9 @@ def test_preference_ranked_rows_contains_display_keys() -> None:
         assert "review" in row
         assert "overall_score" in row
         assert "score" in row
-        assert "community_spectrum_norm" in row
-        assert "community_spectrum_effective" in row
-        assert "spectrum_matching_gate" in row
         assert "rating_norm" in row
-        assert "purity_norm" in row
-        assert "breadth_norm" in row
-        assert "purity_raw" in row
-        assert "breadth_raw" in row
+        assert "album_style_breadth" in row
+        assert "style_diversity_n_eff" in row
         assert "alpha" in row and "beta" in row and "gamma" in row
 
 
@@ -161,8 +240,19 @@ def test_serendipity_zero_preserves_score_order() -> None:
     r_a, r_b = _review(100), _review(200)
     incoming = [r_a, r_b]
     aff = {
-        100: {"communities": {"res_10": [{"id": "c1", "score": 0.99}]}},
-        200: {"communities": {"res_10": [{"id": "c1", "score": 0.1}]}},
+        100: {
+            "communities": {
+                "res_10": [{"id": "c1", "score": 1.0}],
+            },
+        },
+        200: {
+            "communities": {
+                "res_10": [
+                    {"id": "c1", "score": 0.5},
+                    {"id": "c9", "score": 0.5},
+                ],
+            },
+        },
     }
     rng = random.Random(999)
     out = rank_reviews_by_saved_preferences(
@@ -176,3 +266,41 @@ def test_serendipity_zero_preserves_score_order() -> None:
     )
     assert out[0].id == 100
     assert out[1].id == 200
+
+
+def test_overall_score_matches_between_newest_subset_and_full_corpus() -> None:
+    """Style fit uses corpus percentiles so scores are stable across list sizes."""
+    r_top, r_mid, r_new = _review(1), _review(2), _review(3)
+    aff = {
+        1: {"communities": {"res_10": [{"id": "c1", "score": 1.0}]}},
+        2: {"communities": {"res_10": [{"id": "c1", "score": 0.6}]}},
+        3: {"communities": {"res_10": [{"id": "c1", "score": 0.3}]}},
+    }
+    common = {
+        "affinity_by_review_id": aff,
+        "memberships": {},
+        "selected_comms": {"c1"},
+        "weights_raw": {"c1": 1.0},
+        "filter_settings": {},
+        "apply_serendipity": False,
+    }
+    global_style_fit = {
+        1: 1.0,
+        2: 0.5,
+        3: 0.0,
+    }
+    global_breadth = {1: 0.0, 2: 0.5, 3: 1.0}
+    full_rows = preference_ranked_rows(
+        [r_top, r_mid, r_new],
+        global_style_fit_norm_by_review_id=global_style_fit,
+        global_breadth_norm_by_review_id=global_breadth,
+        **common,
+    )
+    newest_only = preference_ranked_rows(
+        [r_new],
+        global_style_fit_norm_by_review_id=global_style_fit,
+        global_breadth_norm_by_review_id=global_breadth,
+        **common,
+    )
+    full_by_id = {row["review_id"]: row["overall_score"] for row in full_rows}
+    assert newest_only[0]["overall_score"] == pytest.approx(full_by_id[3])

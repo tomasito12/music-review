@@ -8,6 +8,7 @@ describe("resolveInitialRoute", () => {
   it("keeps explicit deep links", () => {
     expect(resolveInitialRoute("/entdecken")).toBe("entdecken");
     expect(resolveInitialRoute("/playlists")).toBe("playlists");
+    expect(resolveInitialRoute("/neuheiten")).toBe("aktuell");
   });
 
   it("opens aktuell for returning logged-in users on the home path", () => {
@@ -31,7 +32,6 @@ describe("resolveInitialRoute", () => {
                     overall_weight_alpha: 0.5,
                     overall_weight_beta: 0.25,
                     overall_weight_gamma: 0.25,
-                    community_spectrum_crossover: 0.5,
                     sort_mode: "deterministic",
                     serendipity: 0,
                   },

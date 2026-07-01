@@ -4,10 +4,13 @@ from __future__ import annotations
 
 import logging
 from collections.abc import Iterable
+from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
 
+from music_review.io.jsonl import append_jsonl_line
 from music_review.io.reviews_jsonl import review_to_raw
+from music_review.io.update_batches import append_update_batch
 from music_review.pipeline.scraper.client import (
     RateLimiter,
     ScraperClient,
@@ -15,7 +18,6 @@ from music_review.pipeline.scraper.client import (
 )
 from music_review.pipeline.scraper.parser import parse_review
 from music_review.pipeline.scraper.storage import (
-    append_review,
     load_corpus,
     write_corpus,
 )
@@ -139,6 +141,41 @@ def _load_corpus_if_update(
     return None
 
 
+def _utc_now_iso() -> str:
+    """Return the current UTC timestamp for first_seen_at."""
+    return datetime.now(UTC).isoformat().replace("+00:00", "Z")
+
+
+def _store_scraped_review(
+    review_id: int,
+    html: str,
+    output_path: Path,
+    corpus: dict[int, dict[str, Any]] | None,
+    update_mode: bool,
+    result: ScrapeResult,
+) -> None:
+    """Parse one HTML page and store the review with discovery metadata."""
+    review = parse_review(review_id, html)
+    if review is None:
+        return
+
+    raw = review_to_raw(review)
+    if update_mode:
+        assert corpus is not None
+        existing = corpus.get(review.id)
+        if existing is not None and existing.get("first_seen_at"):
+            raw["first_seen_at"] = existing["first_seen_at"]
+        else:
+            raw["first_seen_at"] = _utc_now_iso()
+        corpus[review.id] = raw
+    else:
+        raw["first_seen_at"] = _utc_now_iso()
+        append_jsonl_line(output_path, raw)
+
+    result.scraped_ids.append(review.id)
+    result.processed += 1
+
+
 def _process_single(
     review_id: int,
     html: str,
@@ -148,18 +185,7 @@ def _process_single(
     result: ScrapeResult,
 ) -> None:
     """Parse one HTML page and store the review."""
-    review = parse_review(review_id, html)
-    if review is None:
-        return
-
-    if update_mode:
-        assert corpus is not None
-        corpus[review.id] = review_to_raw(review)
-    else:
-        append_review(output_path, review)
-
-    result.scraped_ids.append(review.id)
-    result.processed += 1
+    _store_scraped_review(review_id, html, output_path, corpus, update_mode, result)
 
 
 def _finalize_corpus(
@@ -180,3 +206,11 @@ def _finalize_corpus(
         )
     else:
         logger.info("Done. Processed %s reviews.", result.processed)
+        if result.scraped_ids:
+            batch = append_update_batch(result.scraped_ids)
+            if batch is not None:
+                logger.info(
+                    "Recorded update batch with %s reviews at %s.",
+                    batch.count,
+                    batch.run_at.isoformat(),
+                )

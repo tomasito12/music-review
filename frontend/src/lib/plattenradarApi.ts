@@ -19,8 +19,19 @@ export interface TasteCommunityOption {
   label: string;
 }
 
+export interface TasteCommunityMapNode {
+  id: string;
+  neighbors: string[];
+  size: number;
+  x: number;
+  y: number;
+}
+
+export interface TasteCommunityMap {
+  nodes: TasteCommunityMapNode[];
+}
+
 export interface TasteFilterSettings {
-  community_spectrum_crossover: number;
   overall_weight_alpha: number;
   overall_weight_beta: number;
   overall_weight_gamma: number;
@@ -113,6 +124,8 @@ interface ApiRecommendation {
   labels: string;
   matched_tags: ApiCommunityMatch[];
   overall_score: number;
+  style_fit?: number;
+  album_style_breadth?: number;
   rank: number;
   rating: number | null;
   release_date: string | null;
@@ -137,6 +150,8 @@ export interface ArchivePageRequest {
 }
 
 export interface NewReviewsPageRequest extends ArchivePageRequest {
+  updateRounds?: number;
+  /** @deprecated Legacy fallback count; prefer updateRounds. */
   newestCount?: number;
 }
 
@@ -146,10 +161,9 @@ export const DEFAULT_BALANCED_FILTER_SETTINGS: TasteFilterSettings = {
   rating_max: 10,
   score_min: 0.4,
   score_max: 1,
-  overall_weight_alpha: 0.5,
-  overall_weight_beta: 0.25,
-  overall_weight_gamma: 0.25,
-  community_spectrum_crossover: 0.5,
+  overall_weight_alpha: 0.7,
+  overall_weight_beta: 0.1,
+  overall_weight_gamma: 0.2,
   sort_mode: "deterministic",
   serendipity: 0,
 };
@@ -159,6 +173,13 @@ export async function loadTasteCommunities(
   client: ApiClient,
 ): Promise<TasteCommunityOption[]> {
   return client.get<TasteCommunityOption[]>("/v1/taste-communities");
+}
+
+/** Loads graph-derived 2D positions for the style-world map. */
+export async function loadTasteCommunityMap(
+  client: ApiClient,
+): Promise<TasteCommunityMap> {
+  return client.get<TasteCommunityMap>("/v1/taste-communities/map");
 }
 
 /** Loads taste presets for the profile setup step. */
@@ -407,12 +428,15 @@ export async function loadNewReviewRecommendations(
 ): Promise<{ recommendations: Recommendation[]; total: number }> {
   const limit = page.limit ?? ARCHIVE_PAGE_SIZE;
   const offset = page.offset ?? 0;
-  const newestCount = page.newestCount ?? 120;
+  const updateRounds = page.updateRounds ?? 1;
   const payload: Record<string, unknown> = {
     limit,
     offset,
-    newest_count: newestCount,
+    update_rounds: updateRounds,
   };
+  if (page.newestCount !== undefined) {
+    payload.newest_count = page.newestCount;
+  }
   if (profile !== null) {
     payload.profile = temporaryProfileToApi(profile);
   }
@@ -452,7 +476,8 @@ export function createTemporaryTasteProfile(
   };
 }
 
-function normalizeFilterSettings(
+/** Normalizes partial or legacy filter settings to the supported API shape. */
+export function normalizeFilterSettings(
   settings: Partial<TasteFilterSettings>,
 ): TasteFilterSettings {
   return {
@@ -468,9 +493,6 @@ function normalizeFilterSettings(
     overall_weight_gamma:
       settings.overall_weight_gamma ??
       DEFAULT_BALANCED_FILTER_SETTINGS.overall_weight_gamma,
-    community_spectrum_crossover:
-      settings.community_spectrum_crossover ??
-      DEFAULT_BALANCED_FILTER_SETTINGS.community_spectrum_crossover,
     sort_mode: settings.sort_mode ?? DEFAULT_BALANCED_FILTER_SETTINGS.sort_mode,
     serendipity: settings.serendipity ?? DEFAULT_BALANCED_FILTER_SETTINGS.serendipity,
     year_min: settings.year_min ?? null,
@@ -492,6 +514,8 @@ function toRecommendation(
     year: item.year ?? 0,
     rating: item.rating ?? 0,
     score: item.overall_score,
+    styleFit: item.style_fit ?? item.overall_score,
+    albumStyleBreadth: item.album_style_breadth ?? 0,
     fitLabel: fitLabel(item.overall_score),
     fitPercent,
     releaseDate: item.release_date ?? undefined,

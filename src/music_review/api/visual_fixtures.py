@@ -19,7 +19,14 @@ from music_review.application.artist_image_store import upsert_artist_image
 from music_review.domain.models import Review, Track
 
 VISUAL_FIXTURES_DIR = Path(__file__).resolve().parents[3] / "tests" / "visual_fixtures"
-VISUAL_IMAGE_MBIDS = ("mbid-notwist", "mbid-big-thief")
+VISUAL_IMAGE_MBIDS = (
+    "mbid-radiohead",
+    "mbid-arcade-fire",
+    "mbid-national",
+    "mbid-phoebe-bridgers",
+    "mbid-notwist",
+    "mbid-big-thief",
+)
 
 _VISUAL_EXCERPT = (
     "Ein Fundstück mit genug Ecken, Wärme und Nachhall, um nicht nach zwei Wochen "
@@ -51,15 +58,15 @@ _VISUAL_COMMUNITIES: tuple[dict[str, Any], ...] = (
 )
 
 _VISUAL_REVIEW_SPECS: tuple[tuple[int, str, str, int, float, str | None], ...] = (
-    (1, "Radiohead", "OK Computer", 1997, 10, None),
-    (2, "Arcade Fire", "Funeral", 2004, 9, None),
-    (3, "The National", "Boxer", 2007, 9, None),
+    (1, "Radiohead", "OK Computer", 1997, 10, "mbid-radiohead"),
+    (2, "Arcade Fire", "Funeral", 2004, 9, "mbid-arcade-fire"),
+    (3, "The National", "Boxer", 2007, 9, "mbid-national"),
     (4, "Bon Iver", "For Emma, Forever Ago", 2008, 8, None),
     (5, "Fleet Foxes", "Fleet Foxes", 2008, 8, None),
     (6, "Beach House", "Teen Dream", 2010, 8, None),
     (7, "Vampire Weekend", "Modern Vampires of the City", 2013, 8, None),
     (8, "St. Vincent", "Masseduction", 2017, 8, None),
-    (9, "Phoebe Bridgers", "Punisher", 2020, 9, None),
+    (9, "Phoebe Bridgers", "Punisher", 2020, 9, "mbid-phoebe-bridgers"),
     (10, "Fontaines D.C.", "Dogrel", 2019, 8, None),
     (11, "Black Country, New Road", "Ants From Up There", 2022, 9, None),
     (12, "Dry Cleaning", "New Long Leg", 2021, 8, None),
@@ -190,6 +197,11 @@ def create_visual_artist_image_service() -> ArtistImageService:
 
 def create_visual_app() -> FastAPI:
     """Return a FastAPI app wired to deterministic visual fixtures."""
+    import music_review.application.newest_review_pool as newest_review_pool
+
+    newest_review_pool.update_batches_path = lambda: (
+        visual_fixtures_dir() / "update_batches.jsonl"
+    )
     app = create_app()
     app.dependency_overrides[get_corpus_provider] = lambda: VisualCorpusProvider()
     app.dependency_overrides[get_artist_image_service] = (
@@ -235,6 +247,10 @@ def _affinity_for_review(review_id: int) -> dict[str, object]:
 
 def _ensure_fixture_jpegs(images_dir: Path) -> None:
     colors = {
+        "mbid-radiohead": (92, 108, 124),
+        "mbid-arcade-fire": (148, 116, 92),
+        "mbid-national": (118, 104, 88),
+        "mbid-phoebe-bridgers": (176, 140, 128),
         "mbid-notwist": (196, 168, 138),
         "mbid-big-thief": (164, 132, 108),
     }
@@ -247,10 +263,15 @@ def _ensure_fixture_jpegs(images_dir: Path) -> None:
 
 
 def _ensure_fixture_cache(cache_path: Path) -> None:
-    if cache_path.is_file():
-        return
     cache_path.parent.mkdir(parents=True, exist_ok=True)
     records = {
+        "mbid-radiohead": _ok_image_record("mbid-radiohead", "Radiohead"),
+        "mbid-arcade-fire": _ok_image_record("mbid-arcade-fire", "Arcade Fire"),
+        "mbid-national": _ok_image_record("mbid-national", "The National"),
+        "mbid-phoebe-bridgers": _ok_image_record(
+            "mbid-phoebe-bridgers",
+            "Phoebe Bridgers",
+        ),
         "mbid-notwist": _ok_image_record("mbid-notwist", "The Notwist"),
         "mbid-big-thief": _ok_image_record("mbid-big-thief", "Big Thief"),
     }

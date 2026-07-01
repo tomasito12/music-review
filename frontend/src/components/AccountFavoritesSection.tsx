@@ -12,7 +12,7 @@ interface AccountFavoritesSectionProps {
 
 function sourceLabel(source: SavedAlbum["source"]): string | null {
   if (source === "aktuell") {
-    return "Aktuell";
+    return "Neuheiten";
   }
   if (source === "entdecken") {
     return "Entdecken";
@@ -57,7 +57,7 @@ export function AccountFavoritesSection({
         </p>
       ) : favorites.length === 0 ? (
         <p className="account-favorites-empty">
-          Noch nichts vorgemerkt — stöbere auf Aktuell oder Entdecken.
+          Noch nichts vorgemerkt — stöbere bei Neuheiten oder Entdecken.
         </p>
       ) : (
         <ul className="account-favorites-list">

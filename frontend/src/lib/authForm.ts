@@ -1,5 +1,10 @@
 import { ApiError } from "./apiClient";
 
+/** Returns a German message when an authenticated profile save is rejected. */
+export function profileSaveUnauthorizedMessage(): string {
+  return "Deine Sitzung ist abgelaufen. Bitte logge dich erneut ein.";
+}
+
 /** Returns a German user-facing message for auth form failures. */
 export function authErrorMessage(
   error: unknown,

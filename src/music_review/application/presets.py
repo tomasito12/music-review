@@ -15,10 +15,9 @@ _PRESET_FILTER_BASELINE = TasteFilterSettings(
     score_max=1.0,
     rating_min=6,
     rating_max=10,
-    overall_weight_alpha=0.50,
-    overall_weight_beta=0.25,
-    overall_weight_gamma=0.25,
-    community_spectrum_crossover=0.50,
+    overall_weight_alpha=0.70,
+    overall_weight_beta=0.10,
+    overall_weight_gamma=0.20,
     sort_mode="deterministic",
     serendipity=0.0,
 )
@@ -93,8 +92,8 @@ TASTE_PRESETS: tuple[TastePreset, ...] = (
         ),
         icon="crosshair",
         filter_settings=_preset_filter_settings(
-            overall_weight_alpha=0.70,
-            overall_weight_beta=0.20,
+            overall_weight_alpha=0.80,
+            overall_weight_beta=0.05,
             overall_weight_gamma=0.10,
         ),
     ),
@@ -103,7 +102,7 @@ TASTE_PRESETS: tuple[TastePreset, ...] = (
         label="Ausgewogen",
         subtitle="Der beste Startpunkt",
         description=(
-            "Ausgewogene Gewichtung aus Stilpassung, Wertung und Vielschichtigkeit "
+            "Ausgewogene Gewichtung aus Stilpassung, Wertung und Album-Stilbreite "
             "in der Sortierung."
         ),
         icon="sliders-horizontal",
@@ -119,9 +118,9 @@ TASTE_PRESETS: tuple[TastePreset, ...] = (
         ),
         icon="compass",
         filter_settings=_preset_filter_settings(
-            overall_weight_alpha=0.30,
-            overall_weight_beta=0.30,
-            overall_weight_gamma=0.40,
+            overall_weight_alpha=0.50,
+            overall_weight_beta=0.25,
+            overall_weight_gamma=0.25,
         ),
     ),
     TastePreset(
@@ -133,9 +132,9 @@ TASTE_PRESETS: tuple[TastePreset, ...] = (
         ),
         icon="star",
         filter_settings=_preset_filter_settings(
-            overall_weight_alpha=0.30,
-            overall_weight_beta=0.50,
-            overall_weight_gamma=0.20,
+            overall_weight_alpha=0.60,
+            overall_weight_beta=0.30,
+            overall_weight_gamma=0.10,
         ),
     ),
     TastePreset(
@@ -148,10 +147,24 @@ TASTE_PRESETS: tuple[TastePreset, ...] = (
         ),
         icon="layers",
         filter_settings=_preset_filter_settings(
-            overall_weight_alpha=0.35,
+            overall_weight_alpha=0.50,
             overall_weight_beta=0.15,
-            overall_weight_gamma=0.50,
-            community_spectrum_crossover=0.75,
+            overall_weight_gamma=0.35,
+        ),
+    ),
+    TastePreset(
+        id="style_pure",
+        label="Stilreinheit",
+        subtitle="Ein klarer Stil im Fokus",
+        description=(
+            "Sortiert fast nur nach Stilpassung und ignoriert Album-Stilbreite "
+            "in der Gewichtung."
+        ),
+        icon="target",
+        filter_settings=_preset_filter_settings(
+            overall_weight_alpha=0.85,
+            overall_weight_beta=0.15,
+            overall_weight_gamma=0.00,
         ),
     ),
 )
@@ -202,10 +215,10 @@ TASTE_FILTER_UI = TasteFilterUiConfig(
             controls=(
                 FilterControl(
                     id="overall_weights",
-                    label="Schwerpunkt",
+                    label="Gewichtung",
                     description=(
-                        "Balanciert Stilpassung, Wertung und Vielschichtigkeit "
-                        "in der Rangliste."
+                        "Balanciert Stilpassung, plattentests.de-Wertung und "
+                        "Album-Stilbreite in der Rangliste."
                     ),
                     kind="slider",
                     fields=(
@@ -213,19 +226,6 @@ TASTE_FILTER_UI = TasteFilterUiConfig(
                         "overall_weight_beta",
                         "overall_weight_gamma",
                     ),
-                    min_value=0.0,
-                    max_value=1.0,
-                    step=0.05,
-                ),
-                FilterControl(
-                    id="community_spectrum",
-                    label="Fokus oder Vielschichtigkeit",
-                    description=(
-                        "Steuert, ob stilreine Alben oder Alben mit mehreren "
-                        "passenden Stilrichtungen stärker profitieren."
-                    ),
-                    kind="slider",
-                    fields=("community_spectrum_crossover",),
                     min_value=0.0,
                     max_value=1.0,
                     step=0.05,

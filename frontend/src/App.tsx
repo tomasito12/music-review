@@ -13,14 +13,13 @@ import { WelcomeScreen } from "./components/WelcomeScreen";
 import {
   buildAktuellBriefing,
   buildAktuellHighlights,
-  newestCountFromUpdateRounds,
   UPDATE_ROUND_OPTIONS,
 } from "./lib/aktuellPage";
 import { buildEntdeckenHeaderMessage } from "./lib/entdeckenPage";
-import { ApiClient } from "./lib/apiClient";
+import { ApiClient, ApiError, createApiClient } from "./lib/apiClient";
 import { ApiClientProvider, useApiClient } from "./lib/apiClientContext";
 import { FavoritesProvider, useFavorites } from "./lib/favoritesContext";
-import type { AuthSession } from "./lib/authSessionStorage";
+import { profileSaveUnauthorizedMessage } from "./lib/authForm";
 import {
   clearAuthSession,
   dismissSavePrompt,
@@ -28,6 +27,7 @@ import {
   readAuthSession,
   writeAuthSession,
 } from "./lib/authSessionStorage";
+import type { AuthSession } from "./lib/authSessionStorage";
 import {
   ARCHIVE_PAGE_SIZE,
   fetchCurrentUser,
@@ -53,6 +53,7 @@ import {
   shouldLandOnAktuell,
   syncBrowserPath,
 } from "./lib/initialRoute";
+import { pathForRoute } from "./lib/routes";
 import type {
   ProfileReturnRoute,
   ProfileSetupMode,
@@ -84,9 +85,7 @@ export function App(): ReactElement {
     return initialRoute;
   });
   const [userState, setUserState] = useState<UserState>("anonymous_no_profile");
-  const [authSession, setAuthSession] = useState<AuthSession | null>(() =>
-    readAuthSession(),
-  );
+  const [authSession, setAuthSession] = useState<AuthSession | null>(null);
   const [authOpen, setAuthOpen] = useState(false);
   const [authMode, setAuthMode] = useState<"login" | "save-profile">("login");
   const [savePromptHidden, setSavePromptHidden] = useState(() =>
@@ -113,7 +112,7 @@ export function App(): ReactElement {
   const [archiveLoadingMore, setArchiveLoadingMore] = useState(false);
   const [archiveError, setArchiveError] = useState<string | null>(null);
   const [archiveReloadToken, setArchiveReloadToken] = useState(0);
-  const [updateRounds, setUpdateRounds] = useState("4");
+  const [updateRounds, setUpdateRounds] = useState("1");
   const [aktuellRecommendations, setAktuellRecommendations] = useState<
     Recommendation[] | null
   >(null);
@@ -135,6 +134,8 @@ export function App(): ReactElement {
 
   const temporaryProfile = profileSession?.profile ?? null;
   const isAuthenticated = authSession !== null;
+  const needsInitialAccountSave =
+    isAuthenticated && temporaryProfile !== null && lastSavedProfile === null;
   const hasUnsavedProfileChanges =
     isAuthenticated &&
     temporaryProfile !== null &&
@@ -144,6 +145,7 @@ export function App(): ReactElement {
   const profileSaveBanner = resolveProfileSaveBannerState({
     isAuthenticated,
     hasUnsavedProfileChanges,
+    needsInitialAccountSave,
     isSavingProfileChanges,
     savedMessage: profileChangesSavedMessage,
     errorMessage: profileChangesError,
@@ -153,12 +155,15 @@ export function App(): ReactElement {
     (route === "aktuell" || route === "entdecken") && temporaryProfile !== null;
   const resultsFilterOptions = useResultsFilterOptions(resultsFilterOptionsEnabled);
 
-  const apiClient = useApiClient();
+  const createClient = useCallback(
+    () => createApiClient(authSession?.accessToken),
+    [authSession?.accessToken],
+  );
 
   const pageTitle = useMemo(() => {
     switch (route) {
       case "aktuell":
-        return "Aktuell";
+        return "Neuheiten";
       case "entdecken":
         return "Entdecken";
       case "playlists":
@@ -235,7 +240,7 @@ export function App(): ReactElement {
     if (authSession === null) {
       return;
     }
-    if (hasUnsavedProfileChanges) {
+    if (hasUnsavedProfileChanges || needsInitialAccountSave) {
       setUserState("authenticated_unsaved_changes");
       return;
     }
@@ -244,7 +249,7 @@ export function App(): ReactElement {
       return;
     }
     setUserState("authenticated_no_profile");
-  }, [authSession, hasUnsavedProfileChanges, lastSavedProfile]);
+  }, [authSession, hasUnsavedProfileChanges, lastSavedProfile, needsInitialAccountSave]);
 
   useEffect(() => {
     if (
@@ -276,7 +281,7 @@ export function App(): ReactElement {
       offset: number,
       mode: "replace" | "append",
     ): Promise<void> => {
-      const result = await loadArchiveRecommendations(apiClient(), profile, {
+      const result = await loadArchiveRecommendations(createClient(), profile, {
         offset,
         limit: ARCHIVE_PAGE_SIZE,
       });
@@ -287,19 +292,18 @@ export function App(): ReactElement {
           : result.recommendations,
       );
     },
-    [apiClient],
+    [createClient],
   );
 
   const loadAktuellPage = useCallback(
     async (offset: number, mode: "replace" | "append"): Promise<void> => {
-      const newestCount = newestCountFromUpdateRounds(Number(updateRounds));
       const result = await loadNewReviewRecommendations(
-        apiClient(),
+        createClient(),
         temporaryProfile,
         {
           offset,
           limit: ARCHIVE_PAGE_SIZE,
-          newestCount,
+          updateRounds: Number(updateRounds),
         },
       );
       setAktuellTotal(result.total);
@@ -309,7 +313,7 @@ export function App(): ReactElement {
           : result.recommendations,
       );
     },
-    [apiClient, temporaryProfile, updateRounds],
+    [createClient, temporaryProfile, updateRounds],
   );
 
   useEffect(() => {
@@ -399,7 +403,7 @@ export function App(): ReactElement {
 
   function setAppRoute(nextRoute: AppRoute): void {
     setRoute(nextRoute);
-    window.history.pushState({}, "", nextRoute === "willkommen" ? "/" : `/${nextRoute}`);
+    window.history.pushState({}, "", pathForRoute(nextRoute));
   }
 
   function navigate(nextRoute: AppRoute): void {
@@ -447,7 +451,12 @@ export function App(): ReactElement {
     setAuthOpen(true);
   }
 
-  function openSaveProfile(): void {
+  function openSaveProfileToExistingAccount(): void {
+    setAuthMode("login");
+    setAuthOpen(true);
+  }
+
+  function openCreateAccount(): void {
     setAuthMode("save-profile");
     setAuthOpen(true);
   }
@@ -498,7 +507,7 @@ export function App(): ReactElement {
     setProfileChangesError(null);
     setProfileChangesSavedMessage(null);
     try {
-      const savedProfile = await saveTasteProfile(apiClient(), temporaryProfile);
+      const savedProfile = await saveTasteProfile(createClient(), temporaryProfile);
       setLastSavedProfile(cloneTasteProfile(savedProfile));
       const updatedSession: ProfileSetupResult = {
         presetId: profileSession?.presetId ?? "saved",
@@ -508,7 +517,16 @@ export function App(): ReactElement {
       writeProfileSession(updatedSession);
       setProfileSession(updatedSession);
       setProfileChangesSavedMessage("Gespeichert.");
-    } catch {
+    } catch (error) {
+      if (error instanceof ApiError && error.status === 401) {
+        clearAuthSession();
+        setAuthSession(null);
+        setLastSavedProfile(null);
+        setProfileChangesError(profileSaveUnauthorizedMessage());
+        setAuthMode("login");
+        setAuthOpen(true);
+        return;
+      }
       setProfileChangesError(
         "Deine Änderungen konnten gerade nicht gespeichert werden. Bitte versuche es noch einmal.",
       );
@@ -723,8 +741,9 @@ export function App(): ReactElement {
     />
   ) : showSavePrompt ? (
     <SaveProfilePrompt
+      onCreateAccount={openCreateAccount}
       onDismiss={handleDismissSavePrompt}
-      onSave={openSaveProfile}
+      onSaveToExistingAccount={openSaveProfileToExistingAccount}
     />
   ) : null;
 
@@ -771,7 +790,6 @@ export function App(): ReactElement {
           openInitialProfileSetup={openInitialProfileSetup}
           openLogin={openLogin}
           openProfileOverview={openProfileOverview}
-          openSaveProfile={openSaveProfile}
           playlistSource={playlistSource}
           profileChangesError={profileChangesError}
           profileChangesSavedMessage={profileChangesSavedMessage}
@@ -842,7 +860,6 @@ interface AppContentProps {
   openInitialProfileSetup: () => void;
   openLogin: () => void;
   openProfileOverview: () => void;
-  openSaveProfile: () => void;
   playlistSource: RecommendationSource;
   profileChangesError: string | null;
   profileChangesSavedMessage: string | null;
@@ -909,7 +926,6 @@ function AppContent({
   openInitialProfileSetup,
   openLogin,
   openProfileOverview,
-  openSaveProfile,
   playlistSource,
   profileChangesError,
   profileChangesSavedMessage,
@@ -1086,7 +1102,6 @@ function AppContent({
       )}
       {authOpen && (
         <AuthDialog
-          lockMode
           mode={authMode}
           onClose={() => setAuthOpen(false)}
           onSuccess={handleAuthSuccess}
@@ -1161,8 +1176,8 @@ function AktuellDiscoverPage({
   if (!profileExists) {
     return (
       <section className="empty-results">
-        <p className="eyebrow">Aktuell</p>
-        <h1>Neue Rezensionen brauchen dein Musikprofil</h1>
+        <p className="eyebrow">Neuheiten</p>
+        <h1>Neuheiten brauchen dein Musikprofil</h1>
         <p>
           Erstelle zuerst ein Profil, damit Plattenradar frische Rezensionen nach
           Passung sortieren kann.
@@ -1177,8 +1192,8 @@ function AktuellDiscoverPage({
   if (isLoading && recommendations === null && !isReloading) {
     return (
       <section className="empty-results">
-        <p className="eyebrow">Aktuell</p>
-        <h1>Neue Rezensionen werden geladen</h1>
+        <p className="eyebrow">Neuheiten</p>
+        <h1>Neuheiten werden geladen</h1>
       </section>
     );
   }
@@ -1186,8 +1201,8 @@ function AktuellDiscoverPage({
   if (error !== null && recommendations === null) {
     return (
       <section className="empty-results">
-        <p className="eyebrow">Aktuell</p>
-        <h1>Neue Rezensionen sind gerade nicht erreichbar</h1>
+        <p className="eyebrow">Neuheiten</p>
+        <h1>Neuheiten sind gerade nicht erreichbar</h1>
         <p>{error}</p>
         <button className="primary-button" onClick={onRetry} type="button">
           Erneut versuchen
@@ -1234,7 +1249,7 @@ function AktuellDiscoverPage({
         profileSession={profileSession}
         recommendations={recommendations ?? []}
         source="aktuell"
-        title="Neue Rezensionen für dich"
+        title="Neuheiten für dich"
         updateRoundOptions={UPDATE_ROUND_OPTIONS}
         updateRounds={updateRounds}
       />

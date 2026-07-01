@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import pytest
+
 from music_review.application.models import (
     ExplanationSignals,
     PlaylistExport,
@@ -23,7 +25,6 @@ def test_filter_settings_normalizes_ranges_and_legacy_sort_mode() -> None:
             "rating_max": -2,
             "score_min": 1.2,
             "score_max": -0.5,
-            "community_spectrum_crossover": 9,
             "overall_weight_alpha": 2,
             "overall_weight_beta": -1,
             "overall_weight_gamma": "not-a-number",
@@ -39,13 +40,26 @@ def test_filter_settings_normalizes_ranges_and_legacy_sort_mode() -> None:
     assert settings.rating_max == 10
     assert settings.score_min == 0
     assert settings.score_max == 1
-    assert settings.community_spectrum_crossover == 1
     assert settings.overall_weight_alpha == 1
     assert settings.overall_weight_beta == 0
-    assert settings.overall_weight_gamma == 0.25
+    assert settings.overall_weight_gamma == 0.2
     assert settings.plattenlabel_selection == ("Sub Pop", "Matador")
     assert settings.sort_mode == "discovery"
     assert settings.serendipity == 1
+
+
+def test_taste_profile_defaults_exclude_legacy_album_style_breadth_k() -> None:
+    settings = TasteFilterSettings.from_mapping(
+        {"album_style_breadth_saturation_k": 0.1},
+    )
+    assert not hasattr(settings, "album_style_breadth_saturation_k")
+
+
+def test_taste_profile_defaults_use_standard_weights() -> None:
+    settings = TasteFilterSettings()
+    assert settings.overall_weight_alpha == pytest.approx(0.7)
+    assert settings.overall_weight_beta == pytest.approx(0.1)
+    assert settings.overall_weight_gamma == pytest.approx(0.2)
 
 
 def test_profile_from_legacy_payload_keeps_taste_fields() -> None:

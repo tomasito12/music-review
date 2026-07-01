@@ -36,7 +36,6 @@ const session: ProfileSetupResult = {
     selected_communities: ["C001", "C002", "C003"],
     community_weights_raw: { C001: 0.5, C002: 0.5, C003: 0.5 },
     filter_settings: {
-      community_spectrum_crossover: 0.5,
       overall_weight_alpha: 0.5,
       overall_weight_beta: 0.25,
       overall_weight_gamma: 0.25,
