@@ -210,10 +210,16 @@ export function PlaylistGenerator({
     exportResult === null || exportResult.items.length === 0
       ? ""
       : playlistItemsToTxt(exportResult.items);
+  const playlistVisualReady =
+    exportResult !== null
+      ? "results"
+      : source === "entdecken" && (archivePoolLoading || !archivePoolReady)
+        ? "pending"
+        : "form";
 
   if (profile === null) {
     return (
-      <section className="playlist-page page-shell">
+      <section className="playlist-page page-shell" data-visual-playlist-ready="gate">
         <header className="page-header">
           <p className="eyebrow">Playlists</p>
           <h1>Neue Playlist erzeugen</h1>
@@ -232,7 +238,10 @@ export function PlaylistGenerator({
   }
 
   return (
-    <section className="playlist-page page-shell">
+    <section
+      className="playlist-page page-shell"
+      data-visual-playlist-ready={playlistVisualReady}
+    >
       <header className="page-header">
         <p className="eyebrow">Playlists</p>
         <h1>Neue Playlist erzeugen</h1>
