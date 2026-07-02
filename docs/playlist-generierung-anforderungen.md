@@ -326,13 +326,13 @@ Ziel: **Natürlicher Abschluss** der Entdeckungsreise — nicht „Export-Werkze
 | **E14** | Standard-Export | **a)** CSV empfohlen | ✅ **CSV als Primäraktion** (Playlist-Name automatisch im Zieldienst). **Text kopieren** und TXT-Download sekundär — mit Kurzhinweis: *„CSV = Name automatisch · Text = schneller Paste, Name in TuneMyMusic“*. React-CSV auf TuneMyMusic-Format mit `Playlist name` umstellen (Backend-Vorbild). |
 | **E15** | Streaming-Dienst für Anleitung | **Korrektur: generisch** (nicht Deezer/Spotify-spezifisch) | ✅ **Generische TuneMyMusic-Anleitung** — Upload/Freitext, Zieldienst **vom Nutzer in TuneMyMusic gewählt**. Keine dienst-spezifischen Pfade als Default; ein Link zu TuneMyMusic (Upload/Transfer) reicht. |
 
-**Hinweis (Nutzer, Nachsatz ggf. abgeschnitten):** TuneMyMusic **ist** der Streaming-Übertragungsweg — Nutzer lädt Datei/Text bei TuneMyMusic hoch und wählt dort den **Zieldienst** (Deezer, Spotify, …). Unsere UI erklärt den Weg **bis TuneMyMusic** und nennt **Deezer + Spotify** als übliche Ziele — kein direkter API-Export zu Streaming-Diensten.
+**Hinweis:** TuneMyMusic **ist** der Streaming-Übertragungsweg — Nutzer wählt den **Zieldienst in TuneMyMusic** (Deezer, Spotify, …). Unsere Anleitung bleibt **dienstneutral**.
 
 **Block E — Kurzfassung für Umsetzung:**
 
 - Default-Namen: `Plattenradar Neuheiten|Archiv YYYY-MM-DD`; bei Wiederholung Suffix `(2)` …
 - Export-Hierarchie: **CSV zuerst** → Text/TXT
-- TuneMyMusic-Anleitung: generisch + **Deezer & Spotify** als Ziel-Beispiele
+- TuneMyMusic-Anleitung: **generisch** (nummerierte Schritte, Link zu TuneMyMusic)
 
 ---
 
@@ -340,12 +340,27 @@ Ziel: **Natürlicher Abschluss** der Entdeckungsreise — nicht „Export-Werkze
 
 *Block A–E beantwortet. Block F–H folgen.*
 
-### Block F — Design & Ergebnisdarstellung
+### Block F — Design & Ergebnisdarstellung ✅
 
-16. Ergebnis: **volle Recommendation-Cards** (wie Entdecken) oder **schlankere Track-Zeilen** mit kleinem Foto?
-17. **Künstler-Mosaik** oben — ja, nein, oder nur bei ausreichend vielen Bildern?
-18. Welche Infos pro Track sind **Pflicht**: Künstler, Album, Titel — dazu Rating, Passungstext, Review-Link, Highlight-Badge?
-19. Soll eine **Vorschau vor Generierung** (Mini-Kacheln) eingebaut werden, oder reicht das Ergebnis nach Klick?
+| # | Frage | Nutzerantwort | Entscheidung (UX / Produkt) |
+|---|--------|---------------|-----------------------------|
+| **F16** | Cards vs. schlanke Zeilen | **c) Hybrid** (Tendenz übernommen) | ✅ **Kompakte Track-Zeilen** mit Card-Anmutung: kleines Künstlerfoto, klare Typo, exportfreundlich; nicht volle Entdecken-Cards (zu viel Scroll bei 30–50 Titeln). |
+| **F17** | Künstler-Mosaik | **c)** nur bei genug Bildern | ✅ Mosaik (6–12 Künstler) **nur wenn ausreichend Bilder** — sonst weglassen, kein leerer Platzhalter. |
+| **F18** | Pflicht-Infos pro Track | Künstler, Album, Titel **ja**; Highlight vs. Albumtrack **nicht wichtig** (Detail); Rating **unsicher**; Passungstext **nein** (unbekannt/unnötig); **Review-Link ja** (dezentes Icon) | ✅ **Pflicht:** Künstler, Album, Titel + **Review-Link** (Icon). **Highlight-Badge weglassen** (Nutzer: zu kleines Detail). **Passungstext nein.** **Rating optional** — kompakt anzeigen wenn Platz, nicht prominent (P2). |
+| **F19** | Vorschau vor Generierung | **c) später / nice-to-have** | ✅ **Nicht in v1** — Mini-Kacheln vor „Playlist vorbereiten“ als spätere Verbesserung (P2). |
+
+**Block F — Kurzfassung für Umsetzung:**
+
+- Ergebnis: **schlanke Zeilen + Foto + Review-Icon**; Export-Aktionen oben
+- **Kein** Highlight/Albumtrack-Badge in v1
+- Künstler-Mosaik: **bedingt** (nur mit Bildern)
+- Vorschau vor Generierung: **später**
+
+---
+
+## Interview-Runde — offene Details (Block G–H)
+
+*Block A–F beantwortet. Block G–H folgen.*
 
 ### Block G — Profil, Einstieg, Mobile
 
@@ -372,7 +387,7 @@ Ziel: **Natürlicher Abschluss** der Entdeckungsreise — nicht „Export-Werkze
 - [ ] UX: konkrete UI-Konzepte pro Modus (ohne Überladung)
 - [ ] UX: TuneMyMusic-Übergang (Schritte, Copy, visuelle Hierarchie)
 - [x] Playlist-Name: modus-Defaults; Suffix (2) bei Mehrfach-Generierung
-- [x] Export: CSV primär; TuneMyMusic-Anleitung Deezer + Spotify
+- [x] Export: CSV primär; TuneMyMusic-Anleitung **generisch**
 - [ ] Export: React-CSV an TuneMyMusic-Format anbinden (Umsetzung)
 - [ ] Interview Block F–H: noch offen
 - [ ] Weitere Details zu Neuheiten (UI, Defaults, Benennung der Steuerungen)
@@ -394,4 +409,4 @@ Ziel: **Natürlicher Abschluss** der Entdeckungsreise — nicht „Export-Werkze
 | 2026-07-02 | Interview Block B: Neuheiten Fokus↔Entdecken; Archiv getrennt (Pool Top-N/Score + Titel/Album); Cap ~4 dynamisch; „Nochmal mischen“ ja |
 | 2026-07-02 | Interview Block C: adaptiver Top-N-Slider (pool_size); Default min(200,pool); Chips 50/200/Alle; kein Mindest-Score v1 |
 | 2026-07-02 | Interview Block D: 5–100, Default 30; Chips 20/30/50 + optionale Eigene; TuneMyMusic bis 500 ok |
-| 2026-07-02 | Interview Block E: Suffix (2); CSV primär; TuneMyMusic-Anleitung Deezer + Spotify |
+| 2026-07-02 | Interview Block E: Suffix (2); CSV primär; TuneMyMusic-Anleitung generisch (Korrektur) |
