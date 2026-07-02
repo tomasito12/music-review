@@ -1,4 +1,6 @@
-import { describe, expect, it } from "vitest";
+// @vitest-environment jsdom
+
+import { afterEach, describe, expect, it } from "vitest";
 
 import { createTemporaryTasteProfile } from "./plattenradarApi";
 import {
@@ -20,6 +22,10 @@ describe("playlistApiSource", () => {
 });
 
 describe("defaultPlaylistNameForSource", () => {
+  afterEach(() => {
+    delete document.documentElement.dataset.visualTest;
+  });
+
   it("uses mode-specific labels", () => {
     const date = new Date("2026-07-02T12:00:00.000Z");
 
@@ -28,6 +34,14 @@ describe("defaultPlaylistNameForSource", () => {
     );
     expect(defaultPlaylistNameForSource("entdecken", date)).toBe(
       "Plattenradar Archiv 2026-07-02",
+    );
+  });
+
+  it("uses a fixed reference date during visual regression", () => {
+    document.documentElement.dataset.visualTest = "true";
+
+    expect(defaultPlaylistNameForSource("aktuell")).toBe(
+      "Plattenradar Neuheiten 2026-06-27",
     );
   });
 });
