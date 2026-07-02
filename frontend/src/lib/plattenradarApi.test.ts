@@ -374,8 +374,9 @@ describe("exportPlaylist", () => {
       profile,
       name: "Test",
       targetCount: 20,
-      focus: "balanced",
-      variation: 0.35,
+      newestTasteFocus: 0.25,
+      archiveDepth: 0.35,
+      archiveAlbumLimit: 200,
       updateRounds: "4",
       format: "txt",
     });
