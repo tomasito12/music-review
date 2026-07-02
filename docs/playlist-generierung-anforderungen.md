@@ -72,13 +72,48 @@ Der Nutzer entscheidet, **wie stark** seine persönliche Geschmackspräferenz di
 
 ## Modus: Archiv
 
-*Noch nicht im Detail besprochen — folgt in weiteren Gesprächsrunden.*
+### Besonderheit gegenüber Neuheiten
+
+Im Archiv gibt es **tausende Alben** mit einem **sehr hohen Gesamt-Score**. Die zentrale Frage ist: **Wie wählt man zwischen diesen aus?**
+
+### Dimension 1: Auswahlbasis (Album-Pool)
+
+Mögliche Steuerungen für den Nutzer — wie groß / wie gut der zugrunde liegende Album-Pool sein soll:
+
+| Option | Beschreibung |
+|--------|--------------|
+| **Mindest-Score** | Alle Alben, die **mindestens** einen bestimmten Score-Wert haben |
+| **Top-N-Alben** | Feste Obergrenzen als Idee, z. B. **Top 500**, **Top 1000** oder **Top 2000** Alben |
+
+*(Konkrete UI, Defaults und ob mehrere Varianten kombinierbar sind — noch offen.)*
+
+### Dimension 2: Album-Verteilung in der Playlist
+
+Zusätzlich soll der Nutzer angeben können, **wie die Playlist zusammengesetzt** sein soll:
+
+| Option | Beschreibung | Wirkung |
+|--------|--------------|---------|
+| **Alben klar überrepräsentiert** | Bestimmte Alben stehen deutlich im Vordergrund | Mehrere Titel pro Album möglich, z. B. **drei oder vier Stücke** — Nutzer kann sich **stärker mit dem Album** beschäftigen |
+| **Ein Song pro Album** | Breite Streuung über viele Alben | Playlist eher als **Überblick / Entdeckung** über viele Alben hinweg |
+
+Diese Album-Verteilungs-Logik ist **konzeptionell verwandt** mit der Geschmacksstärke bei Neuheiten (viele Titel vs. ein Titel pro Album), gilt im Archiv aber im Kontext des **großen Score-Pools**.
+
+---
+
+## Gemeinsam für Neuheiten und Archiv
+
+### Anzahl der Songs in der Playlist
+
+- Der Nutzer soll in **beiden Modi** angeben können, **wie viele Songs** die Playlist enthalten soll.
+- **Obergrenze** für die Track-Anzahl: noch **nicht festgelegt**.
 
 ---
 
 ## Offene Punkte / noch zu ergänzen
 
-- [ ] Archiv-Modus: Anforderungen und Parameter
+- [ ] Archiv: konkrete UI für Auswahlbasis (Score-Schwelle vs. Top-N; kombinierbar?)
+- [ ] Archiv: Benennung und Abgrenzung Album-Verteilung vs. Geschmacksstärke bei Neuheiten
+- [ ] Track-Anzahl: Default und Obergrenze
 - [ ] Weitere Details zu Neuheiten (UI, Defaults, Benennung der Steuerungen)
 - [ ] Abgleich mit bestehender Implementierung und Design-Review
 
@@ -89,3 +124,4 @@ Der Nutzer entscheidet, **wie stark** seine persönliche Geschmackspräferenz di
 | Datum | Inhalt |
 |-------|--------|
 | 2026-07-02 | Erstfassung: Übergeordnetes Ziel, zwei Modi, Neuheiten (Zeitraum, Zufall, Geschmacksstärke) |
+| 2026-07-02 | Archiv: Auswahlbasis (Mindest-Score, Top-N), Album-Verteilung; gemeinsame Track-Anzahl (Obergrenze offen) |
