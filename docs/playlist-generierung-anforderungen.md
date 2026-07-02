@@ -1,12 +1,13 @@
 # Playlist-Generierung — Anforderungen (Nutzerinput)
 
-Status: **Interview abgeschlossen** — bereit für Umsetzungsplanung (v1 React)  
+Status: **Interview abgeschlossen** — Umsetzungsplan in [`playlist-generierung-umsetzungsplan.md`](playlist-generierung-umsetzungsplan.md)  
 Datum: 2026-07-02  
 Hinweis: Dieses Dokument hält den **Nutzerinput** und die **Interview-Entscheidungen** fest. Umsetzung folgt separat.
 
 Verwandte Dokumente:
 
 - [`playlists-evaluierung-2026-06-30.md`](playlists-evaluierung-2026-06-30.md) — abgeschlossene Design-Review der bestehenden Playlist-Seite
+- [`playlist-generierung-umsetzungsplan.md`](playlist-generierung-umsetzungsplan.md) — **Umsetzungsplan v1 (5 PRs)**
 - TuneMyMusic-Export bleibt unverändert (bewusste Entscheidung)
 
 ---
@@ -358,10 +359,6 @@ Ziel: **Natürlicher Abschluss** der Entdeckungsreise — nicht „Export-Werkze
 
 ---
 
-## Interview-Runde — offene Details (Block G–H)
-
-*Block A–G beantwortet. Block H folgt.*
-
 ### Block G — Profil, Einstieg, Mobile ✅
 
 | # | Frage | Nutzerantwort | Entscheidung (UX / Produkt) |
@@ -430,7 +427,7 @@ Ziel: **Natürlicher Abschluss** der Entdeckungsreise — nicht „Export-Werkze
 
 ## Offene Punkte — Umsetzung (nach Interview)
 
-- [x] Interview Block A–H abgeschlossen
+- [x] Umsetzungsplan v1 (5 PRs) — siehe `playlist-generierung-umsetzungsplan.md`
 - [ ] **P0** Mobile-Layout + Sidebar/Export-Struktur
 - [ ] **P1** Modus-UI (Neuheiten Fokus↔Entdecken; Archiv Pool + Titel/Album)
 - [ ] **P1** Track-Chips, Playlist-Namen, CSV-Export-Fix, TuneMyMusic-Anleitung
