@@ -2,6 +2,7 @@ import { useCallback, useEffect, useState } from "react";
 import type { ReactElement } from "react";
 
 import { PlaylistDualSlider } from "./playlist/PlaylistDualSlider";
+import { PlaylistTrackList } from "./playlist/PlaylistTrackList";
 import { TuneMyMusicGuide } from "./playlist/TuneMyMusicGuide";
 import { UPDATE_ROUND_OPTIONS } from "../lib/aktuellPage";
 import type { ApiClient } from "../lib/apiClient";
@@ -502,24 +503,7 @@ export function PlaylistGenerator({
             </p>
           ) : (
             <>
-              <table className="playlist-table">
-                <thead>
-                  <tr>
-                    <th>Künstler</th>
-                    <th>Album</th>
-                    <th>Track</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {exportResult.items.map((item) => (
-                    <tr key={`${item.review_id}-${item.track_title}`}>
-                      <td>{item.artist}</td>
-                      <td>{item.album}</td>
-                      <td>{item.track_title}</td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
+              <PlaylistTrackList items={exportResult.items} />
               <TuneMyMusicGuide txtContent={txtContent} />
             </>
           )}
