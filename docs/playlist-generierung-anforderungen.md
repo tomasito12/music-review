@@ -318,13 +318,27 @@ Ziel: **Natürlicher Abschluss** der Entdeckungsreise — nicht „Export-Werkze
 
 ---
 
-## Interview-Runde — offene Details (Block E–H)
+### Block E — Playlist-Name & Export ✅
 
-*Block A–C beantwortet. Block D offen. Block E–H folgen.*
+| # | Frage | Nutzerantwort | Entscheidung (UX / Produkt) |
+|---|--------|---------------|-----------------------------|
+| **E13** | Zweite Playlist am selben Tag | **a)** Suffix **`(2)`** | ✅ Bei erneuter Generierung mit gleichem Basisnamen: automatisch **` (2)`**, **` (3)`** … anhängen. Erste Generierung ohne Suffix. Nutzer kann Name weiterhin manuell überschreiben. |
+| **E14** | Standard-Export | **a)** CSV empfohlen | ✅ **CSV als Primäraktion** (Playlist-Name automatisch im Zieldienst). **Text kopieren** und TXT-Download sekundär — mit Kurzhinweis: *„CSV = Name automatisch · Text = schneller Paste, Name in TuneMyMusic“*. React-CSV auf TuneMyMusic-Format mit `Playlist name` umstellen (Backend-Vorbild). |
+| **E15** | Streaming-Dienst für Anleitung | **Deezer und Spotify** | ✅ Anleitung **nicht nur für einen Dienst** — nummerierte TuneMyMusic-Schritte, Ziel exemplarisch **Deezer oder Spotify** (Tabs oder zwei kurze Pfade). Links z. B. `tunemymusic.com/transfer/file-to-deezer` und `…/file-to-spotify`. Streamlit-Deezer-Link als Ausgangspunkt. |
 
-13. Bei zweiter Generierung am selben Tag: bevorzugst du Suffix **`(2)`**, **Uhrzeit**, oder **manuelle Pflicht**?
-14. Soll **CSV** der empfohlene Standard-Export sein (wegen Playlist-Name), mit TXT als Alternative?
-15. Welcher **Streaming-Dienst** ist für deine Zielgruppe primär (Deezer, Spotify, …) — für TuneMyMusic-Anleitung und Link?
+**Hinweis (Nutzer, Nachsatz ggf. abgeschnitten):** TuneMyMusic **ist** der Streaming-Übertragungsweg — Nutzer lädt Datei/Text bei TuneMyMusic hoch und wählt dort den **Zieldienst** (Deezer, Spotify, …). Unsere UI erklärt den Weg **bis TuneMyMusic** und nennt **Deezer + Spotify** als übliche Ziele — kein direkter API-Export zu Streaming-Diensten.
+
+**Block E — Kurzfassung für Umsetzung:**
+
+- Default-Namen: `Plattenradar Neuheiten|Archiv YYYY-MM-DD`; bei Wiederholung Suffix `(2)` …
+- Export-Hierarchie: **CSV zuerst** → Text/TXT
+- TuneMyMusic-Anleitung: generisch + **Deezer & Spotify** als Ziel-Beispiele
+
+---
+
+## Interview-Runde — offene Details (Block F–H)
+
+*Block A–E beantwortet. Block F–H folgen.*
 
 ### Block F — Design & Ergebnisdarstellung
 
@@ -353,12 +367,14 @@ Ziel: **Natürlicher Abschluss** der Entdeckungsreise — nicht „Export-Werkze
 - [x] Archiv vs. Neuheiten: getrennte Metaphern (Block B)
 - [ ] Neuheiten: Slider Fokus ↔ Entdecken; Archiv: Titel-pro-Album-Steuerung
 - [ ] „Nochmal mischen“ als Must-have
-- [ ] Interview Block D: noch offen
-- [ ] Track-Anzahl: Default und Obergrenze
+- [x] Track-Anzahl: 5–100, Default 30, Chips 20/30/50 + optionale Eigene
+- [ ] Interview Block E–H: noch offen
 - [ ] UX: konkrete UI-Konzepte pro Modus (ohne Überladung)
 - [ ] UX: TuneMyMusic-Übergang (Schritte, Copy, visuelle Hierarchie)
-- [ ] Playlist-Name: modus-spezifische Defaults; Idempotenz-Suffix bei Mehrfach-Generierung
-- [ ] Export: React-CSV an TuneMyMusic-Format anbinden (Playlist name); TXT-Grenze in UI kommunizieren
+- [x] Playlist-Name: modus-Defaults; Suffix (2) bei Mehrfach-Generierung
+- [x] Export: CSV primär; TuneMyMusic-Anleitung Deezer + Spotify
+- [ ] Export: React-CSV an TuneMyMusic-Format anbinden (Umsetzung)
+- [ ] Interview Block F–H: noch offen
 - [ ] Weitere Details zu Neuheiten (UI, Defaults, Benennung der Steuerungen)
 - [ ] Design: Ergebnisdarstellung (Cards vs. Liste, Künstler-Mosaik, Kontextzeile)
 - [ ] Neuheiten Zeitraum: nur Update-Runden (Default 1); Pool-Hinweis optional (P2)
@@ -377,3 +393,4 @@ Ziel: **Natürlicher Abschluss** der Entdeckungsreise — nicht „Export-Werkze
 | 2026-07-02 | Interview Block A: Default 1 Runde; UX-Entscheid nur Update-Runden (kein Kalender); Pool-Hinweis optional, „passend zu Profil“ |
 | 2026-07-02 | Interview Block B: Neuheiten Fokus↔Entdecken; Archiv getrennt (Pool Top-N/Score + Titel/Album); Cap ~4 dynamisch; „Nochmal mischen“ ja |
 | 2026-07-02 | Interview Block C: adaptiver Top-N-Slider (pool_size); Default min(200,pool); Chips 50/200/Alle; kein Mindest-Score v1 |
+| 2026-07-02 | Interview Block D: 5–100, Default 30; Chips 20/30/50 + optionale Eigene; TuneMyMusic bis 500 ok |
