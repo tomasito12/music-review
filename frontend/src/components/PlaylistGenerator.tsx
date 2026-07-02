@@ -2,6 +2,7 @@ import { useCallback, useEffect, useState } from "react";
 import type { ReactElement } from "react";
 
 import { PlaylistDualSlider } from "./playlist/PlaylistDualSlider";
+import { TuneMyMusicGuide } from "./playlist/TuneMyMusicGuide";
 import { UPDATE_ROUND_OPTIONS } from "../lib/aktuellPage";
 import type { ApiClient } from "../lib/apiClient";
 import {
@@ -21,9 +22,11 @@ import {
 import { exportPlaylist, loadArchiveRecommendations } from "../lib/plattenradarApi";
 import type { TemporaryTasteProfile } from "../lib/plattenradarApi";
 import {
-  defaultPlaylistName,
+  bumpPlaylistNameSuffix,
+  defaultPlaylistNameForSource,
   downloadPlaylistContent,
-  playlistItemsToCsv,
+  playlistItemsToTxt,
+  playlistTxtFilename,
 } from "../lib/playlistExport";
 import type { PlaylistExportResult } from "../lib/playlistExport";
 import type { RecommendationSource } from "../types";
@@ -53,7 +56,8 @@ export function PlaylistGenerator({
   const [archivePoolSize, setArchivePoolSize] = useState<number | null>(null);
   const [archiveAlbumLimit, setArchiveAlbumLimit] = useState(200);
   const [archivePoolLoading, setArchivePoolLoading] = useState(false);
-  const [name, setName] = useState(() => defaultPlaylistName());
+  const [name, setName] = useState(() => defaultPlaylistNameForSource(initialSource));
+  const [nameTouched, setNameTouched] = useState(false);
   const [isGenerating, setIsGenerating] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [exportResult, setExportResult] = useState<PlaylistExportResult | null>(null);
@@ -66,6 +70,12 @@ export function PlaylistGenerator({
   useEffect(() => {
     setUpdateRounds(initialUpdateRounds);
   }, [initialUpdateRounds]);
+
+  useEffect(() => {
+    if (!nameTouched) {
+      setName(defaultPlaylistNameForSource(source));
+    }
+  }, [nameTouched, source]);
 
   useEffect(() => {
     if (profile === null || source !== "entdecken") {
@@ -101,49 +111,61 @@ export function PlaylistGenerator({
     };
   }, [apiClient, profile, source]);
 
-  const generatePlaylist = useCallback(async () => {
-    if (profile === null) {
-      return;
-    }
+  const generatePlaylist = useCallback(
+    async (nameOverride?: string) => {
+      if (profile === null) {
+        return;
+      }
 
-    setIsGenerating(true);
-    setError(null);
-    setCopyMessage(null);
+      const playlistName = nameOverride ?? name;
 
-    try {
-      const result = await exportPlaylist(apiClient(), {
-        source,
-        profile,
-        name,
-        targetCount: trackCount,
-        newestTasteFocus,
-        archiveDepth,
-        archiveAlbumLimit,
-        updateRounds,
-        format: "txt",
-      });
-      setExportResult(result);
-    } catch (generateError) {
-      const message =
-        generateError instanceof Error
-          ? generateError.message
-          : "Die Playlist konnte nicht erzeugt werden.";
-      setError(message);
-      setExportResult(null);
-    } finally {
-      setIsGenerating(false);
-    }
-  }, [
-    apiClient,
-    archiveAlbumLimit,
-    archiveDepth,
-    name,
-    newestTasteFocus,
-    profile,
-    source,
-    trackCount,
-    updateRounds,
-  ]);
+      setIsGenerating(true);
+      setError(null);
+      setCopyMessage(null);
+
+      try {
+        const result = await exportPlaylist(apiClient(), {
+          source,
+          profile,
+          name: playlistName,
+          targetCount: trackCount,
+          newestTasteFocus,
+          archiveDepth,
+          archiveAlbumLimit,
+          updateRounds,
+          format: "csv",
+        });
+        setExportResult(result);
+      } catch (generateError) {
+        const message =
+          generateError instanceof Error
+            ? generateError.message
+            : "Die Playlist konnte nicht erzeugt werden.";
+        setError(message);
+        setExportResult(null);
+      } finally {
+        setIsGenerating(false);
+      }
+    },
+    [
+      apiClient,
+      archiveAlbumLimit,
+      archiveDepth,
+      name,
+      newestTasteFocus,
+      profile,
+      source,
+      trackCount,
+      updateRounds,
+    ],
+  );
+
+  const remixPlaylist = useCallback(() => {
+    const nextName = bumpPlaylistNameSuffix(name);
+    setName(nextName);
+    setNameTouched(true);
+    void generatePlaylist(nextName);
+  }, [generatePlaylist, name]);
 
   const showEntryContext = source === entrySource;
   const archivePoolReady = archivePoolSize !== null && archivePoolSize > 0;
@@ -153,6 +175,10 @@ export function PlaylistGenerator({
     archivePoolSize === null
       ? { min: 0, max: 0 }
       : archiveAlbumLimitBounds(archivePoolSize);
+  const txtContent =
+    exportResult === null || exportResult.items.length === 0
+      ? ""
+      : playlistItemsToTxt(exportResult.items);
 
   if (profile === null) {
     return (
@@ -181,7 +207,7 @@ export function PlaylistGenerator({
         <h1>Neue Playlist erzeugen</h1>
         <p>
           Stelle die Playlist passend zu deinem Hörmoment zusammen. Anschließend
-          kannst du sie als Text, TXT oder CSV in deinen Musikdienst übertragen.
+          kannst du sie als CSV oder Text in deinen Musikdienst übertragen.
         </p>
       </header>
 
@@ -368,7 +394,14 @@ export function PlaylistGenerator({
 
         <label>
           Playlist-Name
-          <input onChange={(event) => setName(event.target.value)} type="text" value={name} />
+          <input
+            onChange={(event) => {
+              setNameTouched(true);
+              setName(event.target.value);
+            }}
+            type="text"
+            value={name}
+          />
         </label>
         <button
           className="primary-button"
@@ -414,10 +447,31 @@ export function PlaylistGenerator({
             {exportResult.items.length > 0 && (
               <div className="playlist-export-bar playlist-actions">
                 <button
+                  className="primary-button"
+                  onClick={() =>
+                    downloadPlaylistContent(
+                      exportResult.filename,
+                      exportResult.content,
+                      exportResult.content_type,
+                    )
+                  }
+                  type="button"
+                >
+                  Als CSV herunterladen
+                </button>
+                <button
+                  className="secondary-button"
+                  disabled={isGenerating}
+                  onClick={() => remixPlaylist()}
+                  type="button"
+                >
+                  {isGenerating ? "Wird gemischt …" : "Nochmal mischen"}
+                </button>
+                <button
                   className="secondary-button"
                   onClick={() => {
-                    void navigator.clipboard.writeText(exportResult.content).then(() => {
-                      setCopyMessage("In die Zwischenablage kopiert.");
+                    void navigator.clipboard.writeText(txtContent).then(() => {
+                      setCopyMessage("Text in die Zwischenablage kopiert.");
                     });
                   }}
                   type="button"
@@ -428,28 +482,14 @@ export function PlaylistGenerator({
                   className="secondary-button"
                   onClick={() =>
                     downloadPlaylistContent(
-                      exportResult.filename,
-                      exportResult.content,
-                      exportResult.content_type,
+                      playlistTxtFilename(exportResult.filename),
+                      txtContent,
+                      "text/plain;charset=utf-8",
                     )
                   }
                   type="button"
                 >
                   Als TXT herunterladen
-                </button>
-                <button
-                  className="secondary-button"
-                  onClick={() => {
-                    const csv = playlistItemsToCsv(exportResult.items);
-                    downloadPlaylistContent(
-                      exportResult.filename.replace(/\.txt$/i, ".csv"),
-                      csv,
-                      "text/csv;charset=utf-8",
-                    );
-                  }}
-                  type="button"
-                >
-                  Als CSV herunterladen
                 </button>
               </div>
             )}
@@ -480,10 +520,7 @@ export function PlaylistGenerator({
                   ))}
                 </tbody>
               </table>
-              <label>
-                Für TuneMyMusic (Freitext)
-                <textarea readOnly rows={8} value={exportResult.content} />
-              </label>
+              <TuneMyMusicGuide txtContent={txtContent} />
             </>
           )}
         </div>

@@ -3,8 +3,11 @@ import { describe, expect, it } from "vitest";
 import { createTemporaryTasteProfile } from "./plattenradarApi";
 import {
   buildPlaylistExportPayload,
+  bumpPlaylistNameSuffix,
+  defaultPlaylistNameForSource,
   playlistApiSource,
-  playlistItemsToCsv,
+  playlistItemsToTxt,
+  playlistTxtFilename,
   tasteSettingsForArchive,
   tasteSettingsForNewest,
 } from "./playlistExport";
@@ -13,6 +16,33 @@ describe("playlistApiSource", () => {
   it("maps UI sources to API playlist sources", () => {
     expect(playlistApiSource("entdecken")).toBe("archive");
     expect(playlistApiSource("aktuell")).toBe("new_reviews");
+  });
+});
+
+describe("defaultPlaylistNameForSource", () => {
+  it("uses mode-specific labels", () => {
+    const date = new Date("2026-07-02T12:00:00.000Z");
+
+    expect(defaultPlaylistNameForSource("aktuell", date)).toBe(
+      "Plattenradar Neuheiten 2026-07-02",
+    );
+    expect(defaultPlaylistNameForSource("entdecken", date)).toBe(
+      "Plattenradar Archiv 2026-07-02",
+    );
+  });
+});
+
+describe("bumpPlaylistNameSuffix", () => {
+  it("appends (2) on the first remix", () => {
+    expect(bumpPlaylistNameSuffix("Plattenradar Neuheiten 2026-07-02")).toBe(
+      "Plattenradar Neuheiten 2026-07-02 (2)",
+    );
+  });
+
+  it("increments an existing numeric suffix", () => {
+    expect(bumpPlaylistNameSuffix("Plattenradar Archiv 2026-07-02 (2)")).toBe(
+      "Plattenradar Archiv 2026-07-02 (3)",
+    );
   });
 });
 
@@ -59,7 +89,7 @@ describe("buildPlaylistExportPayload", () => {
       archiveDepth: 0.2,
       archiveAlbumLimit: 120,
       updateRounds: "4",
-      format: "txt",
+      format: "csv",
     });
 
     expect(payload.source).toBe("archive");
@@ -67,6 +97,7 @@ describe("buildPlaylistExportPayload", () => {
     expect(payload.selection_strategy).toBe("weighted_sample");
     expect(payload.archive_limit).toBe(120);
     expect(payload.taste_exponent).toBe(1.4);
+    expect(payload.format).toBe("csv");
   });
 
   it("uses update rounds and newest taste settings for aktuell", () => {
@@ -79,7 +110,7 @@ describe("buildPlaylistExportPayload", () => {
       archiveDepth: 0,
       archiveAlbumLimit: 200,
       updateRounds: "4",
-      format: "txt",
+      format: "csv",
     });
 
     expect(payload.source).toBe("new_reviews");
@@ -87,14 +118,30 @@ describe("buildPlaylistExportPayload", () => {
     expect(payload.taste_exponent).toBe(3);
     expect(payload.selection_strategy).toBe("weighted_sample");
   });
+
+  it("falls back to a mode-specific default playlist name", () => {
+    const payload = buildPlaylistExportPayload({
+      source: "entdecken",
+      profile: createTemporaryTasteProfile(["C001"]),
+      name: "   ",
+      targetCount: 10,
+      newestTasteFocus: 0,
+      archiveDepth: 0,
+      archiveAlbumLimit: 50,
+      updateRounds: "1",
+      format: "csv",
+    });
+
+    expect(payload.playlist_name).toMatch(/^Plattenradar Archiv \d{4}-\d{2}-\d{2}$/);
+  });
 });
 
-describe("playlistItemsToCsv", () => {
-  it("escapes commas in csv fields", () => {
-    const csv = playlistItemsToCsv([
+describe("playlistItemsToTxt", () => {
+  it("formats artist-title lines for TuneMyMusic", () => {
+    const txt = playlistItemsToTxt([
       {
         review_id: 1,
-        artist: "A, B",
+        artist: "Alpha",
         album: "Album",
         track_title: "Song",
         source_kind: "archive",
@@ -103,6 +150,37 @@ describe("playlistItemsToCsv", () => {
       },
     ]);
 
-    expect(csv).toContain('"A, B"');
+    expect(txt).toBe("Alpha - Song");
+  });
+
+  it("deduplicates repeated artist-title pairs", () => {
+    const txt = playlistItemsToTxt([
+      {
+        review_id: 1,
+        artist: "Alpha",
+        album: "Album A",
+        track_title: "Song",
+        source_kind: "archive",
+        score_weight: 1,
+        raw_score: 0.8,
+      },
+      {
+        review_id: 2,
+        artist: "Alpha",
+        album: "Album B",
+        track_title: "Song",
+        source_kind: "archive",
+        score_weight: 1,
+        raw_score: 0.7,
+      },
+    ]);
+
+    expect(txt).toBe("Alpha - Song");
+  });
+});
+
+describe("playlistTxtFilename", () => {
+  it("replaces a csv extension with txt", () => {
+    expect(playlistTxtFilename("Meine-Playlist.csv")).toBe("Meine-Playlist.txt");
   });
 });
