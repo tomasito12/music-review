@@ -1,8 +1,8 @@
 # Playlist-Generierung — Anforderungen (Nutzerinput)
 
-Status: In Arbeit — Sammlung aus Produktdiskussion  
+Status: **Interview abgeschlossen** — bereit für Umsetzungsplanung (v1 React)  
 Datum: 2026-07-02  
-Hinweis: Dieses Dokument hält den **Nutzerinput** strukturiert fest, damit nichts im Chat-Kontext verloren geht. Noch **keine** Umsetzung oder Design-Finalisierung.
+Hinweis: Dieses Dokument hält den **Nutzerinput** und die **Interview-Entscheidungen** fest. Umsetzung folgt separat.
 
 Verwandte Dokumente:
 
@@ -336,9 +336,9 @@ Ziel: **Natürlicher Abschluss** der Entdeckungsreise — nicht „Export-Werkze
 
 ---
 
-## Interview-Runde — offene Details (Block F–H)
+## Interview-Runde — abgeschlossen (Block A–H)
 
-*Block A–G beantwortet. Block H folgt.*
+*Alle Blöcke beantwortet. Siehe jeweilige Abschnitte oben und **v1-Scope** unten.*
 
 ### Block F — Design & Ergebnisdarstellung ✅
 
@@ -378,33 +378,65 @@ Ziel: **Natürlicher Abschluss** der Entdeckungsreise — nicht „Export-Werkze
 
 ---
 
-### Block H — Scope & Priorität ⏳
+### Block H — Scope & Priorität ✅
 
-23. Was ist **Must-have für v1** dieser Verbesserung vs. **nice-to-have**?
-24. Soll nur das **React-Frontend** verbessert werden, oder parallel **Streamlit**?
-25. Gibt es noch einen Punkt, den du **vergessen** haben könntest — z. B. Favoriten, gespeicherte Playlists, Teilen?
+| # | Frage | Nutzerantwort | Entscheidung (UX / Produkt) |
+|---|--------|---------------|-----------------------------|
+| **H23** | Must-have vs. nice-to-have | **Vorschlag bestätigt** (Must-have- und Nice-to-have-Liste wie vorgeschlagen) | ✅ Siehe **v1-Scope** unten — unverändert übernommen. |
+| **H24** | React vs. Streamlit | **a) Nur React** | ✅ **Nur React-Frontend** (`/playlists`). Streamlit bleibt **Referenz/Inspiration**, kein paralleler Umbau. |
+| **H25** | Fehlt noch etwas? | Nichts Wichtiges vergessen | ✅ Explizit **später:** automatische Playlist-Übertragung, gespeicherte Playlists im Konto, Favoriten als Quelle. **Direkte Spotify/Deezer-API:** nicht möglich (APIs nicht verfügbar). |
 
 ---
 
-## Offene Punkte / noch zu ergänzen
+## v1-Scope — Zusammenfassung (nach Interview)
 
-- [x] Archiv Auswahlbasis: adaptiver Top-N-Slider (Default min(200, pool)); kein Mindest-Score v1
-- [x] Archiv vs. Neuheiten: getrennte Metaphern (Block B)
-- [ ] Neuheiten: Slider Fokus ↔ Entdecken; Archiv: Titel-pro-Album-Steuerung
-- [ ] „Nochmal mischen“ als Must-have
-- [x] Track-Anzahl: 5–100, Default 30, Chips 20/30/50 + optionale Eigene
-- [ ] Interview Block E–H: noch offen
-- [ ] UX: konkrete UI-Konzepte pro Modus (ohne Überladung)
-- [ ] UX: TuneMyMusic-Übergang (Schritte, Copy, visuelle Hierarchie)
-- [x] Playlist-Name: modus-Defaults; Suffix (2) bei Mehrfach-Generierung
-- [x] Export: CSV primär; TuneMyMusic-Anleitung **generisch**
-- [ ] Export: React-CSV an TuneMyMusic-Format anbinden (Umsetzung)
-- [ ] Interview Block F–H: noch offen
-- [ ] Weitere Details zu Neuheiten (UI, Defaults, Benennung der Steuerungen)
-- [x] Design Ergebnis: Hybrid-Zeilen, Mosaik bedingt, Review-Link, kein Highlight-Badge v1
-- [x] Profil-Zeiler + Deep-Link dezent; Mobile Layout zuerst
-- [ ] Interview Block H: noch offen
-- [ ] Neuheiten Zeitraum: nur Update-Runden (Default 1); Pool-Hinweis optional (P2)
+### Must-have (v1, nur React)
+
+| Prio | Lieferumfang |
+|------|----------------|
+| **P0** | Mobile-Layout fixen (keine Überlappung Formular/Sidebar) |
+| **P0** | „Danach“-Logik neu ordnen; Export klar strukturieren |
+| **P1** | **Neuheiten:** Update-Runden (Default 1); Slider **Fokus ↔ Entdecken** |
+| **P1** | **Archiv:** adaptiver Top-N-Slider (`pool_size`, Default `min(200, pool)`); Steuerung **Titel pro Album** (breit ↔ vertiefen) |
+| **P1** | Track-Anzahl: Chips **20 · 30 · 50** (+ optional Eigene, 5–100) |
+| **P1** | Playlist-Namen: `Plattenradar Neuheiten\|Archiv YYYY-MM-DD`; Suffix **`(2)`** bei Wiederholung |
+| **P1** | Export: **CSV primär** (TuneMyMusic-Format inkl. Playlist-Name); generische TuneMyMusic-Anleitung |
+| **P1** | Ergebnis: **Hybrid-Track-Zeilen** (Foto, Künstler/Album/Titel, Review-Icon); Kontextzeile |
+| **P1** | **„Nochmal mischen“** |
+| **P1** | Profil-Zeiler + dezenter Deep-Link-Kontext von Aktuell/Entdecken |
+
+### Nice-to-have (nach v1)
+
+- Pool-Hinweis vor Generierung (*„X Alben passen zu deinem Profil“*)
+- Vorschau/Mini-Kacheln vor „Playlist vorbereiten“
+- Künstler-Mosaik (nur bei ausreichend Bildern)
+- Rating kompakt in der Track-Liste
+- Visuelle Regression (Playwright)
+
+### Bewusst nicht in v1 (später / ausgeschlossen)
+
+| Thema | Status |
+|-------|--------|
+| Automatische Playlist-Übertragung/-Versendung | Später |
+| Gespeicherte Playlists im Konto | Später |
+| Favoriten als Playlist-Quelle | Später |
+| Direkte Spotify/Deezer-API | Ausgeschlossen (APIs nicht verfügbar) |
+| Streamlit-UI parallel umbauen | Nein — nur Referenz |
+| Kalenderzeitraum bei Neuheiten | Nein — nur Update-Runden |
+| Mindest-Score-Slider Archiv | Nein — adaptives Top-N |
+| Highlight-Badge in Ergebnisliste | Nein (Nutzer: zu kleines Detail) |
+
+---
+
+## Offene Punkte — Umsetzung (nach Interview)
+
+- [x] Interview Block A–H abgeschlossen
+- [ ] **P0** Mobile-Layout + Sidebar/Export-Struktur
+- [ ] **P1** Modus-UI (Neuheiten Fokus↔Entdecken; Archiv Pool + Titel/Album)
+- [ ] **P1** Track-Chips, Playlist-Namen, CSV-Export-Fix, TuneMyMusic-Anleitung
+- [ ] **P1** Ergebnis Hybrid-Zeilen, Review-Link, „Nochmal mischen“
+- [ ] **P1** Profil-Zeiler, Deep-Link-Kontext
+- [ ] API: `pool_size` für Archiv-Slider (falls noch nicht vorhanden)
 
 ---
 
@@ -424,3 +456,4 @@ Ziel: **Natürlicher Abschluss** der Entdeckungsreise — nicht „Export-Werkze
 | 2026-07-02 | Interview Block E: Suffix (2); CSV primär; TuneMyMusic-Anleitung generisch (Korrektur) |
 | 2026-07-02 | Interview Block F: Hybrid-Zeilen; Mosaik bedingt; Review-Link; kein Highlight-Badge; Vorschau P2 |
 | 2026-07-02 | Interview Block G: Profil-Zeiler; Deep-Link dezent; Mobile Layout zuerst |
+| 2026-07-02 | Interview Block H: v1-Scope bestätigt; nur React; spätere Features dokumentiert — Interview abgeschlossen |
