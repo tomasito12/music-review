@@ -107,6 +107,27 @@ Diese Album-Verteilungs-Logik ist **konzeptionell verwandt** mit der Geschmackss
 - Der Nutzer soll in **beiden Modi** angeben können, **wie viele Songs** die Playlist enthalten soll.
 - **Obergrenze** für die Track-Anzahl: noch **nicht festgelegt**.
 
+### Unterschiedliche Einstellungen je Modus
+
+- **Neuheiten** und **Archiv** haben **jeweils eigene, passende Steuerungen** (siehe oben).
+- Die Oberfläche darf dadurch **nicht überladen** wirken — trotz unterschiedlicher Optionen pro Modus.
+
+---
+
+## UX- und Design-Leitplanken (gesamter Playlist-Flow)
+
+Ziel: Der Nutzer soll sich **gehoben** fühlen und **genau wissen**, was er tut.
+
+| Leitplanke | Beschreibung |
+|------------|--------------|
+| **Klarheit** | Schön und übersichtlich; intuitive Bedienung |
+| **Wenig Text** | So wenig Text wie möglich — aber **aufklärend**: jede Anzeige soll dem Nutzer sofort verständlich machen, was zu tun ist |
+| **Modus-spezifisch, nicht überfrachtet** | Nur die Einstellungen zeigen, die zum gewählten Modus (Neuheiten / Archiv) passen |
+| **Freude am Werkzeug** | Die Nutzung soll **schön**, **intuitiv** und **Spaß** machen — nicht wie ein technisches Export-Tool wirken |
+| **Gesamter Weg** | Dieselben Qualitätsansprüche gelten für **Generierung** und für den **Übergang zu TuneMyMusic** (Anleitung, Export-Schritte, Ergebnisdarstellung) |
+
+Technisch bleibt TuneMyMusic der Export-Weg; **Erlebnis und Erklärung** auf unserer Seite sollen deutlich besser werden.
+
 ---
 
 ## Offene Punkte / noch zu ergänzen
@@ -114,6 +135,8 @@ Diese Album-Verteilungs-Logik ist **konzeptionell verwandt** mit der Geschmackss
 - [ ] Archiv: konkrete UI für Auswahlbasis (Score-Schwelle vs. Top-N; kombinierbar?)
 - [ ] Archiv: Benennung und Abgrenzung Album-Verteilung vs. Geschmacksstärke bei Neuheiten
 - [ ] Track-Anzahl: Default und Obergrenze
+- [ ] UX: konkrete UI-Konzepte pro Modus (ohne Überladung)
+- [ ] UX: TuneMyMusic-Übergang (Schritte, Copy, visuelle Hierarchie)
 - [ ] Weitere Details zu Neuheiten (UI, Defaults, Benennung der Steuerungen)
 - [ ] Abgleich mit bestehender Implementierung und Design-Review
 
@@ -125,3 +148,4 @@ Diese Album-Verteilungs-Logik ist **konzeptionell verwandt** mit der Geschmackss
 |-------|--------|
 | 2026-07-02 | Erstfassung: Übergeordnetes Ziel, zwei Modi, Neuheiten (Zeitraum, Zufall, Geschmacksstärke) |
 | 2026-07-02 | Archiv: Auswahlbasis (Mindest-Score, Top-N), Album-Verteilung; gemeinsame Track-Anzahl (Obergrenze offen) |
+| 2026-07-02 | UX-Leitplanken: klar, intuitiv, wenig aber aufklärender Text; modus-spezifische UI ohne Überladung; TuneMyMusic-Übergang mit einbeziehen; Nutzung soll Freude machen |
