@@ -338,7 +338,7 @@ Ziel: **Natürlicher Abschluss** der Entdeckungsreise — nicht „Export-Werkze
 
 ## Interview-Runde — offene Details (Block F–H)
 
-*Block A–F beantwortet. Block G–H folgen.*
+*Block A–G beantwortet. Block H folgt.*
 
 ### Block F — Design & Ergebnisdarstellung ✅
 
@@ -360,7 +360,7 @@ Ziel: **Natürlicher Abschluss** der Entdeckungsreise — nicht „Export-Werkze
 
 ## Interview-Runde — offene Details (Block G–H)
 
-*Block A–F beantwortet. Block G–H folgen.*
+*Block A–G beantwortet. Block H folgt.*
 
 ### Block G — Profil, Einstieg, Mobile ✅
 
@@ -402,7 +402,8 @@ Ziel: **Natürlicher Abschluss** der Entdeckungsreise — nicht „Export-Werkze
 - [ ] Interview Block F–H: noch offen
 - [ ] Weitere Details zu Neuheiten (UI, Defaults, Benennung der Steuerungen)
 - [x] Design Ergebnis: Hybrid-Zeilen, Mosaik bedingt, Review-Link, kein Highlight-Badge v1
-- [ ] Interview Block G–H: noch offen
+- [x] Profil-Zeiler + Deep-Link dezent; Mobile Layout zuerst
+- [ ] Interview Block H: noch offen
 - [ ] Neuheiten Zeitraum: nur Update-Runden (Default 1); Pool-Hinweis optional (P2)
 
 ---
@@ -422,3 +423,4 @@ Ziel: **Natürlicher Abschluss** der Entdeckungsreise — nicht „Export-Werkze
 | 2026-07-02 | Interview Block D: 5–100, Default 30; Chips 20/30/50 + optionale Eigene; TuneMyMusic bis 500 ok |
 | 2026-07-02 | Interview Block E: Suffix (2); CSV primär; TuneMyMusic-Anleitung generisch (Korrektur) |
 | 2026-07-02 | Interview Block F: Hybrid-Zeilen; Mosaik bedingt; Review-Link; kein Highlight-Badge; Vorschau P2 |
+| 2026-07-02 | Interview Block G: Profil-Zeiler; Deep-Link dezent; Mobile Layout zuerst |
