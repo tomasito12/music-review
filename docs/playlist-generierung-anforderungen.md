@@ -234,35 +234,59 @@ Ziel: **Natürlicher Abschluss** der Entdeckungsreise — nicht „Export-Werkze
 
 ---
 
-## Interview-Runde — offene Details
+## Interview-Runde — beantwortet & Entscheidungen
 
-*Die folgenden Fragen sammeln Lücken, bevor Design oder Implementierung starten. Antworten können schrittweise in dieses Dokument einfließen.*
+### Block A — Neuheiten: Zeitraum ✅
 
-### Block A — Neuheiten: Zeitraum
+| # | Frage | Nutzerantwort | Entscheidung (UX / Produkt) |
+|---|--------|---------------|-----------------------------|
+| **A1** | Steuerung „weiter zurück“ | Unsicher — Update-Runden **oder** Kalender denkbar; Kalender fühlt sich nach **wenig Mehrwert** an → **Entscheidung an UX überlassen** | **Nur Update-Runden** (kein Kalender in v1). Begründung: passt zu plattentests.de-Logik („Update-Runde“), ist auf Aktuell schon etabliert, weniger UI-Komplexität, kein zweites Zeitmodell. Bestehende Stufen **1 / 4 / 8 Runden** beibehalten oder leicht erweitern (z. B. zusätzlich „2 Runden“) — **kein** Kalenderzeitraum. |
+| **A2** | Default beim Öffnen | **Nur letzte Runde** | ✅ Übernommen: Default = **1 Update-Runde**. |
+| **A3** | Pool-Größe vor Generierung anzeigen? | Unsicher, was „24 Alben“ bedeutet (passend zum Profil vs. alle Veröffentlichungen); funktional **vernachlässigbar** → **Entscheidung an UX überlassen** | **Optional, eine Zeile — nur wenn klar formuliert.** Anzeige bezieht sich auf den **personalisierten Pool** (Alben aus gewählten Runden, die nach Profil/Filter für die Playlist infrage kommen), **nicht** auf die Gesamtzahl aller Neuerscheinungen. Copy-Vorschlag: *„In den letzten 4 Runden: 24 Alben passen zu deinem Profil.“* Keine Album-Liste vor dem Klick (das wäre Vorschau — separates Thema). **Priorität: nice-to-have** (P2); wenn technisch aufwendig, weglassen — Nutzer sieht Mehrwert als gering. |
 
-1. Wie soll „weiter in die Vergangenheit“ **konkret** steuerbar sein — Anzahl **Update-Runden** (wie heute), **Kalenderzeitraum**, oder beides?
-2. Was ist der **sinnvolle Default** — nur letzte Runde oder z. B. die letzten 2–3 Runden?
-3. Soll der Nutzer **sehen**, wie viele Alben/Tracks im gewählten Zeitraum verfügbar sind, bevor er generiert?
+**Block A — Kurzfassung für Umsetzung:**
 
-### Block B — Neuheiten & Archiv: Geschmack / Verteilung
+- Zeitraum: Dropdown **Update-Runden** (1 / 4 / 8 …), Default **1**
+- Kein Kalender in v1
+- Pool-Hinweis: optional, eine Zeile, klar „passend zu deinem Profil“
 
-4. Sollen **Geschmacksstärke** (Neuheiten) und **Album-Verteilung** (Archiv) als **eine gemeinsame UI-Metapher** erscheinen (z. B. Slider „Fokus ↔ Entdecken“) oder bewusst getrennt benannt bleiben?
-5. Bei „stark nach Geschmack“: Wie viele Titel pro Album sind **realistisch maximal** (3–4 fest, oder dynamisch)?
-6. Soll es einen expliziten Button **„Nochmal mischen“** geben (gleiche Einstellungen, neue Zufallsziehung)?
+---
 
-### Block C — Archiv: Auswahlbasis
+### Block B — Geschmack / Verteilung ⏳
 
-7. **Mindest-Score** und **Top-N** — soll der Nutzer **eine** Methode wählen, oder sollen beide kombinierbar sein?
-8. Falls Top-N: welche Presets sind dir wichtig — 500 / 1000 / 2000, oder freie Eingabe?
-9. Gibt es einen **Mindest-Score**, den du fachlich als sinnvollen Default hättest (z. B. nur „sehr gute“ Alben)?
+*Noch offen — Nutzer antwortet als Nächstes.*
 
-### Block D — Track-Anzahl & Defaults
+| # | Frage |
+|---|--------|
+| B4 | Gemeinsame Metapher (Fokus ↔ Entdecken) oder getrennte Begriffe pro Modus? |
+| B5 | Max. Titel pro Album bei starker Geschmacksausrichtung — fest 3–4, dynamisch, nutzerwählbar? |
+| B6 | Button „Nochmal mischen“? |
 
-10. **Default-Anzahl** Tracks pro Playlist — 20, 30, 50?
-11. **Obergrenze** — eher 50 (Streamlit), 100 (React heute), oder anderer Wert? Warum?
-12. Presets (20 / 30 / 50) statt freier Zahl — ja oder nein?
+---
 
-### Block E — Playlist-Name & Export
+### Block C — Archiv: Auswahlbasis ⏳
+
+| # | Frage |
+|---|--------|
+| C7 | Mindest-Score oder Top-N — eine Wahl oder kombinierbar? |
+| C8 | Top-N-Presets (500 / 1000 / 2000) — reicht das? |
+| C9 | Default Mindest-Score oder Top-N? |
+
+---
+
+### Block D — Track-Anzahl ⏳
+
+| # | Frage |
+|---|--------|
+| D10 | Default: 20, 30 oder 50? |
+| D11 | Obergrenze: 50, 100, anderer Wert? |
+| D12 | Presets (20 / 30 / 50) statt freier Zahl? |
+
+---
+
+## Interview-Runde — offene Details (Block E–H)
+
+*Block A beantwortet (siehe oben). Block B–D teilweise offen. Block E–H folgen.*
 
 13. Bei zweiter Generierung am selben Tag: bevorzugst du Suffix **`(2)`**, **Uhrzeit**, oder **manuelle Pflicht**?
 14. Soll **CSV** der empfohlene Standard-Export sein (wegen Playlist-Name), mit TXT als Alternative?
@@ -300,7 +324,8 @@ Ziel: **Natürlicher Abschluss** der Entdeckungsreise — nicht „Export-Werkze
 - [ ] Export: React-CSV an TuneMyMusic-Format anbinden (Playlist name); TXT-Grenze in UI kommunizieren
 - [ ] Weitere Details zu Neuheiten (UI, Defaults, Benennung der Steuerungen)
 - [ ] Design: Ergebnisdarstellung (Cards vs. Liste, Künstler-Mosaik, Kontextzeile)
-- [ ] Interview-Runde: offene Fragen in Block A–H klären
+- [ ] Neuheiten Zeitraum: nur Update-Runden (Default 1); Pool-Hinweis optional (P2)
+- [ ] Interview Block B–D: noch offen
 
 ---
 
@@ -313,3 +338,4 @@ Ziel: **Natürlicher Abschluss** der Entdeckungsreise — nicht „Export-Werkze
 | 2026-07-02 | UX-Leitplanken: klar, intuitiv, wenig aber aufklärender Text; modus-spezifische UI ohne Überladung; TuneMyMusic-Übergang mit einbeziehen; Nutzung soll Freude machen |
 | 2026-07-02 | Playlist-Name: Nutzereingabe; Defaults Neuheiten/Archiv + Datum; Recherche TXT vs. CSV (Name nur in CSV); Idempotenz-Vorschlag (Modus + Datum + optional Suffix) |
 | 2026-07-02 | Design-Richtung: Freude ohne Funktionsverlust; Entwurf (Cards, Fotos, Mosaik, Export-Flow); Interview-Runde Block A–H |
+| 2026-07-02 | Interview Block A: Default 1 Runde; UX-Entscheid nur Update-Runden (kein Kalender); Pool-Hinweis optional, „passend zu Profil“ |
