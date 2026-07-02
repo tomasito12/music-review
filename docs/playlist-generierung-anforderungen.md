@@ -184,6 +184,111 @@ Technisch bleibt TuneMyMusic der Export-Weg; **Erlebnis und Erklärung** auf uns
 
 ---
 
+## Design-Richtung: Freude ohne Funktionsverlust (Nutzerinput)
+
+### Ausgangslage (Design-Review)
+
+Die Playlist-Seite wirkt aktuell **formal und rein funktional** — sie erfüllt den Job, weckt aber **wenig Freude**. Im Vergleich zu **Aktuell** und **Entdecken** fehlt der emotionale, kuratorische Moment (Kacheln, Fotos, Passung).
+
+### Leitprinzip (explizit vom Nutzer)
+
+> **Funktion zuerst, Design im Dienst der Funktion** — nicht umgekehrt.  
+> Solange die Funktion klar bleibt, soll das Erlebnis **so gut wie möglich** sein.
+
+### Design-Vorschlag (Entwurf, noch nicht umgesetzt)
+
+Ziel: **Natürlicher Abschluss** der Entdeckungsreise — nicht „Export-Werkzeug“, sondern „deine Playlist ist fertig“.
+
+#### 1. Formular (vor der Generierung)
+
+- **Eine klare Spalte / ein klarer Flow** — keine leere „Danach“-Sidebar, die nichts tut.
+- Modus als **zwei große, verständliche Karten**: „Neuheiten“ / „Archiv“ — darunter nur die passenden Optionen.
+- Steuerungen mit **kurzen Labels + einem Satz Hilfe** (z. B. Geschmacksstärke: „Viel von wenigen Alben“ vs. „Breit streuen“).
+- Optional: **Mini-Vorschau** (3 Highlight-Kacheln aus dem gewählten Pool) statt leerer Fläche — Vorfreude ohne volle Generierung.
+
+#### 2. Ergebnis (nach der Generierung)
+
+- Statt HTML-Tabelle: **kompakte Track-Liste** im Stil von Aktuell/Entdecken (kleinere Recommendation-Cards).
+- **Künstlerfotos** als Kacheln oder neben jedem Track — wo Bilder fehlen, dezenter Platzhalter (wie elsewhere in der App).
+- **Kontextzeile** über der Liste: z. B. „30 Titel · Neuheiten · letzte 2 Update-Runden · stark nach Geschmack“.
+- Badges: **Highlight** vs. **Albumtrack** (`source_kind`), optional Rating/Passung — Vertrauen ohne Score-Lektion.
+- **Primäraktion sichtbar:** Export (Text kopieren / CSV) — danach Details.
+
+#### 3. Künstler-Kacheln (optional, als Akzent)
+
+- **Mosaik aus Künstlerfotos** der Playlist (z. B. 6–12 eindeutige Künstler) — emotionaler „Cover“-Moment für die generierte Liste.
+- Nicht jeder Track braucht ein Foto in der Liste; das Mosaik reicht als Stimmungsanker.
+- Auf Mobile: kleineres Mosaik oder horizontal scrollbare Reihe.
+
+#### 4. TuneMyMusic-Übergang
+
+- Nach Generierung: **aufklappbare, nummerierte Schritte** (Streamlit-Vorbild).
+- Export-Buttons klar gruppiert; Hinweis: **CSV = Playlist-Name automatisch**, **Text = Name in TuneMyMusic**.
+- Kurzer Success-Moment nach „Text kopieren“.
+
+#### 5. Was bewusst vermieden wird
+
+- Keine rein dekorative Animationen, die den Export-Flow verzögern.
+- Keine Versteckung wichtiger Optionen hinter zu viel „Design“.
+- Keine 1:1-Kopie des Streamlit-Layouts — Anbindung an Plattenradar-CI (Aktuell/Entdecken).
+
+---
+
+## Interview-Runde — offene Details
+
+*Die folgenden Fragen sammeln Lücken, bevor Design oder Implementierung starten. Antworten können schrittweise in dieses Dokument einfließen.*
+
+### Block A — Neuheiten: Zeitraum
+
+1. Wie soll „weiter in die Vergangenheit“ **konkret** steuerbar sein — Anzahl **Update-Runden** (wie heute), **Kalenderzeitraum**, oder beides?
+2. Was ist der **sinnvolle Default** — nur letzte Runde oder z. B. die letzten 2–3 Runden?
+3. Soll der Nutzer **sehen**, wie viele Alben/Tracks im gewählten Zeitraum verfügbar sind, bevor er generiert?
+
+### Block B — Neuheiten & Archiv: Geschmack / Verteilung
+
+4. Sollen **Geschmacksstärke** (Neuheiten) und **Album-Verteilung** (Archiv) als **eine gemeinsame UI-Metapher** erscheinen (z. B. Slider „Fokus ↔ Entdecken“) oder bewusst getrennt benannt bleiben?
+5. Bei „stark nach Geschmack“: Wie viele Titel pro Album sind **realistisch maximal** (3–4 fest, oder dynamisch)?
+6. Soll es einen expliziten Button **„Nochmal mischen“** geben (gleiche Einstellungen, neue Zufallsziehung)?
+
+### Block C — Archiv: Auswahlbasis
+
+7. **Mindest-Score** und **Top-N** — soll der Nutzer **eine** Methode wählen, oder sollen beide kombinierbar sein?
+8. Falls Top-N: welche Presets sind dir wichtig — 500 / 1000 / 2000, oder freie Eingabe?
+9. Gibt es einen **Mindest-Score**, den du fachlich als sinnvollen Default hättest (z. B. nur „sehr gute“ Alben)?
+
+### Block D — Track-Anzahl & Defaults
+
+10. **Default-Anzahl** Tracks pro Playlist — 20, 30, 50?
+11. **Obergrenze** — eher 50 (Streamlit), 100 (React heute), oder anderer Wert? Warum?
+12. Presets (20 / 30 / 50) statt freier Zahl — ja oder nein?
+
+### Block E — Playlist-Name & Export
+
+13. Bei zweiter Generierung am selben Tag: bevorzugst du Suffix **`(2)`**, **Uhrzeit**, oder **manuelle Pflicht**?
+14. Soll **CSV** der empfohlene Standard-Export sein (wegen Playlist-Name), mit TXT als Alternative?
+15. Welcher **Streaming-Dienst** ist für deine Zielgruppe primär (Deezer, Spotify, …) — für TuneMyMusic-Anleitung und Link?
+
+### Block F — Design & Ergebnisdarstellung
+
+16. Ergebnis: **volle Recommendation-Cards** (wie Entdecken) oder **schlankere Track-Zeilen** mit kleinem Foto?
+17. **Künstler-Mosaik** oben — ja, nein, oder nur bei ausreichend vielen Bildern?
+18. Welche Infos pro Track sind **Pflicht**: Künstler, Album, Titel — dazu Rating, Passungstext, Review-Link, Highlight-Badge?
+19. Soll eine **Vorschau vor Generierung** (Mini-Kacheln) eingebaut werden, oder reicht das Ergebnis nach Klick?
+
+### Block G — Profil, Einstieg, Mobile
+
+20. Sollen **aktive Profil-Filter** auf der Playlist-Seite sichtbar sein (Chips wie auf Entdecken)?
+21. Sprung von **Aktuell/Entdecken** — sollen Einstellungen (Quelle, Zeitraum) **vorausgefüllt und sichtbar** sein?
+22. Mobile: Priorität — zuerst **Layout fixen**, dann verschönern — einverstanden?
+
+### Block H — Scope & Priorität
+
+23. Was ist **Must-have für v1** dieser Verbesserung vs. **nice-to-have**?
+24. Soll nur das **React-Frontend** verbessert werden, oder parallel **Streamlit**?
+25. Gibt es noch einen Punkt, den du **vergessen** haben könntest — z. B. Favoriten, gespeicherte Playlists, Teilen?
+
+---
+
 ## Offene Punkte / noch zu ergänzen
 
 - [ ] Archiv: konkrete UI für Auswahlbasis (Score-Schwelle vs. Top-N; kombinierbar?)
@@ -194,7 +299,8 @@ Technisch bleibt TuneMyMusic der Export-Weg; **Erlebnis und Erklärung** auf uns
 - [ ] Playlist-Name: modus-spezifische Defaults; Idempotenz-Suffix bei Mehrfach-Generierung
 - [ ] Export: React-CSV an TuneMyMusic-Format anbinden (Playlist name); TXT-Grenze in UI kommunizieren
 - [ ] Weitere Details zu Neuheiten (UI, Defaults, Benennung der Steuerungen)
-- [ ] Abgleich mit bestehender Implementierung und Design-Review
+- [ ] Design: Ergebnisdarstellung (Cards vs. Liste, Künstler-Mosaik, Kontextzeile)
+- [ ] Interview-Runde: offene Fragen in Block A–H klären
 
 ---
 
@@ -206,3 +312,4 @@ Technisch bleibt TuneMyMusic der Export-Weg; **Erlebnis und Erklärung** auf uns
 | 2026-07-02 | Archiv: Auswahlbasis (Mindest-Score, Top-N), Album-Verteilung; gemeinsame Track-Anzahl (Obergrenze offen) |
 | 2026-07-02 | UX-Leitplanken: klar, intuitiv, wenig aber aufklärender Text; modus-spezifische UI ohne Überladung; TuneMyMusic-Übergang mit einbeziehen; Nutzung soll Freude machen |
 | 2026-07-02 | Playlist-Name: Nutzereingabe; Defaults Neuheiten/Archiv + Datum; Recherche TXT vs. CSV (Name nur in CSV); Idempotenz-Vorschlag (Modus + Datum + optional Suffix) |
+| 2026-07-02 | Design-Richtung: Freude ohne Funktionsverlust; Entwurf (Cards, Fotos, Mosaik, Export-Flow); Interview-Runde Block A–H |
