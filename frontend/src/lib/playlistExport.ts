@@ -1,6 +1,7 @@
 import type { RecommendationSource } from "../types";
 import type { TemporaryTasteProfile } from "./plattenradarApi";
 import { temporaryProfileToApi } from "./plattenradarApi";
+import { isVisualTestMode } from "./visualTestMode";
 
 export type PlaylistApiSource = "archive" | "new_reviews";
 export type PlaylistSelectionStrategy = "stratified" | "weighted_sample";
@@ -38,6 +39,7 @@ export interface PlaylistExportResult {
 }
 
 const PLAYLIST_NAME_SUFFIX_RE = /^(.*) \((\d+)\)$/;
+const VISUAL_TEST_REFERENCE_DATE = new Date("2026-06-27T12:00:00.000Z");
 
 /** Maps UI recommendation sources to API playlist sources. */
 export function playlistApiSource(source: RecommendationSource): PlaylistApiSource {
@@ -96,7 +98,7 @@ export function buildPlaylistExportPayload(
 /** Returns a mode-specific default playlist name with the current date. */
 export function defaultPlaylistNameForSource(
   source: RecommendationSource,
-  date = new Date(),
+  date = isVisualTestMode() ? VISUAL_TEST_REFERENCE_DATE : new Date(),
 ): string {
   const datePart = date.toISOString().slice(0, 10);
   if (source === "entdecken") {

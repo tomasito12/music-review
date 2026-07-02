@@ -21,7 +21,7 @@ const VISUAL_TEST_STYLE = `
   html[data-visual-test] .artist-image-source {
     display: none !important;
   }
-  html[data-visual-test] :where(.highlight-tile-photo, .recommendation-card-thumbnail) {
+  html[data-visual-test] :where(.highlight-tile-photo, .recommendation-card-thumbnail, .playlist-artist-mosaic-tile) {
     object-fit: cover;
     background: #d8c8b4;
   }
@@ -75,8 +75,9 @@ export async function stabilizeVisualPage(page: Page): Promise<void> {
 export async function waitForVisualLayoutStable(
   page: Page,
   timeoutMs: number = LAYOUT_STABLE_TIMEOUT_MS,
+  probe = visualLayoutProbe(page),
 ): Promise<void> {
-  const target = visualLayoutProbe(page);
+  const target = probe;
   let lastHeight = -1;
   let stableSince = Date.now();
   const deadline = Date.now() + timeoutMs;
@@ -135,6 +136,38 @@ export async function waitForEntdeckenRanking(page: Page): Promise<void> {
   await waitForVisualLayoutStable(page);
 }
 
+/** Wait until the playlist generator form is ready for screenshots. */
+export async function waitForPlaylistForm(page: Page): Promise<void> {
+  await page.getByRole("heading", { name: "Neue Playlist erzeugen" }).waitFor({
+    timeout: 30_000,
+  });
+  await page.getByRole("button", { name: "Playlist vorbereiten" }).waitFor({
+    timeout: 30_000,
+  });
+  await page.locator('[data-visual-playlist-ready="form"]').waitFor({
+    timeout: 30_000,
+  });
+  await page.waitForLoadState("networkidle");
+  await waitForVisualLayoutStable(page, LAYOUT_STABLE_TIMEOUT_MS, visualPlaylistLayoutProbe(page));
+}
+
+/** Wait until playlist results and artist thumbnails have finished loading. */
+export async function waitForPlaylistResults(page: Page): Promise<void> {
+  await page.locator(".playlist-results").waitFor({ timeout: 30_000 });
+  await page.locator('[data-visual-images="ready"]').waitFor({ timeout: 60_000 });
+  await page.locator('[data-visual-playlist-ready="results"]').waitFor({
+    timeout: 30_000,
+  });
+  await page.waitForLoadState("networkidle");
+  await waitForVisualLayoutStable(page, LAYOUT_STABLE_TIMEOUT_MS, visualPlaylistLayoutProbe(page));
+}
+
+/** Generate a playlist from the current form state in visual tests. */
+export async function generatePlaylistFromForm(page: Page): Promise<void> {
+  await page.getByRole("button", { name: "Playlist vorbereiten" }).click();
+  await waitForPlaylistResults(page);
+}
+
 /** Fixed viewport clip used for live visual regression screenshots. */
 export function visualScreenshotClip(page: Page): {
   x: number;
@@ -158,12 +191,20 @@ export function visualLayoutProbe(page: Page) {
   return page.locator(".results-page");
 }
 
+/** Playlist page surface polled until layout stops shifting before capture. */
+export function visualPlaylistLayoutProbe(page: Page) {
+  return page.locator(".playlist-page");
+}
+
 /** Assert that two consecutive captures would have the same height. */
-export async function assertScreenshotLayoutStable(page: Page): Promise<void> {
-  const target = visualLayoutProbe(page);
+export async function assertScreenshotLayoutStable(
+  page: Page,
+  probe = visualLayoutProbe(page),
+): Promise<void> {
+  const target = probe;
   const firstHeight = await target.evaluate((element) => element.getBoundingClientRect().height);
   await page.waitForTimeout(300);
-  await waitForVisualLayoutStable(page);
+  await waitForVisualLayoutStable(page, LAYOUT_STABLE_TIMEOUT_MS, probe);
   const secondHeight = await target.evaluate((element) => element.getBoundingClientRect().height);
   expect(firstHeight).toBe(secondHeight);
 }

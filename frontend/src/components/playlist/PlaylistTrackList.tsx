@@ -6,6 +6,9 @@ import {
   selectPlaylistMosaicLookups,
   uniquePlaylistArtistLookups,
 } from "../../lib/playlistResults";
+import {
+  limitPlaylistItemsForVisualTest,
+} from "../../lib/visualTestListLimit";
 import { useArtistImagesBatch } from "../../lib/useArtistImagesBatch";
 
 import { PlaylistArtistMosaic } from "./PlaylistArtistMosaic";
@@ -17,10 +20,11 @@ interface PlaylistTrackListProps {
 
 /** Hybrid playlist result list with artist photos and review links. */
 export function PlaylistTrackList({ items }: PlaylistTrackListProps): ReactElement {
-  const artistLookups = uniquePlaylistArtistLookups(items);
+  const visibleItems = limitPlaylistItemsForVisualTest(items);
+  const artistLookups = uniquePlaylistArtistLookups(visibleItems);
   const { imagesByLookupKey, imagesSettled } = useArtistImagesBatch(artistLookups);
   const mosaicTiles = imagesSettled
-    ? selectPlaylistMosaicLookups(items, imagesByLookupKey)
+    ? selectPlaylistMosaicLookups(visibleItems, imagesByLookupKey)
     : [];
 
   return (
@@ -31,7 +35,7 @@ export function PlaylistTrackList({ items }: PlaylistTrackListProps): ReactEleme
     >
       <PlaylistArtistMosaic imagesByLookupKey={imagesByLookupKey} tiles={mosaicTiles} />
       <div className="playlist-track-rows">
-        {items.map((item, index) => {
+        {visibleItems.map((item, index) => {
           const lookupKey = artistImageLookupKey({ artistName: item.artist });
           const artistImage =
             lookupKey.length > 0 ? imagesByLookupKey.get(lookupKey) ?? null : null;

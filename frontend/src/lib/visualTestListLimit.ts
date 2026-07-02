@@ -1,3 +1,4 @@
+import type { PlaylistExportItem } from "./playlistExport";
 import type { Recommendation } from "../types";
 
 import { isVisualTestMode } from "./visualTestMode";
@@ -21,4 +22,14 @@ export function limitRecommendationsForVisualTest(
     return recommendations;
   }
   return recommendations.slice(0, VISUAL_TEST_LIST_ITEM_LIMIT);
+}
+
+/** Trim long playlist result lists so screenshot height stays predictable. */
+export function limitPlaylistItemsForVisualTest(
+  items: PlaylistExportItem[],
+): PlaylistExportItem[] {
+  if (!isVisualTestMode() || items.length <= VISUAL_TEST_LIST_ITEM_LIMIT) {
+    return items;
+  }
+  return items.slice(0, VISUAL_TEST_LIST_ITEM_LIMIT);
 }
