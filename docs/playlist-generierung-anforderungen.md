@@ -295,13 +295,26 @@ Ziel: **Natürlicher Abschluss** der Entdeckungsreise — nicht „Export-Werkze
 
 ---
 
-### Block D — Track-Anzahl ⏳
+### Block D — Track-Anzahl ✅
 
-| # | Frage |
-|---|--------|
-| D10 | Default: 20, 30 oder 50? |
-| D11 | Obergrenze: 50, 100, anderer Wert? |
-| D12 | Presets (20 / 30 / 50) statt freier Zahl? |
+| # | Frage | Nutzerantwort | Entscheidung (UX / Produkt) |
+|---|--------|---------------|-----------------------------|
+| **D10** | Default-Anzahl | **30 passt**; keine starke Meinung | ✅ **Default = 30** — passt zum Use Case „schnell ausprobieren“ (~1–1,5 h Hören), API/Streamlit/React-Ist, und typischer Playlist-Länge. |
+| **D11** | Unter- und Obergrenze | **5 bis 100** klingt nicht schlecht; unsicher wegen Streaming-Limits | ✅ **Bereich 5–100** (API hat bereits `ge=1, le=100`; Untergrenze **5** beibehalten). **Kein hartes Streaming-Limit** im relevanten Bereich: TuneMyMusic Free erlaubt bis **500 Tracks** pro Transfer; Spotify/Deezer/Tidal erlauben deutlich mehr. 100 ist für „Reinhören“ schon lang — als Obergrenze ok, kein Grund höher zu gehen. |
+| **D12** | Presets vs. freie Zahl | Keine starke Meinung — **Empfehlung nach Projektkriterien** | **Presets zuerst, feine Eingabe optional** (nicht umgekehrt). |
+
+**Block D — Kurzfassung für Umsetzung:**
+
+| Element | Empfehlung |
+|---------|------------|
+| **Primär-UI** | Chips **20 · 30 · 50** — Default **30** aktiv |
+| **Sekundär** | Link/Chip **„Eigene Anzahl“** → kompaktes Feld oder Stepper (**5–100**, Cap sichtbar) |
+| **Nicht** | Nacktes Number-Input (wirkt technisch, wie heute in React) |
+| **Nicht** | Reiner Slider 5–100 (unpräzise, wenig Mehrwert) |
+| **Kontext** | Kurzer Hinweis unter den Chips, wechselt dezent: *„30 Titel — gut zum Reinhören“* / ab 50: *„Längere Hörsession“* |
+| **Validierung** | Wenn Pool kleiner als Wunschanzahl → bestehende Warnung beibehalten/verbessern |
+
+**Begründung (Nutzerkriterien):** Funktion im Vordergrund — drei schnelle, verständliche Wahlen decken 90 % der Fälle ab; Power-Nutzer können 5–100 wählen, ohne die Oberfläche zu überladen. Schön und intuitiv, ohne Design um der Design willen.
 
 ---
 
@@ -349,7 +362,6 @@ Ziel: **Natürlicher Abschluss** der Entdeckungsreise — nicht „Export-Werkze
 - [ ] Weitere Details zu Neuheiten (UI, Defaults, Benennung der Steuerungen)
 - [ ] Design: Ergebnisdarstellung (Cards vs. Liste, Künstler-Mosaik, Kontextzeile)
 - [ ] Neuheiten Zeitraum: nur Update-Runden (Default 1); Pool-Hinweis optional (P2)
-- [ ] Interview Block B–D: noch offen
 
 ---
 
