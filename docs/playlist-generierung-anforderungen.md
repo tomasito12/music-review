@@ -130,6 +130,60 @@ Technisch bleibt TuneMyMusic der Export-Weg; **Erlebnis und Erklärung** auf uns
 
 ---
 
+## Playlist-Name und Export (Nutzerinput + Ist-Stand)
+
+### Nutzeranforderung
+
+- Der Nutzer soll den **Namen der Playlist eingeben** können.
+- **Default-Namen** (Vorschlag des Nutzers), jeweils **mit Datum**:
+  - **Neuheiten:** `Plattenradar Neuheiten YYYY-MM-DD`
+  - **Archiv:** `Plattenradar Archiv YYYY-MM-DD`
+- Frage: Reicht das **Datum allein** für **Idempotenz** (eindeutige, wiedererkennbare Playlists)? → siehe Vorschlag unten.
+
+### Recherche: Playlist-Name über TuneMyMusic
+
+| Exportweg | Playlist-Name übertragbar? | Anmerkung |
+|-----------|----------------------------|-----------|
+| **CSV-Datei** | **Ja** | TuneMyMusic erwartet Spalten u. a. `Track name`, `Artist name`, **`Playlist name`** — damit landen Titel in einer benannten Playlist im Zieldienst |
+| **TXT-Datei** | **Nein** | Format ist nur `Künstler - Titel` pro Zeile; **kein** Namensfeld |
+| **Freitext (Copy & Paste)** | **Nein** | Wie TXT: reine Trackliste; der Playlist-Name wird **in TuneMyMusic** beim Import vergeben |
+
+**Fazit:** Automatische Playlist-Benennung im Streaming-Dienst ist nur über **CSV-Upload** zuverlässig möglich. Bei TXT/Freitext dient der Name bei uns vor allem für **Anzeige**, **Download-Dateiname** und Nutzer-Orientierung — im Zieldienst muss der Nutzer den Namen in TuneMyMusic setzen (oder CSV wählen).
+
+### Ist-Stand im Code (Stand Review 2026-07-02)
+
+| Komponente | Verhalten |
+|------------|-----------|
+| **Backend** (`playlist_export.py`) | CSV korrekt im TuneMyMusic-Format mit `Playlist name`; TXT nur `Artist - Title` |
+| **Streamlit** | Namensfeld vorhanden; Default aktuell generisch `Plattenradar YYYY-MM-DD` (noch **nicht** modus-spezifisch) |
+| **React-Frontend** | Namensfeld vorhanden; Default `Plattenradar YYYY-MM-DD`; API-Request mit `format: "txt"` |
+| **React CSV-Download** | Clientseitig `Artist,Album,Track` — **abweichend** vom TuneMyMusic-CSV des Backends, **ohne** Playlist-Name (Lücke zur Nutzeranforderung) |
+
+*(Noch keine Umsetzung — nur dokumentiert.)*
+
+### Idempotenz: Ist nur das Datum genug?
+
+**Nein, nicht allein** — aus Produkt- und Praxis-Sicht:
+
+| Szenario | Problem mit nur `Plattenradar … YYYY-MM-DD` |
+|----------|-----------------------------------------------|
+| Zwei Generierungen am **selben Tag**, **gleicher Modus** | Gleicher Default-Name → Kollision / doppelte Playlist im Dienst oder Verwechslung |
+| Neuheiten **und** Archiv am selben Tag | Ohne Modus im Namen nicht unterscheidbar |
+| Bewusst **neue** Playlist vs. **Ersetzen** | Datum sagt nicht, ob es die 1. oder 3. Liste des Tages ist |
+
+**Vorschlag für Default-Namen (noch nicht umgesetzt):**
+
+1. **Modus im Namen** (Nutzerwunsch): `Plattenradar Neuheiten 2026-07-02` bzw. `Plattenradar Archiv 2026-07-02` — trennt die beiden Modi am selben Tag.
+2. **Bei erneuter Generierung am selben Tag** (optional, UX zu klären):
+   - Suffix ` (2)`, ` (3)` … **oder**
+   - kurze Uhrzeit ` 14:30` **oder**
+   - Nutzer passt den Namen manuell an (Feld bleibt editierbar).
+3. **In der UI kurz erklären:** Für **automatischen Playlist-Namen** im Streaming-Dienst → **CSV** nutzen; bei **Freitext/TXT** Name in TuneMyMusic eingeben.
+
+**Empfehlung:** Modus + Datum als Default; bei zweiter Generierung am selben Tag mit unverändertem Namen Suffix `(2)` anbieten oder vorausfüllen — so bleibt der Name lesbar und Konflikte werden seltener.
+
+---
+
 ## Offene Punkte / noch zu ergänzen
 
 - [ ] Archiv: konkrete UI für Auswahlbasis (Score-Schwelle vs. Top-N; kombinierbar?)
@@ -137,6 +191,8 @@ Technisch bleibt TuneMyMusic der Export-Weg; **Erlebnis und Erklärung** auf uns
 - [ ] Track-Anzahl: Default und Obergrenze
 - [ ] UX: konkrete UI-Konzepte pro Modus (ohne Überladung)
 - [ ] UX: TuneMyMusic-Übergang (Schritte, Copy, visuelle Hierarchie)
+- [ ] Playlist-Name: modus-spezifische Defaults; Idempotenz-Suffix bei Mehrfach-Generierung
+- [ ] Export: React-CSV an TuneMyMusic-Format anbinden (Playlist name); TXT-Grenze in UI kommunizieren
 - [ ] Weitere Details zu Neuheiten (UI, Defaults, Benennung der Steuerungen)
 - [ ] Abgleich mit bestehender Implementierung und Design-Review
 
@@ -149,3 +205,4 @@ Technisch bleibt TuneMyMusic der Export-Weg; **Erlebnis und Erklärung** auf uns
 | 2026-07-02 | Erstfassung: Übergeordnetes Ziel, zwei Modi, Neuheiten (Zeitraum, Zufall, Geschmacksstärke) |
 | 2026-07-02 | Archiv: Auswahlbasis (Mindest-Score, Top-N), Album-Verteilung; gemeinsame Track-Anzahl (Obergrenze offen) |
 | 2026-07-02 | UX-Leitplanken: klar, intuitiv, wenig aber aufklärender Text; modus-spezifische UI ohne Überladung; TuneMyMusic-Übergang mit einbeziehen; Nutzung soll Freude machen |
+| 2026-07-02 | Playlist-Name: Nutzereingabe; Defaults Neuheiten/Archiv + Datum; Recherche TXT vs. CSV (Name nur in CSV); Idempotenz-Vorschlag (Modus + Datum + optional Suffix) |
