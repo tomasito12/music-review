@@ -338,7 +338,7 @@ Ziel: **Natürlicher Abschluss** der Entdeckungsreise — nicht „Export-Werkze
 
 ## Interview-Runde — offene Details (Block F–H)
 
-*Block A–E beantwortet. Block F–H folgen.*
+*Block A–F beantwortet. Block G–H folgen.*
 
 ### Block F — Design & Ergebnisdarstellung ✅
 
@@ -391,7 +391,8 @@ Ziel: **Natürlicher Abschluss** der Entdeckungsreise — nicht „Export-Werkze
 - [ ] Export: React-CSV an TuneMyMusic-Format anbinden (Umsetzung)
 - [ ] Interview Block F–H: noch offen
 - [ ] Weitere Details zu Neuheiten (UI, Defaults, Benennung der Steuerungen)
-- [ ] Design: Ergebnisdarstellung (Cards vs. Liste, Künstler-Mosaik, Kontextzeile)
+- [x] Design Ergebnis: Hybrid-Zeilen, Mosaik bedingt, Review-Link, kein Highlight-Badge v1
+- [ ] Interview Block G–H: noch offen
 - [ ] Neuheiten Zeitraum: nur Update-Runden (Default 1); Pool-Hinweis optional (P2)
 
 ---
@@ -410,3 +411,4 @@ Ziel: **Natürlicher Abschluss** der Entdeckungsreise — nicht „Export-Werkze
 | 2026-07-02 | Interview Block C: adaptiver Top-N-Slider (pool_size); Default min(200,pool); Chips 50/200/Alle; kein Mindest-Score v1 |
 | 2026-07-02 | Interview Block D: 5–100, Default 30; Chips 20/30/50 + optionale Eigene; TuneMyMusic bis 500 ok |
 | 2026-07-02 | Interview Block E: Suffix (2); CSV primär; TuneMyMusic-Anleitung generisch (Korrektur) |
+| 2026-07-02 | Interview Block F: Hybrid-Zeilen; Mosaik bedingt; Review-Link; kein Highlight-Badge; Vorschau P2 |
