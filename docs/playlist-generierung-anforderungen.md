@@ -272,13 +272,26 @@ Ziel: **Natürlicher Abschluss** der Entdeckungsreise — nicht „Export-Werkze
 
 ---
 
-### Block C — Archiv: Auswahlbasis ⏳
+### Block C — Archiv: Auswahlbasis ✅
 
-| # | Frage |
-|---|--------|
-| C7 | Mindest-Score oder Top-N — eine Wahl oder kombinierbar? |
-| C8 | Top-N-Presets (500 / 1000 / 2000) — reicht das? |
-| C9 | Default Mindest-Score oder Top-N? |
+| # | Frage | Nutzerantwort | Entscheidung (UX / Produkt) |
+|---|--------|---------------|-----------------------------|
+| **C7** | Mindest-Score **oder** Top-N — eine Wahl, kombinierbar, oder nur intern? | **Keine starke Meinung** (a/b/c offen) — **klare Empfehlung aus UX-Sicht erwünscht** | **Eine Steuerung in v1: „Top-N aus deinem persönlichen Ranking“** — kein separater Mindest-Score-Slider. Begründung: `overall_score` ist **profilabhängig**; 0,8 bedeutet je nach Nutzer/Filter etwas anderes; die Score-Verteilung im Pool ist unbekannt und oft eng (v. a. bei strengen Filtern). **Top-N auf bereits gefiltertem, geranktem Pool** ist für Nutzer verständlicher als eine abstrakte Score-Schwelle. Mindest-Score höchstens **später** als Experten-Option. |
+| **C8** | Top-N-Presets 500 / 1000 / 2000? | **Nicht pauschal** — bei restriktiven Filtern gibt es vielleicht gar nicht 2000 Alben; feste Presets passen schlecht | **Keine festen 500/1000/2000-Presets.** Stattdessen **adaptiver Slider**: Maximum = **Anzahl passender Alben** nach Profil/Filter (`pool_size`). Optional **Schnellwahl-Chips** relativ zum Pool: z. B. **50 · 200 · Alle** (deaktiviert/angepasst, wenn Pool kleiner). Freie Zahleneingabe **ohne** angezeigtes Maximum vermeiden; wenn Eingabe, dann mit sichtbarem Cap: *„max. 347“*. |
+| **C9** | Sinnvoller Default? | Eher **Top 200** als Top 1000; Mindest-Score ~0,8 unsicher; **Auswahl hängt von verfügbarer Pool-Größe ab** | Default: **`min(200, pool_size)`** — entspricht API-Default `archive_limit=200` und Nutzer-Tendenz. Bei kleinem Pool (z. B. 45 Alben) Default = 45 (= alle). Kontextzeile: *„347 Alben passen zu deinem Profil — Playlist aus den Top 200.“* |
+
+**Block C — Kurzfassung für Umsetzung:**
+
+| Element | Empfehlung |
+|---------|------------|
+| **Steuerung** | Slider „**Wie viele Top-Alben?**“ — Bereich ca. **20 … pool_size** (Untergrenze bei sehr kleinem Pool anpassen) |
+| **Anzeige** | Immer **Zahl + Pool-Kontext**: *„Top **200** von **347** passenden Alben“* |
+| **Schnellwahl** | Chips **50 · 200 · Alle** (relativ, nicht absolut) |
+| **Kein** Mindest-Score in v1 | Score-Schwelle intern über Ranking + Filter abgedeckt |
+| **Default** | `min(200, pool_size)` |
+| **Technik-Hinweis** | UI braucht **pool_size** vor Generierung (z. B. aus Archiv-Empfehlungs-Count oder leichtem API-Feld) — erst dann Slider-Maximum sinnvoll setzen |
+
+**Nutzer-Insight (übernommen):** Visualisierung muss von **tatsächlich verfügbarem Pool** abhängen, nicht von pauschalen Archiv-Zahlen.
 
 ---
 
@@ -294,7 +307,7 @@ Ziel: **Natürlicher Abschluss** der Entdeckungsreise — nicht „Export-Werkze
 
 ## Interview-Runde — offene Details (Block E–H)
 
-*Block A beantwortet (siehe oben). Block B–D teilweise offen. Block E–H folgen.*
+*Block A–C beantwortet. Block D offen. Block E–H folgen.*
 
 13. Bei zweiter Generierung am selben Tag: bevorzugst du Suffix **`(2)`**, **Uhrzeit**, oder **manuelle Pflicht**?
 14. Soll **CSV** der empfohlene Standard-Export sein (wegen Playlist-Name), mit TXT als Alternative?
@@ -323,11 +336,11 @@ Ziel: **Natürlicher Abschluss** der Entdeckungsreise — nicht „Export-Werkze
 
 ## Offene Punkte / noch zu ergänzen
 
-- [ ] Archiv: konkrete UI für Auswahlbasis (Score-Schwelle vs. Top-N; kombinierbar?) — Block C
+- [x] Archiv Auswahlbasis: adaptiver Top-N-Slider (Default min(200, pool)); kein Mindest-Score v1
 - [x] Archiv vs. Neuheiten: getrennte Metaphern (Block B)
 - [ ] Neuheiten: Slider Fokus ↔ Entdecken; Archiv: Titel-pro-Album-Steuerung
 - [ ] „Nochmal mischen“ als Must-have
-- [ ] Interview Block C–D: noch offen
+- [ ] Interview Block D: noch offen
 - [ ] Track-Anzahl: Default und Obergrenze
 - [ ] UX: konkrete UI-Konzepte pro Modus (ohne Überladung)
 - [ ] UX: TuneMyMusic-Übergang (Schritte, Copy, visuelle Hierarchie)
@@ -351,3 +364,4 @@ Ziel: **Natürlicher Abschluss** der Entdeckungsreise — nicht „Export-Werkze
 | 2026-07-02 | Design-Richtung: Freude ohne Funktionsverlust; Entwurf (Cards, Fotos, Mosaik, Export-Flow); Interview-Runde Block A–H |
 | 2026-07-02 | Interview Block A: Default 1 Runde; UX-Entscheid nur Update-Runden (kein Kalender); Pool-Hinweis optional, „passend zu Profil“ |
 | 2026-07-02 | Interview Block B: Neuheiten Fokus↔Entdecken; Archiv getrennt (Pool Top-N/Score + Titel/Album); Cap ~4 dynamisch; „Nochmal mischen“ ja |
+| 2026-07-02 | Interview Block C: adaptiver Top-N-Slider (pool_size); Default min(200,pool); Chips 50/200/Alle; kein Mindest-Score v1 |
