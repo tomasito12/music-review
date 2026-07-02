@@ -2511,6 +2511,29 @@ p {
   gap: 0.5rem;
 }
 
+.playlist-tunemymusic-guide {
+  border: 1px solid var(--line);
+  border-radius: 0.65rem;
+  padding: 0.65rem 0.85rem;
+  background: var(--surface-raised, #fff);
+}
+
+.playlist-tunemymusic-guide summary {
+  cursor: pointer;
+  font-weight: 600;
+}
+
+.playlist-tunemymusic-steps {
+  margin: 0.65rem 0 0.85rem;
+  padding-left: 1.2rem;
+  display: grid;
+  gap: 0.35rem;
+}
+
+.playlist-tunemymusic-steps a {
+  color: var(--accent);
+}
+
 .playlist-table {
   width: 100%;
   border-collapse: collapse;

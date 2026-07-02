@@ -37,6 +37,8 @@ export interface PlaylistExportResult {
   source: PlaylistApiSource;
 }
 
+const PLAYLIST_NAME_SUFFIX_RE = /^(.*) \((\d+)\)$/;
+
 /** Maps UI recommendation sources to API playlist sources. */
 export function playlistApiSource(source: RecommendationSource): PlaylistApiSource {
   return source === "entdecken" ? "archive" : "new_reviews";
@@ -79,7 +81,8 @@ export function buildPlaylistExportPayload(
   return {
     source: apiSource,
     profile: temporaryProfileToApi(options.profile),
-    playlist_name: options.name.trim() || defaultPlaylistName(),
+    playlist_name:
+      options.name.trim() || defaultPlaylistNameForSource(options.source),
     target_count: options.targetCount,
     taste_exponent: taste.tasteExponent,
     selection_strategy: taste.selectionStrategy,
@@ -90,18 +93,66 @@ export function buildPlaylistExportPayload(
   };
 }
 
-/** Returns a default playlist name with the current date. */
-export function defaultPlaylistName(date = new Date()): string {
-  return `Plattenradar ${date.toISOString().slice(0, 10)}`;
+/** Returns a mode-specific default playlist name with the current date. */
+export function defaultPlaylistNameForSource(
+  source: RecommendationSource,
+  date = new Date(),
+): string {
+  const datePart = date.toISOString().slice(0, 10);
+  if (source === "entdecken") {
+    return `Plattenradar Archiv ${datePart}`;
+  }
+  return `Plattenradar Neuheiten ${datePart}`;
 }
 
-/** Builds a CSV export from playlist items when only TXT was requested from the API. */
-export function playlistItemsToCsv(items: PlaylistExportItem[]): string {
-  const header = "Artist,Album,Track";
-  const rows = items.map((item) =>
-    [item.artist, item.album, item.track_title].map(escapeCsvField).join(","),
-  );
-  return [header, ...rows].join("\n");
+/** Returns a default playlist name with the current date. */
+export function defaultPlaylistName(date = new Date()): string {
+  return defaultPlaylistNameForSource("aktuell", date);
+}
+
+/** Increments or appends a numeric remix suffix such as ``(2)``. */
+export function bumpPlaylistNameSuffix(name: string): string {
+  const trimmed = name.trim();
+  if (!trimmed) {
+    return defaultPlaylistName();
+  }
+
+  const match = PLAYLIST_NAME_SUFFIX_RE.exec(trimmed);
+  if (match !== null) {
+    const baseName = match[1] ?? trimmed;
+    const nextSuffix = Number(match[2]) + 1;
+    return `${baseName} (${nextSuffix})`;
+  }
+
+  return `${trimmed} (2)`;
+}
+
+/** Builds TuneMyMusic free-text lines from playlist items. */
+export function playlistItemsToTxt(items: PlaylistExportItem[]): string {
+  const seen = new Set<string>();
+  const lines: string[] = [];
+
+  for (const item of items) {
+    const artist = item.artist.trim();
+    const title = item.track_title.trim();
+    if (!artist || !title) {
+      continue;
+    }
+
+    const key = `${artist.toLowerCase()}\0${title.toLowerCase()}`;
+    if (seen.has(key)) {
+      continue;
+    }
+    seen.add(key);
+    lines.push(`${artist} - ${title}`);
+  }
+
+  return lines.join("\n");
+}
+
+/** Derives a TXT filename from a CSV export filename. */
+export function playlistTxtFilename(csvFilename: string): string {
+  return csvFilename.replace(/\.csv$/i, ".txt");
 }
 
 /** Triggers a browser download for generated playlist export content. */
@@ -117,11 +168,4 @@ export function downloadPlaylistContent(
   anchor.download = filename;
   anchor.click();
   URL.revokeObjectURL(url);
-}
-
-function escapeCsvField(value: string): string {
-  if (value.includes(",") || value.includes('"') || value.includes("\n")) {
-    return `"${value.replaceAll('"', '""')}"`;
-  }
-  return value;
 }
