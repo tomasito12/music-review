@@ -362,13 +362,23 @@ Ziel: **Natürlicher Abschluss** der Entdeckungsreise — nicht „Export-Werkze
 
 *Block A–F beantwortet. Block G–H folgen.*
 
-### Block G — Profil, Einstieg, Mobile
+### Block G — Profil, Einstieg, Mobile ✅
 
-20. Sollen **aktive Profil-Filter** auf der Playlist-Seite sichtbar sein (Chips wie auf Entdecken)?
-21. Sprung von **Aktuell/Entdecken** — sollen Einstellungen (Quelle, Zeitraum) **vorausgefüllt und sichtbar** sein?
-22. Mobile: Priorität — zuerst **Layout fixen**, dann verschönern — einverstanden?
+| # | Frage | Nutzerantwort | Entscheidung (UX / Produkt) |
+|---|--------|---------------|-----------------------------|
+| **G20** | Profil-Filter sichtbar? | **c)** kompakt (Tendenz mitgegangen) | ✅ Ein **Zeiler** z. B. *„Basierend auf deinem Musikprofil“* + Link **„Profil bearbeiten“** — keine volle Filter-Chip-Leiste (schlank). |
+| **G21** | Sprung von Aktuell/Entdecken | **b)** dezent (Tendenz mitgegangen) | ✅ Einstellungen **vorausgefüllt** (Quelle, Zeitraum) + **kurze Kontextzeile** — kein großes Banner. |
+| **G22** | Mobile-Priorität | **a)** zuerst Layout fixen | ✅ **P0:** Mobile-Layout (Überlappung) reparieren, **dann** visuelles Polish — wie Design-Review. |
 
-### Block H — Scope & Priorität
+**Block G — Kurzfassung für Umsetzung:**
+
+- Profil-Bezug: **ein Zeiler + Profil-Link**
+- Deep-Link: **vorausgefüllt + dezente Kontextzeile**
+- Mobile: **Layout-Fix vor Verschönerung**
+
+---
+
+### Block H — Scope & Priorität ⏳
 
 23. Was ist **Must-have für v1** dieser Verbesserung vs. **nice-to-have**?
 24. Soll nur das **React-Frontend** verbessert werden, oder parallel **Streamlit**?
