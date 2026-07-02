@@ -324,7 +324,7 @@ Ziel: **Natürlicher Abschluss** der Entdeckungsreise — nicht „Export-Werkze
 |---|--------|---------------|-----------------------------|
 | **E13** | Zweite Playlist am selben Tag | **a)** Suffix **`(2)`** | ✅ Bei erneuter Generierung mit gleichem Basisnamen: automatisch **` (2)`**, **` (3)`** … anhängen. Erste Generierung ohne Suffix. Nutzer kann Name weiterhin manuell überschreiben. |
 | **E14** | Standard-Export | **a)** CSV empfohlen | ✅ **CSV als Primäraktion** (Playlist-Name automatisch im Zieldienst). **Text kopieren** und TXT-Download sekundär — mit Kurzhinweis: *„CSV = Name automatisch · Text = schneller Paste, Name in TuneMyMusic“*. React-CSV auf TuneMyMusic-Format mit `Playlist name` umstellen (Backend-Vorbild). |
-| **E15** | Streaming-Dienst für Anleitung | **Deezer und Spotify** | ✅ Anleitung **nicht nur für einen Dienst** — nummerierte TuneMyMusic-Schritte, Ziel exemplarisch **Deezer oder Spotify** (Tabs oder zwei kurze Pfade). Links z. B. `tunemymusic.com/transfer/file-to-deezer` und `…/file-to-spotify`. Streamlit-Deezer-Link als Ausgangspunkt. |
+| **E15** | Streaming-Dienst für Anleitung | **Korrektur: generisch** (nicht Deezer/Spotify-spezifisch) | ✅ **Generische TuneMyMusic-Anleitung** — Upload/Freitext, Zieldienst **vom Nutzer in TuneMyMusic gewählt**. Keine dienst-spezifischen Pfade als Default; ein Link zu TuneMyMusic (Upload/Transfer) reicht. |
 
 **Hinweis (Nutzer, Nachsatz ggf. abgeschnitten):** TuneMyMusic **ist** der Streaming-Übertragungsweg — Nutzer lädt Datei/Text bei TuneMyMusic hoch und wählt dort den **Zieldienst** (Deezer, Spotify, …). Unsere UI erklärt den Weg **bis TuneMyMusic** und nennt **Deezer + Spotify** als übliche Ziele — kein direkter API-Export zu Streaming-Diensten.
 
@@ -394,3 +394,4 @@ Ziel: **Natürlicher Abschluss** der Entdeckungsreise — nicht „Export-Werkze
 | 2026-07-02 | Interview Block B: Neuheiten Fokus↔Entdecken; Archiv getrennt (Pool Top-N/Score + Titel/Album); Cap ~4 dynamisch; „Nochmal mischen“ ja |
 | 2026-07-02 | Interview Block C: adaptiver Top-N-Slider (pool_size); Default min(200,pool); Chips 50/200/Alle; kein Mindest-Score v1 |
 | 2026-07-02 | Interview Block D: 5–100, Default 30; Chips 20/30/50 + optionale Eigene; TuneMyMusic bis 500 ok |
+| 2026-07-02 | Interview Block E: Suffix (2); CSV primär; TuneMyMusic-Anleitung Deezer + Spotify |
