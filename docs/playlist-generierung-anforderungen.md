@@ -252,15 +252,23 @@ Ziel: **Natürlicher Abschluss** der Entdeckungsreise — nicht „Export-Werkze
 
 ---
 
-### Block B — Geschmack / Verteilung ⏳
+### Block B — Geschmack / Verteilung ✅
 
-*Noch offen — Nutzer antwortet als Nächstes.*
+| # | Frage | Nutzerantwort | Entscheidung (UX / Produkt) |
+|---|--------|---------------|-----------------------------|
+| **B4** | Gemeinsame Metapher oder getrennt? | **Neuheiten:** „Fokus ↔ Entdecken“ passt gut. **Archiv:** bewusst **anders** — Steuerung über **Top-N** oder **Mindest-Score** (wie viele Alben überhaupt eine Rolle spielen). Gleiche **visuelle Sprache** (eine Komponenten-Familie), aber **nicht** derselbe Begriff/Mechanismus. Top-N eher **kein** Slider; Score-Schwelle **kann** Slider sein, wenn er zur Metrik passt. **„Fokus ↔ Entdecken“ im Archiv kein Sinn:** bei Top-1000 liegen Scores oft dicht beieinander (z. B. 0,90–0,96) — das sind ohnehin ähnlich starke Alben, kein echtes „Entdecken“ über Qualitätsspanne. | **Zwei getrennte Steuerungen im Archiv:** (1) **Album-Pool** — Top-N *oder* Mindest-Score (Details Block C); UI passend zur Metrik: **Presets/Chips** für Top-N (500 / 1000 / 2000), **Slider** für Score mit sinnvollen Stufen/Labels. (2) **Titel pro Album** — eigene, klar benannte Steuerung (z. B. „**Breit streuen**“ ↔ „**Alben vertiefen**“), gleiche visuelle Familie wie Neuheiten-Slider, aber **eigene Copy**. **Neuheiten:** ein Slider **„Fokus ↔ Entdecken“** (ersetzt heutiges „Fokus“-Dropdown + implizite Geschmackslogik). |
+| **B5** | Max. Titel pro Album bei starker Ausrichtung / Überrepräsentation | Unentschieden — **Entscheidung an UX**; konkretes Design weniger wichtig als **intuitiv und schön** | **Dynamisch im Algorithmus, für den Nutzer als Endpunkt sichtbar:** Steuerung „breit“ ≈ **max. 1 Titel pro Album**; „vertiefen“ ≈ **bis zu 4 Titel pro Album** (weicher Cap, nicht harte Nutzerzahl). Kein separates Zahlenfeld — die B4-Steuerung reicht. Backend nutzt bestehende Slot-/Gewichtungslogik; Cap 4 verhindert dominante Einzelalben bei 30+ Track-Playlists. |
+| **B6** | Button „Nochmal mischen“? | **Ja** — ausdrücklich gewünscht | ✅ **Must-have:** Sekundäraktion nach Generierung (und optional neben Primärbutton): gleiche Einstellungen, **neue Zufallsziehung**, ohne Formular-Reset. |
 
-| # | Frage |
-|---|--------|
-| B4 | Gemeinsame Metapher (Fokus ↔ Entdecken) oder getrennte Begriffe pro Modus? |
-| B5 | Max. Titel pro Album bei starker Geschmacksausrichtung — fest 3–4, dynamisch, nutzerwählbar? |
-| B6 | Button „Nochmal mischen“? |
+**Block B — Kurzfassung für Umsetzung:**
+
+| Modus | Steuerung 1 | Steuerung 2 (falls nötig) |
+|-------|-------------|---------------------------|
+| **Neuheiten** | Slider **Fokus ↔ Entdecken** | — |
+| **Archiv** | **Album-Pool:** Top-N (Chips) *oder* Mindest-Score (Slider) — siehe Block C | **Titel pro Album:** „Breit streuen“ ↔ „Alben vertiefen“ (gleiche UI-Familie, andere Labels) |
+| **Beide** | Button **„Nochmal mischen“** | Max. ~4 Titel/Album bei „vertiefen“, ~1 bei „breit“ (intern) |
+
+**Produktlogik Archiv (vom Nutzer):** Hohe Score-Dichte im Top-Pool → kein pseudo-„Entdecken“ über Qualität; deshalb **eigene Metaphern** statt Fokus/Entdecken.
 
 ---
 
@@ -315,8 +323,11 @@ Ziel: **Natürlicher Abschluss** der Entdeckungsreise — nicht „Export-Werkze
 
 ## Offene Punkte / noch zu ergänzen
 
-- [ ] Archiv: konkrete UI für Auswahlbasis (Score-Schwelle vs. Top-N; kombinierbar?)
-- [ ] Archiv: Benennung und Abgrenzung Album-Verteilung vs. Geschmacksstärke bei Neuheiten
+- [ ] Archiv: konkrete UI für Auswahlbasis (Score-Schwelle vs. Top-N; kombinierbar?) — Block C
+- [x] Archiv vs. Neuheiten: getrennte Metaphern (Block B)
+- [ ] Neuheiten: Slider Fokus ↔ Entdecken; Archiv: Titel-pro-Album-Steuerung
+- [ ] „Nochmal mischen“ als Must-have
+- [ ] Interview Block C–D: noch offen
 - [ ] Track-Anzahl: Default und Obergrenze
 - [ ] UX: konkrete UI-Konzepte pro Modus (ohne Überladung)
 - [ ] UX: TuneMyMusic-Übergang (Schritte, Copy, visuelle Hierarchie)
@@ -339,3 +350,4 @@ Ziel: **Natürlicher Abschluss** der Entdeckungsreise — nicht „Export-Werkze
 | 2026-07-02 | Playlist-Name: Nutzereingabe; Defaults Neuheiten/Archiv + Datum; Recherche TXT vs. CSV (Name nur in CSV); Idempotenz-Vorschlag (Modus + Datum + optional Suffix) |
 | 2026-07-02 | Design-Richtung: Freude ohne Funktionsverlust; Entwurf (Cards, Fotos, Mosaik, Export-Flow); Interview-Runde Block A–H |
 | 2026-07-02 | Interview Block A: Default 1 Runde; UX-Entscheid nur Update-Runden (kein Kalender); Pool-Hinweis optional, „passend zu Profil“ |
+| 2026-07-02 | Interview Block B: Neuheiten Fokus↔Entdecken; Archiv getrennt (Pool Top-N/Score + Titel/Album); Cap ~4 dynamisch; „Nochmal mischen“ ja |
