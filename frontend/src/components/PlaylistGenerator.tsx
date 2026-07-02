@@ -1,9 +1,24 @@
 import { useCallback, useEffect, useState } from "react";
 import type { ReactElement } from "react";
 
+import { PlaylistDualSlider } from "./playlist/PlaylistDualSlider";
 import { UPDATE_ROUND_OPTIONS } from "../lib/aktuellPage";
 import type { ApiClient } from "../lib/apiClient";
-import { exportPlaylist } from "../lib/plattenradarApi";
+import {
+  archiveAlbumLimitBounds,
+  archivePoolChipLimits,
+  archivePoolSummary,
+  clampArchiveAlbumLimit,
+  clampTrackCount,
+  defaultArchiveAlbumLimit,
+  PLAYLIST_DEFAULT_TRACK_COUNT,
+  PLAYLIST_TRACK_MAX,
+  PLAYLIST_TRACK_MIN,
+  PLAYLIST_TRACK_PRESETS,
+  playlistSourceContextLine,
+  trackCountHint,
+} from "../lib/playlistForm";
+import { exportPlaylist, loadArchiveRecommendations } from "../lib/plattenradarApi";
 import type { TemporaryTasteProfile } from "../lib/plattenradarApi";
 import {
   defaultPlaylistName,
@@ -28,11 +43,16 @@ export function PlaylistGenerator({
   profile,
   updateRounds: initialUpdateRounds,
 }: PlaylistGeneratorProps): ReactElement {
+  const [entrySource] = useState(initialSource);
   const [source, setSource] = useState<RecommendationSource>(initialSource);
   const [updateRounds, setUpdateRounds] = useState(initialUpdateRounds);
-  const [trackCount, setTrackCount] = useState(30);
-  const [focus, setFocus] = useState<"balanced" | "top">("balanced");
-  const [variation, setVariation] = useState(0.35);
+  const [trackCount, setTrackCount] = useState(PLAYLIST_DEFAULT_TRACK_COUNT);
+  const [customTrackCount, setCustomTrackCount] = useState(false);
+  const [newestTasteFocus, setNewestTasteFocus] = useState(0.25);
+  const [archiveDepth, setArchiveDepth] = useState(0.35);
+  const [archivePoolSize, setArchivePoolSize] = useState<number | null>(null);
+  const [archiveAlbumLimit, setArchiveAlbumLimit] = useState(200);
+  const [archivePoolLoading, setArchivePoolLoading] = useState(false);
   const [name, setName] = useState(() => defaultPlaylistName());
   const [isGenerating, setIsGenerating] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -46,6 +66,40 @@ export function PlaylistGenerator({
   useEffect(() => {
     setUpdateRounds(initialUpdateRounds);
   }, [initialUpdateRounds]);
+
+  useEffect(() => {
+    if (profile === null || source !== "entdecken") {
+      return;
+    }
+
+    let cancelled = false;
+    setArchivePoolLoading(true);
+
+    void loadArchiveRecommendations(apiClient(), profile, { limit: 1, offset: 0 })
+      .then(({ total }) => {
+        if (cancelled) {
+          return;
+        }
+        setArchivePoolSize(total);
+        setArchiveAlbumLimit((current) =>
+          clampArchiveAlbumLimit(total, defaultArchiveAlbumLimit(total) || current),
+        );
+      })
+      .catch(() => {
+        if (!cancelled) {
+          setArchivePoolSize(0);
+        }
+      })
+      .finally(() => {
+        if (!cancelled) {
+          setArchivePoolLoading(false);
+        }
+      });
+
+    return () => {
+      cancelled = true;
+    };
+  }, [apiClient, profile, source]);
 
   const generatePlaylist = useCallback(async () => {
     if (profile === null) {
@@ -62,8 +116,9 @@ export function PlaylistGenerator({
         profile,
         name,
         targetCount: trackCount,
-        focus,
-        variation,
+        newestTasteFocus,
+        archiveDepth,
+        archiveAlbumLimit,
         updateRounds,
         format: "txt",
       });
@@ -80,14 +135,24 @@ export function PlaylistGenerator({
     }
   }, [
     apiClient,
-    focus,
+    archiveAlbumLimit,
+    archiveDepth,
     name,
+    newestTasteFocus,
     profile,
     source,
     trackCount,
     updateRounds,
-    variation,
   ]);
+
+  const showEntryContext = source === entrySource;
+  const archivePoolReady = archivePoolSize !== null && archivePoolSize > 0;
+  const archiveChips =
+    archivePoolSize === null ? [] : archivePoolChipLimits(archivePoolSize);
+  const archiveBounds =
+    archivePoolSize === null
+      ? { min: 0, max: 0 }
+      : archiveAlbumLimitBounds(archivePoolSize);
 
   if (profile === null) {
     return (
@@ -119,20 +184,47 @@ export function PlaylistGenerator({
           kannst du sie als Text, TXT oder CSV in deinen Musikdienst übertragen.
         </p>
       </header>
+
+      <p className="playlist-profile-line">
+        Basierend auf deinem Musikprofil.{" "}
+        <button className="text-button" onClick={onEditProfile} type="button">
+          Profil bearbeiten
+        </button>
+      </p>
+
+      {showEntryContext && (
+        <p className="playlist-entry-context">{playlistSourceContextLine(source, updateRounds)}</p>
+      )}
+
       <div className="generator-card">
-        <label>
-          Musik auswählen aus
-          <select
-            onChange={(event) => {
-              setSource(event.target.value as RecommendationSource);
-              setExportResult(null);
-            }}
-            value={source}
-          >
-            <option value="aktuell">Neuheiten</option>
-            <option value="entdecken">Dem Plattentests-Archiv</option>
-          </select>
-        </label>
+        <fieldset className="playlist-fieldset">
+          <legend>Musik auswählen aus</legend>
+          <div className="choice-grid choice-grid-broad playlist-mode-grid" role="group">
+            <button
+              className={`choice-card${source === "aktuell" ? " selected" : ""}`}
+              onClick={() => {
+                setSource("aktuell");
+                setExportResult(null);
+              }}
+              type="button"
+            >
+              Neuheiten
+              <small>Neueste Rezensionen</small>
+            </button>
+            <button
+              className={`choice-card${source === "entdecken" ? " selected" : ""}`}
+              onClick={() => {
+                setSource("entdecken");
+                setExportResult(null);
+              }}
+              type="button"
+            >
+              Archiv
+              <small>Plattentests-Archiv</small>
+            </button>
+          </div>
+        </fieldset>
+
         {source === "aktuell" && (
           <label>
             Zeitraum
@@ -148,51 +240,141 @@ export function PlaylistGenerator({
             </select>
           </label>
         )}
-        <label>
-          Anzahl Tracks
-          <input
-            max="100"
-            min="5"
-            onChange={(event) => setTrackCount(Number(event.target.value))}
-            step="1"
-            type="number"
-            value={trackCount}
-          />
-        </label>
-        <label>
-          Fokus
-          <select
-            onChange={(event) => setFocus(event.target.value as "balanced" | "top")}
-            value={focus}
-          >
-            <option value="balanced">Breit über die Liste</option>
-            <option value="top">Stärker auf Top-Treffer</option>
-          </select>
-        </label>
-        {source === "entdecken" && (
-          <label>
-            Abwechslung
-            <input
-              aria-label="Abwechslung in der Archiv-Playlist"
-              max="1"
-              min="0"
-              onChange={(event) => setVariation(Number(event.target.value))}
-              step="0.05"
-              type="range"
-              value={variation}
+
+        {source === "aktuell" && (
+          <div className="playlist-fieldset">
+            <span className="playlist-field-label">Fokus</span>
+            <PlaylistDualSlider
+              ariaLabel="Fokus oder Entdecken bei Neuheiten"
+              leftLabel="Entdecken"
+              onChange={setNewestTasteFocus}
+              rightLabel="Fokus"
+              value={newestTasteFocus}
             />
-            <span className="field-hint">
-              Mehr Abwechslung verteilt die Auswahl stärker über die Rangliste.
-            </span>
-          </label>
+          </div>
         )}
+
+        {source === "entdecken" && (
+          <div className="playlist-fieldset">
+            <span className="playlist-field-label">Top-Alben aus deinem Profil</span>
+            {archivePoolLoading && (
+              <p className="field-hint">Passende Alben werden geladen …</p>
+            )}
+            {!archivePoolLoading && archivePoolSize !== null && (
+              <>
+                <p className="playlist-pool-summary">
+                  {archivePoolSummary(archivePoolSize, archiveAlbumLimit)}
+                </p>
+                {archivePoolReady && (
+                  <>
+                    <div className="filter-segmented playlist-pool-chips">
+                      {archiveChips.map((chipValue) => (
+                        <button
+                          className={
+                            archiveAlbumLimit === chipValue ? "selected" : undefined
+                          }
+                          key={chipValue}
+                          onClick={() => {
+                            setArchiveAlbumLimit(chipValue);
+                          }}
+                          type="button"
+                        >
+                          {chipValue >= archivePoolSize ? "Alle" : chipValue}
+                        </button>
+                      ))}
+                    </div>
+                    <input
+                      aria-label="Wie viele Top-Alben"
+                      className="playlist-dual-slider-input"
+                      max={archiveBounds.max}
+                      min={archiveBounds.min}
+                      onChange={(event) => {
+                        setArchiveAlbumLimit(
+                          clampArchiveAlbumLimit(archivePoolSize, Number(event.target.value)),
+                        );
+                      }}
+                      step={1}
+                      type="range"
+                      value={archiveAlbumLimit}
+                    />
+                  </>
+                )}
+              </>
+            )}
+          </div>
+        )}
+
+        {source === "entdecken" && archivePoolReady && (
+          <div className="playlist-fieldset">
+            <span className="playlist-field-label">Titel pro Album</span>
+            <PlaylistDualSlider
+              ariaLabel="Breit streuen oder Alben vertiefen"
+              leftLabel="Breit streuen"
+              onChange={setArchiveDepth}
+              rightLabel="Alben vertiefen"
+              value={archiveDepth}
+            />
+          </div>
+        )}
+
+        <fieldset className="playlist-fieldset">
+          <legend>Anzahl Tracks</legend>
+          <div className="filter-segmented">
+            {PLAYLIST_TRACK_PRESETS.map((preset) => (
+              <button
+                className={
+                  !customTrackCount && trackCount === preset ? "selected" : undefined
+                }
+                key={preset}
+                onClick={() => {
+                  setCustomTrackCount(false);
+                  setTrackCount(preset);
+                }}
+                type="button"
+              >
+                {preset}
+              </button>
+            ))}
+            <button
+              className={customTrackCount ? "selected" : undefined}
+              onClick={() => {
+                setCustomTrackCount(true);
+              }}
+              type="button"
+            >
+              Eigene
+            </button>
+          </div>
+          {customTrackCount ? (
+            <label>
+              Eigene Anzahl
+              <input
+                max={PLAYLIST_TRACK_MAX}
+                min={PLAYLIST_TRACK_MIN}
+                onChange={(event) => {
+                  setTrackCount(clampTrackCount(Number(event.target.value)));
+                }}
+                type="number"
+                value={trackCount}
+              />
+              <span className="field-hint">
+                Zwischen {PLAYLIST_TRACK_MIN} und {PLAYLIST_TRACK_MAX} Titeln.
+              </span>
+            </label>
+          ) : (
+            <p className="field-hint">{trackCountHint(trackCount)}</p>
+          )}
+        </fieldset>
+
         <label>
           Playlist-Name
           <input onChange={(event) => setName(event.target.value)} type="text" value={name} />
         </label>
         <button
           className="primary-button"
-          disabled={isGenerating}
+          disabled={
+            isGenerating || (source === "entdecken" && (!archivePoolReady || archivePoolLoading))
+          }
           onClick={() => void generatePlaylist()}
           type="button"
         >

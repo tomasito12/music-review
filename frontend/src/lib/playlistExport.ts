@@ -6,14 +6,15 @@ export type PlaylistApiSource = "archive" | "new_reviews";
 export type PlaylistSelectionStrategy = "stratified" | "weighted_sample";
 
 export interface PlaylistExportRequestOptions {
+  archiveAlbumLimit: number;
+  archiveDepth: number;
   format: "txt" | "csv";
-  focus: "balanced" | "top";
   name: string;
+  newestTasteFocus: number;
   profile: TemporaryTasteProfile;
   source: RecommendationSource;
   targetCount: number;
   updateRounds: string;
-  variation: number;
 }
 
 export interface PlaylistExportItem {
@@ -41,26 +42,28 @@ export function playlistApiSource(source: RecommendationSource): PlaylistApiSour
   return source === "entdecken" ? "archive" : "new_reviews";
 }
 
-/** Maps UI focus and source to the API selection strategy. */
-export function playlistSelectionStrategy(
-  source: RecommendationSource,
-  focus: "balanced" | "top",
-): PlaylistSelectionStrategy {
-  if (focus === "top") {
-    return "weighted_sample";
-  }
-  return source === "entdecken" ? "weighted_sample" : "stratified";
+/** Map newest-playlist taste slider to API weighting parameters. */
+export function tasteSettingsForNewest(tasteFocus: number): {
+  selectionStrategy: PlaylistSelectionStrategy;
+  tasteExponent: number;
+} {
+  const clamped = Math.min(1, Math.max(0, tasteFocus));
+  return {
+    tasteExponent: 1 + clamped * 2,
+    selectionStrategy: clamped < 0.5 ? "stratified" : "weighted_sample",
+  };
 }
 
-/** Maps UI focus and variation to the API taste exponent. */
-export function playlistTasteExponent(
-  focus: "balanced" | "top",
-  variation: number,
-): number {
-  if (focus === "top") {
-    return 3;
-  }
-  return 1 + Math.min(1, Math.max(0, variation)) * 2;
+/** Map archive depth slider to API weighting parameters. */
+export function tasteSettingsForArchive(depth: number): {
+  selectionStrategy: PlaylistSelectionStrategy;
+  tasteExponent: number;
+} {
+  const clamped = Math.min(1, Math.max(0, depth));
+  return {
+    tasteExponent: 1 + clamped * 2,
+    selectionStrategy: clamped < 0.5 ? "weighted_sample" : "stratified",
+  };
 }
 
 /** Builds the JSON body for POST /v1/playlists/export. */
@@ -68,16 +71,22 @@ export function buildPlaylistExportPayload(
   options: PlaylistExportRequestOptions,
 ): Record<string, unknown> {
   const apiSource = playlistApiSource(options.source);
+  const taste =
+    options.source === "entdecken"
+      ? tasteSettingsForArchive(options.archiveDepth)
+      : tasteSettingsForNewest(options.newestTasteFocus);
+
   return {
     source: apiSource,
     profile: temporaryProfileToApi(options.profile),
     playlist_name: options.name.trim() || defaultPlaylistName(),
     target_count: options.targetCount,
-    taste_exponent: playlistTasteExponent(options.focus, options.variation),
-    selection_strategy: playlistSelectionStrategy(options.source, options.focus),
+    taste_exponent: taste.tasteExponent,
+    selection_strategy: taste.selectionStrategy,
     format: options.format,
     update_rounds: Number(options.updateRounds),
-    archive_limit: 200,
+    archive_limit:
+      options.source === "entdecken" ? Math.max(1, options.archiveAlbumLimit) : 200,
   };
 }
 
