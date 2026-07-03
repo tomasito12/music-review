@@ -127,12 +127,14 @@ Expand options (1 / 2 / 4 / 8 / 12 / 20), show estimated pool size, explain fall
 4. Year + label in export items (F2)
 5. Builder regression tests
 
-### Phase 4 — Polish & parity
+### Phase 4 — Polish & parity ✅
 
-1. Zeitraum segment chips (A3)
-2. Optional „Erweitert“ accordion
+1. Zeitraum segment chips (A3) — done in Phase 2
+2. Optional „Erweitert“ accordion — playlist name + fine sliders
 3. Playwright references (form + result, both modes, mobile)
 4. Update feedback doc with v2 review section
+
+**Exit criteria:** CI visual regression green; PO re-test optional.
 
 ---
 
@@ -180,5 +182,8 @@ After v2, a tester should answer **yes** to:
 |-------|-------|----------|
 | 2026-07-03 | Plan | Initial v2 redesign plan from PR feedback doc |
 | 2026-07-03 | Phase 1 | Quick wins: export flow, form collapse, copy fixes |
+| 2026-07-03 | Phase 2 | Control presets, mosaic removal, initials fallback |
+| 2026-07-03 | Phase 3 | Album-spread backend rules, year/label in rows |
+| 2026-07-03 | Phase 4 | Erweitert accordion, Playwright refs, feedback doc v2 |
 | 2026-07-03 | Phase 2 | Mood presets, update-round chips, pool chips only, mosaic removed, initials |
 | 2026-07-03 | Phase 3 | Album-spread backend rules, API field, year/label in export rows |

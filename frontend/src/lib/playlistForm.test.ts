@@ -11,6 +11,7 @@ import {
   defaultArchiveAlbumLimit,
   newestMoodHint,
   newestMoodToTasteFocus,
+  isNewestMoodPresetSelected,
   normalizePlaylistUpdateRounds,
   playlistSourceContextLine,
   playlistSuccessHeadline,
@@ -130,6 +131,13 @@ describe("normalizePlaylistUpdateRounds", () => {
   it("keeps supported values and snaps unknown values", () => {
     expect(normalizePlaylistUpdateRounds("8")).toBe("8");
     expect(normalizePlaylistUpdateRounds("3")).toBe("2");
+  });
+});
+
+describe("isNewestMoodPresetSelected", () => {
+  it("matches preset taste-focus values within a small tolerance", () => {
+    expect(isNewestMoodPresetSelected(0.25, "balanced")).toBe(true);
+    expect(isNewestMoodPresetSelected(0.4, "balanced")).toBe(false);
   });
 });
 

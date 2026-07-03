@@ -2443,6 +2443,26 @@ p {
   flex-wrap: wrap;
 }
 
+.playlist-advanced-options {
+  margin-top: 0.35rem;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  padding: 0.75rem 0.85rem;
+  background: rgba(255, 253, 250, 0.72);
+}
+
+.playlist-advanced-options > summary {
+  cursor: pointer;
+  color: var(--ink);
+  font-size: 0.9rem;
+  font-weight: 600;
+}
+
+.playlist-advanced-options label {
+  display: block;
+  margin-top: 0.85rem;
+}
+
 .playlist-dual-slider {
   display: grid;
   gap: 0.35rem;

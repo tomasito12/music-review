@@ -530,6 +530,48 @@ redundantes Mosaik professioneller wirken.
 
 ---
 
+## v2 — Implementierungsreview (Playlist v2)
+
+**Branch:** `cursor/improve-playlist-v2`  
+**Review-Datum:** 2026-07-03  
+**Basis:** Integration v2 PO-Feedback + Phasen 1–4 aus [`playlist-v2-redesign-plan.md`](playlist-v2-redesign-plan.md)
+
+### Umgesetzt (Kurz)
+
+| Thema | Status |
+|-------|--------|
+| Zwei-Phasen-UI (Formular einklappen nach Generierung) | erledigt (Phase 1) |
+| Export-Gruppen + CSV/TuneMyMusic-Kombi | erledigt (Phase 1) |
+| Kontextzeile Layout-Sprung entfernt | erledigt (Phase 1) |
+| Default `Plattenarchiv` | erledigt (Phase 1) |
+| Neuheiten Mood-Presets statt Fokus-Slider | erledigt (Phase 2) |
+| Zeitraum-Chips 1/2/4/8/12/20 + Pool-Hinweis | erledigt (Phase 2) |
+| Archiv-Pool nur Chips (kein Doppel-Slider) | erledigt (Phase 2) |
+| Mosaik entfernt, Erfolgskopf | erledigt (Phase 2) |
+| Initialen-Fallback, größere Thumbnails | erledigt (Phase 2) |
+| Archiv Spread-Presets + Backend Album-Caps | erledigt (Phase 3) |
+| Jahr + Label in Ergebniszeilen | erledigt (Phase 3) |
+| Erweitert-Akkordeon (Name, Fein-Slider) | erledigt (Phase 4) |
+| Playwright-Referenzen aktualisiert | erledigt (Phase 4) |
+
+### Offen / bewusst zurückgestellt
+
+| Thema | Notiz |
+|-------|-------|
+| API-Limit > 1000 | PO-Entscheidung: später |
+| Lightbox auf Künstlerbildern | bewusst nicht in v2 |
+| Rating / Passung in Zeilen | später |
+| Vorschau vor Generierung | nicht in v1/v2 |
+
+### Fazit v2
+
+Die Playlist-Seite folgt jetzt dem Zwei-Phasen-Modell: ruhiges Konfigurieren, dann
+klarer Export-Moment mit TuneMyMusic-Führung. Presets ersetzen undurchsichtige Slider;
+Feinjustierung bleibt optional unter **Erweitert**. Archiv-Spread-Regeln sind im Backend
+verankert. Nächster Schritt: PO-Re-Test auf Mobile und Desktop.
+
+---
+
 ## PR4 — Ergebnisliste (Hybrid-Zeilen, Kontext)
 
 **Branch:** `cursor/playlist-pr4-results-c980`  
@@ -590,21 +632,21 @@ _(noch offen)_
 
 | Thema | Status | Ziel |
 |-------|--------|------|
-| Emotionaler Anschluss an Aktuell/Entdecken | offen | v2 |
-| TuneMyMusic-Export erklären + Kombi-Schritt | offen (PO P0) | v2 |
-| Archiv-Pool-Steuerung vereinfachen | teilweise (Limit-Fix; Doppelsteuerung offen) | v2 |
-| Fokus-/Tiefen-Slider verständlich | offen (PO P0) | v2 |
-| Zeitraum/Update-Runden (mehr Optionen, Fallback-Copy) | offen (PO P1) | v2 |
-| Archiv „Titel pro Album“ (Presets statt Slider) | offen (PO P0) | v2 |
-| Default-Name `Plattenarchiv` (ohne Bindestrich) | offen (PO P2) | v2 |
+| Emotionaler Anschluss an Aktuell/Entdecken | teilweise | v2 |
+| TuneMyMusic-Export erklären + Kombi-Schritt | erledigt | v2 |
+| Archiv-Pool-Steuerung vereinfachen | erledigt | v2 |
+| Fokus-/Tiefen-Slider verständlich | erledigt (Presets) | v2 |
+| Zeitraum/Update-Runden (mehr Optionen, Fallback-Copy) | erledigt | v2 |
+| Archiv „Titel pro Album“ (Presets statt Slider) | erledigt | v2 |
+| Default-Name `Plattenarchiv` (ohne Bindestrich) | erledigt | v2 |
 | Archiv-Pool Anzeige vs. Limit 1000 | zurückgestellt (PO P3) | später |
-| Künstler-Thumbnails (Größe, Initialen, kein Zoom) | offen (PO P2) | v2 |
-| Kontextzeile Layout-Sprung Neuheiten/Archiv | offen (PO P1) | v2 |
-| Export-Button-Gruppierung (Export vs. Remix) | offen (PO P0) | v2 |
-| Künstler-Mosaik (6er) vs. Zeilen-Fotos | offen (PO P1) | v2 |
-| Metadaten Jahr + Label in Ergebniszeilen | offen (PO P1) | v2 |
-| Ergebnis als eigene Phase (Formular nach Generierung) | offen | v2 |
-| Slider-Zwischenfeedback | offen | v2 |
+| Künstler-Thumbnails (Größe, Initialen, kein Zoom) | erledigt | v2 |
+| Kontextzeile Layout-Sprung Neuheiten/Archiv | erledigt | v2 |
+| Export-Button-Gruppierung (Export vs. Remix) | erledigt | v2 |
+| Künstler-Mosaik (6er) vs. Zeilen-Fotos | erledigt | v2 |
+| Metadaten Jahr + Label in Ergebniszeilen | erledigt | v2 |
+| Ergebnis als eigene Phase (Formular nach Generierung) | erledigt | v2 |
+| Slider-Zwischenfeedback | erledigt (Presets + Erweitert) | v2 |
 | Aktive Profil-Filter auf Playlist-Seite sichtbar | offen | später |
 | Vorschau vor Generierung | bewusst nicht in v1 | — |
 
@@ -619,3 +661,4 @@ _(noch offen)_
 | 2026-07-03 | PR3 | UX/UI-Review Export-Flow, Ergebnisansicht, Remix; Screenshot Ergebnis Mobile |
 | 2026-07-03 | Integration v2 | Product-Owner-Review auf `cursor/playlist-integration-c980`; Prioritäten für nächste Runde |
 | 2026-07-03 | Integration v2 | Archiv-Feedback: Pool-Limit, Titel-pro-Album-Presets, Plattenarchiv, Thumbnails |
+| 2026-07-03 | v2 | Implementierungsreview Phasen 1–4 auf `cursor/improve-playlist-v2` |

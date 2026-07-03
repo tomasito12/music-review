@@ -159,6 +159,14 @@ export function newestMoodToTasteFocus(preset: NewestMoodPreset): number {
   return match?.tasteFocus ?? NEWEST_MOOD_PRESETS[1].tasteFocus;
 }
 
+/** Whether a taste-focus value matches one of the named mood presets. */
+export function isNewestMoodPresetSelected(
+  tasteFocus: number,
+  preset: NewestMoodPreset,
+): boolean {
+  return Math.abs(tasteFocus - newestMoodToTasteFocus(preset)) < 0.03;
+}
+
 /** Helper copy under the newest mood preset chips. */
 export function newestMoodHint(preset: NewestMoodPreset): string {
   const match = NEWEST_MOOD_PRESETS.find((entry) => entry.id === preset);
