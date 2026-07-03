@@ -114,6 +114,22 @@ describe("buildPlaylistExportPayload", () => {
     expect(payload.format).toBe("csv");
   });
 
+  it("clamps archive_limit to the API maximum", () => {
+    const payload = buildPlaylistExportPayload({
+      source: "entdecken",
+      profile: createTemporaryTasteProfile(["C001"]),
+      name: "Großes Archiv",
+      targetCount: 30,
+      newestTasteFocus: 0,
+      archiveDepth: 0.5,
+      archiveAlbumLimit: 6236,
+      updateRounds: "1",
+      format: "csv",
+    });
+
+    expect(payload.archive_limit).toBe(1000);
+  });
+
   it("uses update rounds and newest taste settings for aktuell", () => {
     const payload = buildPlaylistExportPayload({
       source: "aktuell",

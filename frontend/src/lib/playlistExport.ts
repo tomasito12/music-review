@@ -1,4 +1,5 @@
 import type { RecommendationSource } from "../types";
+import { PLAYLIST_ARCHIVE_LIMIT_MAX } from "./playlistForm";
 import type { TemporaryTasteProfile } from "./plattenradarApi";
 import { temporaryProfileToApi } from "./plattenradarApi";
 import { isVisualTestMode } from "./visualTestMode";
@@ -91,7 +92,12 @@ export function buildPlaylistExportPayload(
     format: options.format,
     update_rounds: Number(options.updateRounds),
     archive_limit:
-      options.source === "entdecken" ? Math.max(1, options.archiveAlbumLimit) : 200,
+      options.source === "entdecken"
+        ? Math.min(
+            PLAYLIST_ARCHIVE_LIMIT_MAX,
+            Math.max(1, options.archiveAlbumLimit),
+          )
+        : 200,
   };
 }
 
