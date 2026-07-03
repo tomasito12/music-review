@@ -67,8 +67,9 @@ describe("playlistNameForExportDownload", () => {
   it("uses a fixed reference date during visual regression", () => {
     document.documentElement.dataset.visualTest = "true";
 
-    expect(defaultPlaylistNameForSource("aktuell")).toBe(
-      "Plattenradar Neuheiten 2026-06-27",
+    expect(defaultPlaylistNameForSource("aktuell")).toBe("Plattenradar 2026-06-27");
+    expect(defaultPlaylistNameForSource("entdecken")).toBe(
+      "Platten-Archiv 2026-06-27",
     );
   });
 });
