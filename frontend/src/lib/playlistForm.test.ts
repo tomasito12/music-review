@@ -19,6 +19,10 @@ describe("archiveAlbumLimitBounds", () => {
   it("starts at 20 for larger pools", () => {
     expect(archiveAlbumLimitBounds(347)).toEqual({ min: 20, max: 347 });
   });
+
+  it("caps the slider at the API archive limit", () => {
+    expect(archiveAlbumLimitBounds(6236)).toEqual({ min: 20, max: 1000 });
+  });
 });
 
 describe("defaultArchiveAlbumLimit", () => {
@@ -33,6 +37,10 @@ describe("archivePoolChipLimits", () => {
     expect(archivePoolChipLimits(347)).toEqual([50, 200, 347]);
     expect(archivePoolChipLimits(120)).toEqual([50, 120]);
   });
+
+  it("caps the largest chip at the API archive limit", () => {
+    expect(archivePoolChipLimits(6236)).toEqual([50, 200, 1000]);
+  });
 });
 
 describe("clampArchiveAlbumLimit", () => {
@@ -46,6 +54,12 @@ describe("archivePoolSummary", () => {
   it("describes the personalized archive pool", () => {
     expect(archivePoolSummary(347, 200)).toBe(
       "347 Alben passen zu deinem Profil — Playlist aus den Top 200.",
+    );
+  });
+
+  it("describes capped pools above the API archive limit", () => {
+    expect(archivePoolSummary(6236, 1000)).toBe(
+      "6236 Alben passen zu deinem Profil — Playlist aus den Top 1000.",
     );
   });
 });
