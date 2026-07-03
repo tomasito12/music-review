@@ -3,7 +3,9 @@
 import { afterEach, describe, expect, it } from "vitest";
 
 import type { Recommendation } from "../types";
+import type { PlaylistExportItem } from "./playlistExport";
 import {
+  limitPlaylistItemsForVisualTest,
   limitRecommendationsForVisualTest,
   shouldShowLoadMoreButton,
   VISUAL_TEST_LIST_ITEM_LIMIT,
@@ -51,6 +53,31 @@ describe("limitRecommendationsForVisualTest", () => {
     expect(limitRecommendationsForVisualTest(recommendations)).toHaveLength(
       VISUAL_TEST_LIST_ITEM_LIMIT,
     );
+  });
+});
+
+function playlistItem(reviewId: number): PlaylistExportItem {
+  return {
+    review_id: reviewId,
+    artist: `Artist ${reviewId}`,
+    album: `Album ${reviewId}`,
+    track_title: `Track ${reviewId}`,
+    source_kind: "highlight",
+    score_weight: 1,
+    raw_score: 0.8,
+  };
+}
+
+describe("limitPlaylistItemsForVisualTest", () => {
+  afterEach(() => {
+    delete document.documentElement.dataset.visualTest;
+  });
+
+  it("limits long playlist result lists while visual-test mode is active", () => {
+    document.documentElement.dataset.visualTest = "true";
+    const items = Array.from({ length: 12 }, (_, index) => playlistItem(index + 1));
+
+    expect(limitPlaylistItemsForVisualTest(items)).toHaveLength(VISUAL_TEST_LIST_ITEM_LIMIT);
   });
 });
 

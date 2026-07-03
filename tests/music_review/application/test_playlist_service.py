@@ -62,6 +62,30 @@ def test_playlist_service_generates_suggestions_and_exports() -> None:
     assert len(result.txt_export.items) == 2
 
 
+def test_playlist_service_export_items_include_artist_mbid() -> None:
+    """Export items include artist MBIDs when a review lookup callback is provided."""
+    reviews = [
+        _review(1, artist="Artist A", track_title="Song A"),
+        _review(2, artist="Artist B", track_title="Song B"),
+    ]
+    ranked_rows = [
+        {"review": reviews[0], "overall_score": 0.7},
+        {"review": reviews[1], "overall_score": 0.3},
+    ]
+    mbids = {1: "mbid-a", 2: None}
+
+    result = PlaylistService().generate(
+        reviews=reviews,
+        ranked_rows=ranked_rows,
+        request=_request(),
+        rng=random.Random(7),
+        artist_mbid_for_review=mbids.get,
+    )
+
+    assert result.txt_export.items[0].artist_mbid == "mbid-a"
+    assert result.txt_export.items[1].artist_mbid is None
+
+
 def test_playlist_service_falls_back_to_uniform_album_weights() -> None:
     """Without ranked rows the service can still build a neutral playlist."""
     reviews = [_review(1, artist="Artist A", track_title="Song A")]

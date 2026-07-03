@@ -357,10 +357,10 @@ describe("exportPlaylist", () => {
         JSON.stringify({
           source: "archive",
           name: "Test",
-          format: "txt",
-          filename: "test.txt",
-          content_type: "text/plain",
-          content: "Artist - Track",
+          format: "csv",
+          filename: "test.csv",
+          content_type: "text/csv",
+          content: "Track name,Artist name,Playlist name\nTrack,Artist,Test",
           items: [],
         }),
         { status: 200 },
@@ -374,19 +374,20 @@ describe("exportPlaylist", () => {
       profile,
       name: "Test",
       targetCount: 20,
-      focus: "balanced",
-      variation: 0.35,
+      newestTasteFocus: 0.25,
+      archiveDepth: 0.35,
+      archiveAlbumLimit: 200,
       updateRounds: "4",
-      format: "txt",
+      format: "csv",
     });
 
-    expect(result.filename).toBe("test.txt");
+    expect(result.filename).toBe("test.csv");
     const requestBody = JSON.parse(String(fetchMock.mock.calls[0]?.[1]?.body));
     expect(requestBody).toMatchObject({
       source: "archive",
       playlist_name: "Test",
       target_count: 20,
-      format: "txt",
+      format: "csv",
     });
   });
 });

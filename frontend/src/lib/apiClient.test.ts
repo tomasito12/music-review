@@ -1,37 +1,33 @@
-import { describe, expect, it, vi } from "vitest";
+import { describe, expect, it } from "vitest";
 
-import { createApiClient } from "./apiClient";
+import { parseApiErrorMessage } from "./apiClient";
 
-describe("createApiClient", () => {
-  it("passes the bearer token to authenticated requests", async () => {
-    const fetchMock = vi.fn().mockResolvedValue(
-      new Response(JSON.stringify({ profile: { genres: [] } }), { status: 200 }),
+describe("parseApiErrorMessage", () => {
+  it("returns string detail messages unchanged", () => {
+    expect(parseApiErrorMessage({ detail: "Invalid email." }, "Fallback")).toBe(
+      "Invalid email.",
     );
-    vi.stubGlobal("fetch", fetchMock);
-
-    const client = createApiClient("session-token");
-    await client.get("/v1/me/taste-profile");
-
-    const requestInit = fetchMock.mock.calls[0]?.[1] as RequestInit;
-    const headers = new Headers(requestInit.headers);
-    expect(headers.get("Authorization")).toBe("Bearer session-token");
-
-    vi.unstubAllGlobals();
   });
 
-  it("omits authorization when no token is available", async () => {
-    const fetchMock = vi.fn().mockResolvedValue(
-      new Response(JSON.stringify({ items: [] }), { status: 200 }),
+  it("formats pydantic validation error arrays", () => {
+    expect(
+      parseApiErrorMessage(
+        {
+          detail: [
+            {
+              loc: ["body", "archive_limit"],
+              msg: "Input should be less than or equal to 1000",
+            },
+          ],
+        },
+        "Unprocessable Content",
+      ),
+    ).toBe("body.archive_limit: Input should be less than or equal to 1000");
+  });
+
+  it("falls back when detail is missing", () => {
+    expect(parseApiErrorMessage({}, "Unprocessable Content")).toBe(
+      "Unprocessable Content",
     );
-    vi.stubGlobal("fetch", fetchMock);
-
-    const client = createApiClient(null);
-    await client.get("/v1/presets");
-
-    const requestInit = fetchMock.mock.calls[0]?.[1] as RequestInit;
-    const headers = new Headers(requestInit.headers);
-    expect(headers.get("Authorization")).toBeNull();
-
-    vi.unstubAllGlobals();
   });
 });

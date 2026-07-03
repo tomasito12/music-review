@@ -1,12 +1,21 @@
-import { describe, expect, it } from "vitest";
+// @vitest-environment jsdom
+
+import { afterEach, describe, expect, it } from "vitest";
 
 import { createTemporaryTasteProfile } from "./plattenradarApi";
 import {
   buildPlaylistExportPayload,
+  bumpPlaylistNameSuffix,
+  defaultPlaylistNameForSource,
   playlistApiSource,
   playlistItemsToCsv,
-  playlistSelectionStrategy,
-  playlistTasteExponent,
+  playlistItemsToTxt,
+  playlistNameForExportDownload,
+  playlistTxtFilename,
+  stripPlaylistNameSuffix,
+  suggestedPlaylistExportFilename,
+  tasteSettingsForArchive,
+  tasteSettingsForNewest,
 } from "./playlistExport";
 
 describe("playlistApiSource", () => {
@@ -16,60 +25,212 @@ describe("playlistApiSource", () => {
   });
 });
 
-describe("playlistSelectionStrategy", () => {
-  it("uses stratified for balanced newest playlists", () => {
-    expect(playlistSelectionStrategy("aktuell", "balanced")).toBe("stratified");
+describe("defaultPlaylistNameForSource", () => {
+  afterEach(() => {
+    delete document.documentElement.dataset.visualTest;
   });
 
-  it("uses weighted sampling for archive and top-focus playlists", () => {
-    expect(playlistSelectionStrategy("entdecken", "balanced")).toBe("weighted_sample");
-    expect(playlistSelectionStrategy("aktuell", "top")).toBe("weighted_sample");
+  it("uses mode-specific labels", () => {
+    const date = new Date("2026-07-02T12:00:00.000Z");
+
+    expect(defaultPlaylistNameForSource("aktuell", date)).toBe("Plattenradar 2026-07-02");
+    expect(defaultPlaylistNameForSource("entdecken", date)).toBe(
+      "Platten-Archiv 2026-07-02",
+    );
+  });
+});
+
+describe("stripPlaylistNameSuffix", () => {
+  it("removes a trailing numeric suffix", () => {
+    expect(stripPlaylistNameSuffix("Plattenradar 2026-07-02 (2)")).toBe(
+      "Plattenradar 2026-07-02",
+    );
+  });
+});
+
+describe("playlistNameForExportDownload", () => {
+  it("keeps the base name on the first export", () => {
+    expect(playlistNameForExportDownload("Plattenradar 2026-07-02", 1)).toBe(
+      "Plattenradar 2026-07-02",
+    );
+  });
+
+  it("adds numeric suffixes only from the second export onward", () => {
+    expect(playlistNameForExportDownload("Plattenradar 2026-07-02", 2)).toBe(
+      "Plattenradar 2026-07-02 (2)",
+    );
+    expect(playlistNameForExportDownload("Plattenradar 2026-07-02", 3)).toBe(
+      "Plattenradar 2026-07-02 (3)",
+    );
+  });
+
+  it("uses a fixed reference date during visual regression", () => {
+    document.documentElement.dataset.visualTest = "true";
+
+    expect(defaultPlaylistNameForSource("aktuell")).toBe("Plattenradar 2026-06-27");
+    expect(defaultPlaylistNameForSource("entdecken")).toBe(
+      "Platten-Archiv 2026-06-27",
+    );
+  });
+});
+
+describe("bumpPlaylistNameSuffix", () => {
+  it("appends (2) on the first remix", () => {
+    expect(bumpPlaylistNameSuffix("Plattenradar 2026-07-02")).toBe(
+      "Plattenradar 2026-07-02 (2)",
+    );
+  });
+
+  it("increments an existing numeric suffix", () => {
+    expect(bumpPlaylistNameSuffix("Platten-Archiv 2026-07-02 (2)")).toBe(
+      "Platten-Archiv 2026-07-02 (3)",
+    );
+  });
+});
+
+describe("tasteSettingsForNewest", () => {
+  it("favors exploration at the low end", () => {
+    expect(tasteSettingsForNewest(0)).toEqual({
+      tasteExponent: 1,
+      selectionStrategy: "stratified",
+    });
+  });
+
+  it("favors focused playlists at the high end", () => {
+    expect(tasteSettingsForNewest(1)).toEqual({
+      tasteExponent: 3,
+      selectionStrategy: "weighted_sample",
+    });
+  });
+});
+
+describe("tasteSettingsForArchive", () => {
+  it("favors broad spread at the low end", () => {
+    expect(tasteSettingsForArchive(0)).toEqual({
+      tasteExponent: 1,
+      selectionStrategy: "weighted_sample",
+    });
+  });
+
+  it("favors album depth at the high end", () => {
+    expect(tasteSettingsForArchive(1)).toEqual({
+      tasteExponent: 3,
+      selectionStrategy: "stratified",
+    });
   });
 });
 
 describe("buildPlaylistExportPayload", () => {
-  it("includes profile and archive settings for entdecken", () => {
+  it("includes archive pool and depth settings for entdecken", () => {
     const payload = buildPlaylistExportPayload({
       source: "entdecken",
       profile: createTemporaryTasteProfile(["C001"]),
       name: "Meine Liste",
       targetCount: 25,
-      focus: "balanced",
-      variation: 0.35,
+      newestTasteFocus: 0,
+      archiveDepth: 0.2,
+      archiveAlbumLimit: 120,
       updateRounds: "4",
-      format: "txt",
+      format: "csv",
     });
 
     expect(payload.source).toBe("archive");
     expect(payload.target_count).toBe(25);
     expect(payload.selection_strategy).toBe("weighted_sample");
-    expect(payload.archive_limit).toBe(200);
+    expect(payload.archive_limit).toBe(120);
+    expect(payload.taste_exponent).toBe(1.4);
+    expect(payload.format).toBe("csv");
   });
 
-  it("uses update rounds for newest playlist exports", () => {
+  it("clamps archive_limit to the API maximum", () => {
+    const payload = buildPlaylistExportPayload({
+      source: "entdecken",
+      profile: createTemporaryTasteProfile(["C001"]),
+      name: "Großes Archiv",
+      targetCount: 30,
+      newestTasteFocus: 0,
+      archiveDepth: 0.5,
+      archiveAlbumLimit: 6236,
+      updateRounds: "1",
+      format: "csv",
+    });
+
+    expect(payload.archive_limit).toBe(1000);
+  });
+
+  it("uses update rounds and newest taste settings for aktuell", () => {
     const payload = buildPlaylistExportPayload({
       source: "aktuell",
       profile: createTemporaryTasteProfile(["C001"]),
       name: "Neu",
       targetCount: 10,
-      focus: "top",
-      variation: 0,
+      newestTasteFocus: 1,
+      archiveDepth: 0,
+      archiveAlbumLimit: 200,
       updateRounds: "4",
-      format: "txt",
+      format: "csv",
     });
 
     expect(payload.source).toBe("new_reviews");
     expect(payload.update_rounds).toBe(4);
     expect(payload.taste_exponent).toBe(3);
+    expect(payload.selection_strategy).toBe("weighted_sample");
+  });
+
+  it("falls back to a mode-specific default playlist name", () => {
+    const payload = buildPlaylistExportPayload({
+      source: "entdecken",
+      profile: createTemporaryTasteProfile(["C001"]),
+      name: "   ",
+      targetCount: 10,
+      newestTasteFocus: 0,
+      archiveDepth: 0,
+      archiveAlbumLimit: 50,
+      updateRounds: "1",
+      format: "csv",
+    });
+
+    expect(payload.playlist_name).toMatch(/^Platten-Archiv \d{4}-\d{2}-\d{2}$/);
   });
 });
 
 describe("playlistItemsToCsv", () => {
-  it("escapes commas in csv fields", () => {
-    const csv = playlistItemsToCsv([
+  it("includes the playlist name in each row", () => {
+    const csv = playlistItemsToCsv(
+      [
+        {
+          review_id: 1,
+          artist: "Alpha",
+          album: "Album",
+          track_title: "Song",
+          source_kind: "archive",
+          score_weight: 1,
+          raw_score: 0.8,
+        },
+      ],
+      "Platten-Archiv 2026-07-02",
+    );
+
+    expect(csv).toBe(
+      "Track name,Artist name,Playlist name\nSong,Alpha,Platten-Archiv 2026-07-02",
+    );
+  });
+});
+
+describe("suggestedPlaylistExportFilename", () => {
+  it("builds a safe filename from the playlist name", () => {
+    expect(suggestedPlaylistExportFilename("Platten-Archiv 2026-07-02", ".csv")).toBe(
+      "Platten-Archiv-2026-07-02.csv",
+    );
+  });
+});
+
+describe("playlistItemsToTxt", () => {
+  it("formats artist-title lines for TuneMyMusic", () => {
+    const txt = playlistItemsToTxt([
       {
         review_id: 1,
-        artist: "A, B",
+        artist: "Alpha",
         album: "Album",
         track_title: "Song",
         source_kind: "archive",
@@ -78,13 +239,37 @@ describe("playlistItemsToCsv", () => {
       },
     ]);
 
-    expect(csv).toContain('"A, B"');
+    expect(txt).toBe("Alpha - Song");
+  });
+
+  it("deduplicates repeated artist-title pairs", () => {
+    const txt = playlistItemsToTxt([
+      {
+        review_id: 1,
+        artist: "Alpha",
+        album: "Album A",
+        track_title: "Song",
+        source_kind: "archive",
+        score_weight: 1,
+        raw_score: 0.8,
+      },
+      {
+        review_id: 2,
+        artist: "Alpha",
+        album: "Album B",
+        track_title: "Song",
+        source_kind: "archive",
+        score_weight: 1,
+        raw_score: 0.7,
+      },
+    ]);
+
+    expect(txt).toBe("Alpha - Song");
   });
 });
 
-describe("playlistTasteExponent", () => {
-  it("increases with variation for balanced playlists", () => {
-    expect(playlistTasteExponent("balanced", 0)).toBe(1);
-    expect(playlistTasteExponent("balanced", 0.5)).toBe(2);
+describe("playlistTxtFilename", () => {
+  it("replaces a csv extension with txt", () => {
+    expect(playlistTxtFilename("Meine-Playlist.csv")).toBe("Meine-Playlist.txt");
   });
 });
