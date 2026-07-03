@@ -6,6 +6,7 @@ from collections import Counter
 import pytest
 
 from music_review.dashboard.playlist_builder import (
+    album_spread_limits,
     allocate_stratified_slot_counts,
     amplify_preference_weights,
     build_album_weights,
@@ -15,6 +16,7 @@ from music_review.dashboard.playlist_builder import (
     catalog_lookup_key,
     next_album_index_with_unused_tracks_cyclic,
     pick_track_title_for_iteration,
+    primary_review_label,
     review_has_unused_track_candidate,
     weighted_sample_album_indices_without_replacement,
 )
@@ -28,6 +30,8 @@ def _review(
     album: str = "Album",
     tracks: list[Track] | None = None,
     highlights: list[str] | None = None,
+    labels: list[str] | None = None,
+    release_year: int | None = 2024,
 ) -> Review:
     return Review(
         id=review_id,
@@ -37,6 +41,8 @@ def _review(
         text="text",
         tracklist=tracks or [],
         highlights=highlights or [],
+        labels=labels or [],
+        release_year=release_year,
     )
 
 
@@ -464,3 +470,81 @@ def test_pick_track_title_prefers_highlight_then_fallback() -> None:
 
     assert first_pick == ("Hit", "highlight")
     assert second_pick == ("Other", "fallback")
+
+
+def test_album_spread_limits_match_product_presets() -> None:
+    assert album_spread_limits("variety").max_tracks_per_album == 1
+    assert album_spread_limits("balanced").max_tracks_per_album == 3
+    deep = album_spread_limits("deep")
+    assert deep.max_tracks_per_album == 4
+    assert deep.max_distinct_albums == 3
+
+
+def test_primary_review_label_returns_first_non_empty_label() -> None:
+    review = _review(1, labels=["", "Domino"])
+    assert primary_review_label(review) == "Domino"
+
+
+def test_build_playlist_suggestions_variety_caps_tracks_per_album() -> None:
+    reviews = [
+        _review(
+            review_id,
+            tracks=[Track(1, f"T{index}", is_highlight=True) for index in range(5)],
+        )
+        for review_id in range(1, 5)
+    ]
+    items = build_playlist_suggestions(
+        reviews=reviews,
+        weights=[0.25, 0.25, 0.25, 0.25],
+        raw_scores=[1.0, 1.0, 1.0, 1.0],
+        target_count=8,
+        rng=random.Random(7),
+        selection_strategy="stratified",
+        album_spread_mode="variety",
+    )
+    counts = Counter(item.review_id for item in items)
+    assert all(count <= 1 for count in counts.values())
+
+
+def test_build_playlist_suggestions_deep_limits_album_breadth_and_depth() -> None:
+    reviews = [
+        _review(
+            review_id,
+            tracks=[Track(1, f"T{index}", is_highlight=True) for index in range(6)],
+        )
+        for review_id in range(1, 6)
+    ]
+    items = build_playlist_suggestions(
+        reviews=reviews,
+        weights=[0.2, 0.2, 0.2, 0.2, 0.2],
+        raw_scores=[1.0, 1.0, 1.0, 1.0, 1.0],
+        target_count=12,
+        rng=random.Random(11),
+        selection_strategy="stratified",
+        album_spread_mode="deep",
+    )
+    counts = Counter(item.review_id for item in items)
+    assert len(counts) <= 3
+    assert all(count <= 4 for count in counts.values())
+
+
+def test_build_playlist_suggestions_includes_review_metadata() -> None:
+    review = _review(
+        1,
+        tracks=[
+            Track(1, "One", is_highlight=True),
+            Track(2, "Two", is_highlight=True),
+        ],
+        labels=["4AD"],
+        release_year=2018,
+    )
+    items = build_playlist_suggestions(
+        reviews=[review],
+        weights=[1.0],
+        raw_scores=[1.0],
+        target_count=1,
+        rng=random.Random(3),
+    )
+    assert len(items) == 1
+    assert items[0].release_year == 2018
+    assert items[0].label == "4AD"

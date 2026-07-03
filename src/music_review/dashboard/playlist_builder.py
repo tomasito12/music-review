@@ -17,6 +17,7 @@ from typing import Any, Literal
 from music_review.domain.models import Review, Track
 
 SelectionStrategy = Literal["stratified", "weighted_sample"]
+AlbumSpreadMode = Literal["variety", "balanced", "deep"]
 
 LOGGER = logging.getLogger(__name__)
 
@@ -49,6 +50,16 @@ class PlaylistSuggestion:
     strat_ideal_slots: float
     strat_floor_slots: int
     strat_remainder_extra_slots: int
+    release_year: int | None = None
+    label: str | None = None
+
+
+@dataclass(frozen=True, slots=True)
+class AlbumSpreadLimits:
+    """Hard per-album caps enforced while filling playlist slots."""
+
+    max_tracks_per_album: int
+    max_distinct_albums: int | None = None
 
 
 @dataclass(slots=True)
@@ -256,6 +267,64 @@ def review_has_unused_track_candidate(
     return False
 
 
+def primary_review_label(review: Review) -> str | None:
+    """Return the first non-empty Plattenlabel on a review."""
+    for label in review.labels:
+        if isinstance(label, str) and label.strip():
+            return label.strip()
+    return None
+
+
+def album_spread_limits(mode: AlbumSpreadMode) -> AlbumSpreadLimits:
+    """Map UI archive spread presets to builder enforcement rules."""
+    if mode == "variety":
+        return AlbumSpreadLimits(max_tracks_per_album=1)
+    if mode == "balanced":
+        return AlbumSpreadLimits(max_tracks_per_album=3)
+    return AlbumSpreadLimits(max_tracks_per_album=4, max_distinct_albums=3)
+
+
+def _album_can_accept_more(
+    review: Review,
+    *,
+    tracks_per_review_id: dict[int, int],
+    albums_used: set[int],
+    spread_limits: AlbumSpreadLimits | None,
+) -> bool:
+    """True when spread rules still allow another track from this review."""
+    if spread_limits is None:
+        return True
+    review_id = int(review.id)
+    if tracks_per_review_id.get(review_id, 0) >= spread_limits.max_tracks_per_album:
+        return False
+    return not (
+        spread_limits.max_distinct_albums is not None
+        and review_id not in albums_used
+        and len(albums_used) >= spread_limits.max_distinct_albums
+    )
+
+
+def _cap_stratified_slot_plans(
+    plans: list[StratifiedSlotPlan],
+    max_tracks_per_album: int,
+) -> list[StratifiedSlotPlan]:
+    """Limit per-album slot quotas before track picking starts."""
+    capped: list[StratifiedSlotPlan] = []
+    for plan in plans:
+        quota = min(plan.quota, max_tracks_per_album)
+        floor_slots = min(plan.floor_slots, quota)
+        remainder_extra_slots = max(0, quota - floor_slots)
+        capped.append(
+            StratifiedSlotPlan(
+                ideal_slots=plan.ideal_slots,
+                floor_slots=floor_slots,
+                remainder_extra_slots=remainder_extra_slots,
+                quota=quota,
+            ),
+        )
+    return capped
+
+
 def next_album_index_with_unused_tracks_cyclic(
     reviews: list[Review],
     *,
@@ -272,6 +341,37 @@ def next_album_index_with_unused_tracks_cyclic(
         if idx in skip_indices:
             continue
         if review_has_unused_track_candidate(reviews[idx], picked_song_keys):
+            return idx
+    return None
+
+
+def next_album_index_with_capacity_cyclic(
+    reviews: list[Review],
+    *,
+    after_index: int,
+    skip_indices: set[int],
+    picked_song_keys: set[str],
+    tracks_per_review_id: dict[int, int],
+    albums_used: set[int],
+    spread_limits: AlbumSpreadLimits | None,
+) -> int | None:
+    """Next cyclic pool index that still has spread capacity and an unused track."""
+    n = len(reviews)
+    if n <= 1:
+        return None
+    for step in range(1, n):
+        idx = (after_index + step) % n
+        if idx in skip_indices:
+            continue
+        review = reviews[idx]
+        if not _album_can_accept_more(
+            review,
+            tracks_per_review_id=tracks_per_review_id,
+            albums_used=albums_used,
+            spread_limits=spread_limits,
+        ):
+            continue
+        if review_has_unused_track_candidate(review, picked_song_keys):
             return idx
     return None
 
@@ -367,6 +467,7 @@ def build_playlist_suggestions(
     rng: random.Random,
     max_attempt_factor: int = 20,
     selection_strategy: SelectionStrategy = "stratified",
+    album_spread_mode: AlbumSpreadMode | None = None,
 ) -> list[PlaylistSuggestion]:
     """Generate playlist suggestions with the requested album-selection strategy."""
     if not reviews or not weights or not raw_scores or target_count <= 0:
@@ -392,12 +493,18 @@ def build_playlist_suggestions(
 
     results: list[PlaylistSuggestion] = []
     picked_song_keys: set[str] = set()
+    tracks_per_review_id: dict[int, int] = {}
+    albums_used: set[int] = set()
+    spread_limits = None
+    if album_spread_mode is not None:
+        spread_limits = album_spread_limits(album_spread_mode)
     score_weight_by_id = {
         int(r.id): float(w) for r, w in zip(reviews, weights, strict=True)
     }
 
     skip_no_track = 0
     skip_abandoned_slots = 0
+    skip_spread_limit = 0
     slot_album_fallbacks = 0
 
     slot_album_indices, strat_plans = _build_slot_album_indices_and_plans(
@@ -406,6 +513,15 @@ def build_playlist_suggestions(
         rng=rng,
         selection_strategy=selection_strategy,
     )
+    if spread_limits is not None:
+        strat_plans = _cap_stratified_slot_plans(
+            strat_plans,
+            spread_limits.max_tracks_per_album,
+        )
+        slot_album_indices = []
+        for album_idx, plan in enumerate(strat_plans):
+            slot_album_indices.extend([album_idx] * plan.quota)
+        rng.shuffle(slot_album_indices)
 
     pending_slots: deque[int] = deque(slot_album_indices)
     dead_albums_for_slot: set[int] = set()
@@ -414,12 +530,13 @@ def build_playlist_suggestions(
     attempts = 0
     LOGGER.info(
         "Playlist suggestion build start strategy=%s target_count=%s pool_albums=%s "
-        "n_slots=%s max_attempts=%s",
+        "n_slots=%s max_attempts=%s spread_mode=%s",
         selection_strategy,
         target_count,
         len(reviews),
         len(slot_album_indices),
         max_attempts,
+        album_spread_mode,
     )
 
     def _abandon_current_slot(*, reason: str, **details: object) -> None:
@@ -442,11 +559,14 @@ def build_playlist_suggestions(
     def _try_assign_next_album_for_slot() -> bool:
         nonlocal slot_album_fallbacks
         dead_albums_for_slot.add(album_idx)
-        nxt = next_album_index_with_unused_tracks_cyclic(
+        nxt = next_album_index_with_capacity_cyclic(
             reviews,
             after_index=album_idx,
             skip_indices=dead_albums_for_slot,
             picked_song_keys=picked_song_keys,
+            tracks_per_review_id=tracks_per_review_id,
+            albums_used=albums_used,
+            spread_limits=spread_limits,
         )
         if nxt is None:
             return False
@@ -465,6 +585,20 @@ def build_playlist_suggestions(
         attempts += 1
         album_idx = pending_slots[0]
         review = reviews[album_idx]
+        if not _album_can_accept_more(
+            review,
+            tracks_per_review_id=tracks_per_review_id,
+            albums_used=albums_used,
+            spread_limits=spread_limits,
+        ):
+            skip_spread_limit += 1
+            if _try_assign_next_album_for_slot():
+                continue
+            _abandon_current_slot(
+                reason="album_spread_limit_reached",
+                review_id=int(review.id),
+            )
+            continue
         picked = pick_track_title_for_iteration(
             review,
             already_picked_keys=picked_song_keys,
@@ -487,20 +621,25 @@ def build_playlist_suggestions(
         picked_song_keys.add(key)
         pending_slots.popleft()
         dead_albums_for_slot.clear()
+        review_id = int(review.id)
+        tracks_per_review_id[review_id] = tracks_per_review_id.get(review_id, 0) + 1
+        albums_used.add(review_id)
         plan = strat_plans[album_idx]
         results.append(
             PlaylistSuggestion(
-                review_id=int(review.id),
+                review_id=review_id,
                 artist=review.artist,
                 album=review.album,
                 track_title=track_title,
                 source_kind=source_kind,
-                score_weight=score_weight_by_id.get(int(review.id), 0.0),
+                score_weight=score_weight_by_id.get(review_id, 0.0),
                 raw_score=float(raw_scores[album_idx]),
                 playlist_slot_quota=int(plan.quota),
                 strat_ideal_slots=float(plan.ideal_slots),
                 strat_floor_slots=int(plan.floor_slots),
                 strat_remainder_extra_slots=int(plan.remainder_extra_slots),
+                release_year=review.release_year,
+                label=primary_review_label(review),
             ),
         )
 
@@ -508,7 +647,8 @@ def build_playlist_suggestions(
         LOGGER.warning(
             "Playlist suggestion build hit global attempt limit: "
             "unfilled_slots=%s filled=%s target=%s attempts_used=%s "
-            "album_fallbacks=%s abandoned_slots=%s skip_no_track=%s",
+            "album_fallbacks=%s abandoned_slots=%s skip_no_track=%s "
+            "skip_spread_limit=%s",
             len(pending_slots),
             len(results),
             target_count,
@@ -516,26 +656,31 @@ def build_playlist_suggestions(
             slot_album_fallbacks,
             skip_abandoned_slots,
             skip_no_track,
+            skip_spread_limit,
         )
     elif len(results) < target_count:
         LOGGER.warning(
             "Playlist suggestion build stopped early: filled=%s target=%s "
-            "attempts_used=%s album_fallbacks=%s abandoned_slots=%s skip_no_track=%s",
+            "attempts_used=%s album_fallbacks=%s abandoned_slots=%s "
+            "skip_no_track=%s skip_spread_limit=%s",
             len(results),
             target_count,
             attempts,
             slot_album_fallbacks,
             skip_abandoned_slots,
             skip_no_track,
+            skip_spread_limit,
         )
     else:
         LOGGER.info(
             "Playlist suggestion build complete: filled=%s attempts_used=%s "
-            "album_fallbacks=%s abandoned_slots=%s skip_no_track=%s",
+            "album_fallbacks=%s abandoned_slots=%s skip_no_track=%s "
+            "skip_spread_limit=%s",
             len(results),
             attempts,
             slot_album_fallbacks,
             skip_abandoned_slots,
             skip_no_track,
+            skip_spread_limit,
         )
     return results

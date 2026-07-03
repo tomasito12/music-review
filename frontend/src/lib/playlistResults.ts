@@ -34,6 +34,16 @@ export function uniquePlaylistArtistLookups(
   return lookups;
 }
 
+/** Optional year and label strings for one playlist result row. */
+export function playlistTrackAsideParts(item: PlaylistExportItem): {
+  label: string | null;
+  year: string | null;
+} {
+  const year = item.release_year != null ? String(item.release_year) : null;
+  const label = item.label?.trim() ? item.label.trim() : null;
+  return { year, label };
+}
+
 /** Pick artist image lookups for the optional playlist mosaic header. */
 export function selectPlaylistMosaicLookups(
   items: PlaylistExportItem[],

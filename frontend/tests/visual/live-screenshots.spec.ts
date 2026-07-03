@@ -118,7 +118,7 @@ test.describe("live API reference screenshots", () => {
     await page.locator('[data-visual-playlist-ready="form"]').waitFor({
       timeout: 30_000,
     });
-    await page.getByText(/Alben passen zu deinem Profil/).waitFor({
+    await page.locator(".playlist-pool-summary").waitFor({
       timeout: 30_000,
     });
     await waitForPlaylistForm(page);

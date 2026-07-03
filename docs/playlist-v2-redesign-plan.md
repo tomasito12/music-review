@@ -99,7 +99,7 @@ Expand options (1 / 2 / 4 / 8 / 12 / 20), show estimated pool size, explain fall
 
 ## Phased Delivery
 
-### Phase 1 — Quick wins (frontend-only) ✅ in progress
+### Phase 1 — Quick wins (frontend-only) ✅ done
 
 1. Remove context line layout jump (A1)
 2. Export button grouping + mobile layout (E)
@@ -111,15 +111,15 @@ Expand options (1 / 2 / 4 / 8 / 12 / 20), show estimated pool size, explain fall
 
 **Exit criteria:** PO re-test mobile + desktop; Playwright screenshots updated.
 
-### Phase 2 — Control redesign
+### Phase 2 — Control redesign ✅ done
 
-1. Neuheiten mood presets (B)
-2. Zeitraum expansion + fallback copy (D)
-3. Archiv pool control simplification (A5)
+1. Neuheiten mood presets (B) — Vielfalt / Ausgewogen / Stark fokussiert
+2. Zeitraum expansion + fallback copy (D) — chips 1/2/4/8/12/20
+3. Archiv pool control simplification (A5) — chips only, slider removed
 4. Remove mosaic, compact success header (F1)
 5. Thumbnail size + initials fallback (F3)
 
-### Phase 3 — Backend album-spread logic
+### Phase 3 — Backend album-spread logic ✅ done
 
 1. Per-album track caps in `playlist_builder.py` (C)
 2. API schema + service wiring
@@ -127,12 +127,14 @@ Expand options (1 / 2 / 4 / 8 / 12 / 20), show estimated pool size, explain fall
 4. Year + label in export items (F2)
 5. Builder regression tests
 
-### Phase 4 — Polish & parity
+### Phase 4 — Polish & parity ✅
 
-1. Zeitraum segment chips (A3)
-2. Optional „Erweitert“ accordion
+1. Zeitraum segment chips (A3) — done in Phase 2
+2. Optional „Erweitert“ accordion — playlist name + fine sliders
 3. Playwright references (form + result, both modes, mobile)
 4. Update feedback doc with v2 review section
+
+**Exit criteria:** CI visual regression green; PO re-test optional.
 
 ---
 
@@ -180,3 +182,8 @@ After v2, a tester should answer **yes** to:
 |-------|-------|----------|
 | 2026-07-03 | Plan | Initial v2 redesign plan from PR feedback doc |
 | 2026-07-03 | Phase 1 | Quick wins: export flow, form collapse, copy fixes |
+| 2026-07-03 | Phase 2 | Control presets, mosaic removal, initials fallback |
+| 2026-07-03 | Phase 3 | Album-spread backend rules, year/label in rows |
+| 2026-07-03 | Phase 4 | Erweitert accordion, Playwright refs, feedback doc v2 |
+| 2026-07-03 | Phase 2 | Mood presets, update-round chips, pool chips only, mosaic removed, initials |
+| 2026-07-03 | Phase 3 | Album-spread backend rules, API field, year/label in export rows |

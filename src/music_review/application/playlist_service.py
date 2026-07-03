@@ -14,6 +14,7 @@ from music_review.application.models import (
     RecommendationSource,
 )
 from music_review.dashboard.playlist_builder import (
+    AlbumSpreadMode,
     PlaylistSuggestion,
     SelectionStrategy,
     amplify_preference_weights,
@@ -40,6 +41,7 @@ class PlaylistRequest:
     target_count: int
     taste_exponent: float
     selection_strategy: SelectionStrategy
+    album_spread_mode: AlbumSpreadMode | None = None
 
 
 @dataclass(frozen=True, slots=True)
@@ -124,6 +126,7 @@ class PlaylistService:
             target_count=request.target_count,
             rng=rng,
             selection_strategy=request.selection_strategy,
+            album_spread_mode=request.album_spread_mode,
         )
 
     def build_export(
@@ -180,4 +183,6 @@ def _export_item(
         score_weight=suggestion.score_weight,
         raw_score=suggestion.raw_score,
         artist_mbid=artist_mbid,
+        release_year=suggestion.release_year,
+        label=suggestion.label,
     )

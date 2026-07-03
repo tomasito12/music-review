@@ -455,6 +455,9 @@ def create_app() -> FastAPI:
                 target_count=request.target_count,
                 taste_exponent=request.taste_exponent,
                 selection_strategy=request.selection_strategy,
+                album_spread_mode=(
+                    request.album_spread_mode if request.source == "archive" else None
+                ),
             ),
             rng=random.Random(),
             artist_mbid_for_review=provider.artist_mbid_for_review,

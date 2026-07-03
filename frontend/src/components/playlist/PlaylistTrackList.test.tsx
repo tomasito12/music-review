@@ -47,7 +47,7 @@ const items: PlaylistExportItem[] = [
 ];
 
 describe("PlaylistTrackList", () => {
-  it("renders hybrid track rows with review links and artist mosaic", () => {
+  it("renders hybrid track rows with review links and initials fallback", () => {
     render(<PlaylistTrackList items={items} />);
 
     expect(screen.getByRole("link", { name: "Opening Track" })).toHaveAttribute(
@@ -56,6 +56,7 @@ describe("PlaylistTrackList", () => {
     );
     expect(screen.getByText("Known Artist · Recent Album")).toBeInTheDocument();
     expect(screen.getByAltText("Known Artist")).toBeInTheDocument();
+    expect(screen.getByText("NP")).toBeInTheDocument();
     expect(screen.getByRole("link", { name: "Hidden Gem" })).toHaveAttribute(
       "href",
       "https://www.plattentests.de/rezi.php?show=43",
