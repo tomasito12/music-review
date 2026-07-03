@@ -415,6 +415,9 @@ def test_playlist_export_endpoint_returns_tunemymusic_text() -> None:
     assert payload["content_type"] == "text/plain"
     assert " - " in payload["content"]
     assert payload["items"]
+    mbid_by_artist = {item["artist"]: item["artist_mbid"] for item in payload["items"]}
+    assert mbid_by_artist["Alpha"] == "mbid-alpha"
+    assert mbid_by_artist["Beta"] == "mbid-beta"
 
 
 def test_playlist_export_accepts_large_update_round_selection() -> None:

@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import logging
 import random
-from collections.abc import Sequence
+from collections.abc import Callable, Sequence
 from dataclasses import dataclass, field
 
 from music_review.application.models import (
@@ -64,6 +64,7 @@ class PlaylistService:
         ranked_rows: list[dict[str, object]] | None,
         request: PlaylistRequest,
         rng: random.Random,
+        artist_mbid_for_review: Callable[[int], str | None] | None = None,
     ) -> PlaylistResult:
         """Generate suggestions and matching TXT/CSV export payloads."""
         suggestions = self.generate_suggestions(
@@ -80,12 +81,14 @@ class PlaylistService:
                 source=request.source,
                 playlist_name=playlist_name,
                 export_format="txt",
+                artist_mbid_for_review=artist_mbid_for_review,
             ),
             csv_export=self.build_export(
                 suggestions=suggestions,
                 source=request.source,
                 playlist_name=playlist_name,
                 export_format="csv",
+                artist_mbid_for_review=artist_mbid_for_review,
             ),
         )
 
@@ -130,6 +133,7 @@ class PlaylistService:
         source: RecommendationSource,
         playlist_name: str,
         export_format: PlaylistExportFormat,
+        artist_mbid_for_review: Callable[[int], str | None] | None = None,
     ) -> PlaylistExport:
         """Create one text or CSV export payload for generated suggestions."""
         suggestion_list = list(suggestions)
@@ -148,12 +152,25 @@ class PlaylistService:
             filename=suggested_export_filename(playlist_name, extension=extension),
             content_type=content_type,
             content=content,
-            items=tuple(_export_item(item) for item in suggestion_list),
+            items=tuple(
+                _export_item(
+                    item,
+                    artist_mbid_for_review=artist_mbid_for_review,
+                )
+                for item in suggestion_list
+            ),
         )
 
 
-def _export_item(suggestion: PlaylistSuggestion) -> PlaylistExportItem:
+def _export_item(
+    suggestion: PlaylistSuggestion,
+    *,
+    artist_mbid_for_review: Callable[[int], str | None] | None = None,
+) -> PlaylistExportItem:
     """Map one dashboard suggestion to an API-facing export item."""
+    artist_mbid: str | None = None
+    if artist_mbid_for_review is not None:
+        artist_mbid = artist_mbid_for_review(suggestion.review_id)
     return PlaylistExportItem(
         review_id=suggestion.review_id,
         artist=suggestion.artist,
@@ -162,4 +179,5 @@ def _export_item(suggestion: PlaylistSuggestion) -> PlaylistExportItem:
         source_kind=suggestion.source_kind,
         score_weight=suggestion.score_weight,
         raw_score=suggestion.raw_score,
+        artist_mbid=artist_mbid,
     )

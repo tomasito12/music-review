@@ -165,3 +165,22 @@ def test_playlist_export_to_dict_is_transient_response() -> None:
     assert payload["filename"] == "plattenradar.txt"
     assert payload["content"] == "Artist - Track"
     assert payload["items"][0]["track_title"] == "Track"
+    assert payload["items"][0]["artist_mbid"] is None
+
+
+def test_playlist_export_item_includes_artist_mbid_when_set() -> None:
+    """Playlist export items can carry MusicBrainz artist ids for image lookup."""
+    item = PlaylistExportItem(
+        review_id=1,
+        artist="Artist",
+        album="Album",
+        track_title="Track",
+        source_kind="highlight",
+        score_weight=1.0,
+        raw_score=0.8,
+        artist_mbid="mbid-artist",
+    )
+
+    payload = item.to_dict()
+
+    assert payload["artist_mbid"] == "mbid-artist"

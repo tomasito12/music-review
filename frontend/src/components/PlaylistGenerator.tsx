@@ -24,11 +24,12 @@ import {
 import { exportPlaylist, loadArchiveRecommendations } from "../lib/plattenradarApi";
 import type { TemporaryTasteProfile } from "../lib/plattenradarApi";
 import {
-  bumpPlaylistNameSuffix,
   defaultPlaylistNameForSource,
   downloadPlaylistContent,
+  playlistItemsToCsv,
   playlistItemsToTxt,
-  playlistTxtFilename,
+  playlistNameForExportDownload,
+  suggestedPlaylistExportFilename,
 } from "../lib/playlistExport";
 import type { PlaylistExportResult } from "../lib/playlistExport";
 import type { RecommendationSource } from "../types";
@@ -59,7 +60,8 @@ export function PlaylistGenerator({
   const [archiveAlbumLimit, setArchiveAlbumLimit] = useState(200);
   const [archivePoolLoading, setArchivePoolLoading] = useState(false);
   const [name, setName] = useState(() => defaultPlaylistNameForSource(initialSource));
-  const [nameTouched, setNameTouched] = useState(false);
+  const [nameCustomized, setNameCustomized] = useState(false);
+  const [exportDownloadCount, setExportDownloadCount] = useState(0);
   const [isGenerating, setIsGenerating] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [exportResult, setExportResult] = useState<PlaylistExportResult | null>(null);
@@ -74,10 +76,11 @@ export function PlaylistGenerator({
   }, [initialUpdateRounds]);
 
   useEffect(() => {
-    if (!nameTouched) {
+    if (!nameCustomized) {
       setName(defaultPlaylistNameForSource(source));
+      setExportDownloadCount(0);
     }
-  }, [nameTouched, source]);
+  }, [nameCustomized, source]);
 
   useEffect(() => {
     if (profile === null || source !== "entdecken") {
@@ -138,6 +141,7 @@ export function PlaylistGenerator({
           format: "csv",
         });
         setExportResult(result);
+        setExportDownloadCount(0);
       } catch (generateError) {
         const message =
           generateError instanceof Error
@@ -163,11 +167,36 @@ export function PlaylistGenerator({
   );
 
   const remixPlaylist = useCallback(() => {
-    const nextName = bumpPlaylistNameSuffix(name);
-    setName(nextName);
-    setNameTouched(true);
-    void generatePlaylist(nextName);
-  }, [generatePlaylist, name]);
+    void generatePlaylist();
+  }, [generatePlaylist]);
+
+  const downloadCsvExport = useCallback(() => {
+    if (exportResult === null) {
+      return;
+    }
+
+    const exportName = playlistNameForExportDownload(name, exportDownloadCount + 1);
+    downloadPlaylistContent(
+      suggestedPlaylistExportFilename(exportName, ".csv"),
+      playlistItemsToCsv(exportResult.items, exportName),
+      exportResult.content_type,
+    );
+    setExportDownloadCount((current) => current + 1);
+  }, [exportDownloadCount, exportResult, name]);
+
+  const downloadTxtExport = useCallback(() => {
+    if (exportResult === null) {
+      return;
+    }
+
+    const exportName = playlistNameForExportDownload(name, exportDownloadCount + 1);
+    downloadPlaylistContent(
+      suggestedPlaylistExportFilename(exportName, ".txt"),
+      playlistItemsToTxt(exportResult.items),
+      "text/plain;charset=utf-8",
+    );
+    setExportDownloadCount((current) => current + 1);
+  }, [exportDownloadCount, exportResult, name]);
 
   const showEntryContext = source === entrySource;
   const archivePoolReady = archivePoolSize !== null && archivePoolSize > 0;
@@ -402,7 +431,7 @@ export function PlaylistGenerator({
           Playlist-Name
           <input
             onChange={(event) => {
-              setNameTouched(true);
+              setNameCustomized(true);
               setName(event.target.value);
             }}
             type="text"
@@ -442,7 +471,7 @@ export function PlaylistGenerator({
         <div className="playlist-results">
           <div className="playlist-results-head">
             <div className="playlist-results-title">
-              <h2>{exportResult.name}</h2>
+              <h2>{name}</h2>
               {exportResult.items.length < trackCount && (
                 <p className="playlist-warning">
                   Es wurden {exportResult.items.length} von {trackCount} gewünschten Titeln
@@ -454,13 +483,7 @@ export function PlaylistGenerator({
               <div className="playlist-export-bar playlist-actions">
                 <button
                   className="primary-button"
-                  onClick={() =>
-                    downloadPlaylistContent(
-                      exportResult.filename,
-                      exportResult.content,
-                      exportResult.content_type,
-                    )
-                  }
+                  onClick={downloadCsvExport}
                   type="button"
                 >
                   Als CSV herunterladen
@@ -486,13 +509,7 @@ export function PlaylistGenerator({
                 </button>
                 <button
                   className="secondary-button"
-                  onClick={() =>
-                    downloadPlaylistContent(
-                      playlistTxtFilename(exportResult.filename),
-                      txtContent,
-                      "text/plain;charset=utf-8",
-                    )
-                  }
+                  onClick={downloadTxtExport}
                   type="button"
                 >
                   Als TXT herunterladen

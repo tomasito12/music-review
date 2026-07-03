@@ -21,6 +21,7 @@ export interface PlaylistExportRequestOptions {
 export interface PlaylistExportItem {
   album: string;
   artist: string;
+  artist_mbid?: string | null;
   raw_score: number;
   review_id: number;
   score_weight: number;
@@ -106,9 +107,9 @@ export function defaultPlaylistNameForSource(
 ): string {
   const datePart = date.toISOString().slice(0, 10);
   if (source === "entdecken") {
-    return `Plattenradar Archiv ${datePart}`;
+    return `Platten-Archiv ${datePart}`;
   }
-  return `Plattenradar Neuheiten ${datePart}`;
+  return `Plattenradar ${datePart}`;
 }
 
 /** Returns a default playlist name with the current date. */
@@ -133,10 +134,57 @@ export function bumpPlaylistNameSuffix(name: string): string {
   return `${trimmed} (2)`;
 }
 
-/** Builds TuneMyMusic free-text lines from playlist items. */
-export function playlistItemsToTxt(items: PlaylistExportItem[]): string {
+/** Remove a trailing numeric export suffix such as ``(2)``. */
+export function stripPlaylistNameSuffix(name: string): string {
+  const trimmed = name.trim();
+  const match = PLAYLIST_NAME_SUFFIX_RE.exec(trimmed);
+  if (match !== null) {
+    return (match[1] ?? trimmed).trim();
+  }
+  return trimmed;
+}
+
+/** Build the playlist name for one export download (1 = base name, 2+ adds suffix). */
+export function playlistNameForExportDownload(
+  baseName: string,
+  downloadNumber: number,
+): string {
+  const base = stripPlaylistNameSuffix(baseName) || defaultPlaylistName();
+  let result = base;
+  for (let index = 1; index < downloadNumber; index += 1) {
+    result = bumpPlaylistNameSuffix(result);
+  }
+  return result;
+}
+
+function csvCell(value: string): string {
+  if (/[",\n\r]/.test(value)) {
+    return `"${value.replace(/"/g, '""')}"`;
+  }
+  return value;
+}
+
+/** Builds TuneMyMusic CSV from playlist items and a playlist title. */
+export function playlistItemsToCsv(
+  items: PlaylistExportItem[],
+  playlistName: string,
+): string {
+  const name = playlistName.trim() || defaultPlaylistName();
+  const rows = [
+    "Track name,Artist name,Playlist name",
+    ...playlistItemsToTxtRows(items).map(
+      ([artist, title]) =>
+        `${csvCell(title)},${csvCell(artist)},${csvCell(name)}`,
+    ),
+  ];
+  return rows.join("\n");
+}
+
+function playlistItemsToTxtRows(
+  items: PlaylistExportItem[],
+): Array<[string, string]> {
   const seen = new Set<string>();
-  const lines: string[] = [];
+  const rows: Array<[string, string]> = [];
 
   for (const item of items) {
     const artist = item.artist.trim();
@@ -150,10 +198,31 @@ export function playlistItemsToTxt(items: PlaylistExportItem[]): string {
       continue;
     }
     seen.add(key);
-    lines.push(`${artist} - ${title}`);
+    rows.push([artist, title]);
   }
 
-  return lines.join("\n");
+  return rows;
+}
+
+/** Build a safe local filename for one playlist export download. */
+export function suggestedPlaylistExportFilename(
+  playlistName: string,
+  extension: ".csv" | ".txt" = ".csv",
+): string {
+  let base = playlistName.trim() || "plattenradar";
+  base = base.replace(/[<>:"/\\|?*\u0000-\u001f]/g, "");
+  base = base.replace(/\s+/g, "-").replace(/^[-._]+|[-._]+$/g, "");
+  if (!base) {
+    base = "plattenradar";
+  }
+  return `${base}${extension}`;
+}
+
+/** Builds TuneMyMusic free-text lines from playlist items. */
+export function playlistItemsToTxt(items: PlaylistExportItem[]): string {
+  return playlistItemsToTxtRows(items)
+    .map(([artist, title]) => `${artist} - ${title}`)
+    .join("\n");
 }
 
 /** Derives a TXT filename from a CSV export filename. */

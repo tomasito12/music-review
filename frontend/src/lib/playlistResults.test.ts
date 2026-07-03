@@ -13,9 +13,11 @@ const sampleItem = (
   artist: string,
   album: string,
   trackTitle: string,
+  artistMbid?: string,
 ): PlaylistExportItem => ({
   review_id: reviewId,
   artist,
+  artist_mbid: artistMbid,
   album,
   track_title: trackTitle,
   source_kind: "highlight",
@@ -39,7 +41,23 @@ describe("uniquePlaylistArtistLookups", () => {
       sampleItem(3, "Alpha", "Album C", "Song 3"),
     ]);
 
-    expect(lookups).toEqual([{ artistName: "Alpha" }, { artistName: "Beta" }]);
+    expect(lookups).toEqual([
+      { artistName: "Alpha", artistMbid: undefined },
+      { artistName: "Beta", artistMbid: undefined },
+    ]);
+  });
+
+  it("prefers artist MBID for deduplication and batch lookup", () => {
+    const lookups = uniquePlaylistArtistLookups([
+      sampleItem(1, "Alpha", "Album A", "Song 1", "mbid-alpha"),
+      sampleItem(2, "Alpha", "Album B", "Song 2", "mbid-alpha"),
+      sampleItem(3, "Beta", "Album C", "Song 3", "mbid-beta"),
+    ]);
+
+    expect(lookups).toEqual([
+      { artistName: "Alpha", artistMbid: "mbid-alpha" },
+      { artistName: "Beta", artistMbid: "mbid-beta" },
+    ]);
   });
 });
 
@@ -54,13 +72,13 @@ describe("selectPlaylistMosaicLookups", () => {
       sourceUrl: "https://example.com/source",
     };
     const images = new Map<string, ArtistImageData | null>([
-      ["name:alpha", image],
+      ["mbid-alpha", image],
       ["name:beta", null],
     ]);
 
     const tiles = selectPlaylistMosaicLookups(
       [
-        sampleItem(1, "Alpha", "Album A", "Song 1"),
+        sampleItem(1, "Alpha", "Album A", "Song 1", "mbid-alpha"),
         sampleItem(2, "Beta", "Album B", "Song 2"),
         sampleItem(3, "Gamma", "Album C", "Song 3"),
       ],
@@ -68,6 +86,6 @@ describe("selectPlaylistMosaicLookups", () => {
       2,
     );
 
-    expect(tiles).toEqual([{ artistName: "Alpha", lookupKey: "name:alpha" }]);
+    expect(tiles).toEqual([{ artistName: "Alpha", lookupKey: "mbid-alpha" }]);
   });
 });

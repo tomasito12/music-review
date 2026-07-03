@@ -8,9 +8,9 @@ vi.mock("../lib/useArtistImagesBatch", () => ({
   useArtistImagesBatch: () => ({
     imagesByLookupKey: new Map([
       [
-        "name:known artist",
+        "known-mbid",
         {
-          artistMbid: "",
+          artistMbid: "known-mbid",
           artistName: "Known Artist",
           thumbnailUrl: "https://example.com/thumb.jpg",
           attributionText: "Demo",
@@ -28,6 +28,7 @@ const items: PlaylistExportItem[] = [
   {
     review_id: 42,
     artist: "Known Artist",
+    artist_mbid: "known-mbid",
     album: "Recent Album",
     track_title: "Opening Track",
     source_kind: "highlight",

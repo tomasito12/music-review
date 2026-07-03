@@ -32,7 +32,10 @@ export function PlaylistTrackList({ items }: PlaylistTrackListProps): ReactEleme
       <PlaylistArtistMosaic imagesByLookupKey={imagesByLookupKey} tiles={mosaicTiles} />
       <div className="playlist-track-rows">
         {items.map((item, index) => {
-          const lookupKey = artistImageLookupKey({ artistName: item.artist });
+          const lookupKey = artistImageLookupKey({
+            artistMbid: item.artist_mbid?.trim() ?? undefined,
+            artistName: item.artist,
+          });
           const artistImage =
             lookupKey.length > 0 ? imagesByLookupKey.get(lookupKey) ?? null : null;
 

@@ -6,8 +6,12 @@ import {
   bumpPlaylistNameSuffix,
   defaultPlaylistNameForSource,
   playlistApiSource,
+  playlistItemsToCsv,
   playlistItemsToTxt,
+  playlistNameForExportDownload,
   playlistTxtFilename,
+  stripPlaylistNameSuffix,
+  suggestedPlaylistExportFilename,
   tasteSettingsForArchive,
   tasteSettingsForNewest,
 } from "./playlistExport";
@@ -23,25 +27,48 @@ describe("defaultPlaylistNameForSource", () => {
   it("uses mode-specific labels", () => {
     const date = new Date("2026-07-02T12:00:00.000Z");
 
-    expect(defaultPlaylistNameForSource("aktuell", date)).toBe(
-      "Plattenradar Neuheiten 2026-07-02",
-    );
+    expect(defaultPlaylistNameForSource("aktuell", date)).toBe("Plattenradar 2026-07-02");
     expect(defaultPlaylistNameForSource("entdecken", date)).toBe(
-      "Plattenradar Archiv 2026-07-02",
+      "Platten-Archiv 2026-07-02",
+    );
+  });
+});
+
+describe("stripPlaylistNameSuffix", () => {
+  it("removes a trailing numeric suffix", () => {
+    expect(stripPlaylistNameSuffix("Plattenradar 2026-07-02 (2)")).toBe(
+      "Plattenradar 2026-07-02",
+    );
+  });
+});
+
+describe("playlistNameForExportDownload", () => {
+  it("keeps the base name on the first export", () => {
+    expect(playlistNameForExportDownload("Plattenradar 2026-07-02", 1)).toBe(
+      "Plattenradar 2026-07-02",
+    );
+  });
+
+  it("adds numeric suffixes only from the second export onward", () => {
+    expect(playlistNameForExportDownload("Plattenradar 2026-07-02", 2)).toBe(
+      "Plattenradar 2026-07-02 (2)",
+    );
+    expect(playlistNameForExportDownload("Plattenradar 2026-07-02", 3)).toBe(
+      "Plattenradar 2026-07-02 (3)",
     );
   });
 });
 
 describe("bumpPlaylistNameSuffix", () => {
   it("appends (2) on the first remix", () => {
-    expect(bumpPlaylistNameSuffix("Plattenradar Neuheiten 2026-07-02")).toBe(
-      "Plattenradar Neuheiten 2026-07-02 (2)",
+    expect(bumpPlaylistNameSuffix("Plattenradar 2026-07-02")).toBe(
+      "Plattenradar 2026-07-02 (2)",
     );
   });
 
   it("increments an existing numeric suffix", () => {
-    expect(bumpPlaylistNameSuffix("Plattenradar Archiv 2026-07-02 (2)")).toBe(
-      "Plattenradar Archiv 2026-07-02 (3)",
+    expect(bumpPlaylistNameSuffix("Platten-Archiv 2026-07-02 (2)")).toBe(
+      "Platten-Archiv 2026-07-02 (3)",
     );
   });
 });
@@ -148,7 +175,38 @@ describe("buildPlaylistExportPayload", () => {
       format: "csv",
     });
 
-    expect(payload.playlist_name).toMatch(/^Plattenradar Archiv \d{4}-\d{2}-\d{2}$/);
+    expect(payload.playlist_name).toMatch(/^Platten-Archiv \d{4}-\d{2}-\d{2}$/);
+  });
+});
+
+describe("playlistItemsToCsv", () => {
+  it("includes the playlist name in each row", () => {
+    const csv = playlistItemsToCsv(
+      [
+        {
+          review_id: 1,
+          artist: "Alpha",
+          album: "Album",
+          track_title: "Song",
+          source_kind: "archive",
+          score_weight: 1,
+          raw_score: 0.8,
+        },
+      ],
+      "Platten-Archiv 2026-07-02",
+    );
+
+    expect(csv).toBe(
+      "Track name,Artist name,Playlist name\nSong,Alpha,Platten-Archiv 2026-07-02",
+    );
+  });
+});
+
+describe("suggestedPlaylistExportFilename", () => {
+  it("builds a safe filename from the playlist name", () => {
+    expect(suggestedPlaylistExportFilename("Platten-Archiv 2026-07-02", ".csv")).toBe(
+      "Platten-Archiv-2026-07-02.csv",
+    );
   });
 });
 

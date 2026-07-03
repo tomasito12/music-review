@@ -1,6 +1,7 @@
-import { artistImageLookupKey } from "./artistImageLookupKey";
+import { artistDedupeKeys, artistImageLookupKey } from "./artistImageLookupKey";
 import type { ArtistImageData } from "./artistImageApi";
 import type { PlaylistExportItem } from "./playlistExport";
+import type { ArtistImageLookup } from "./useArtistImagesBatch";
 
 const PLATTENTESTS_REVIEW_URL = "https://www.plattentests.de/rezi.php?show=";
 const DEFAULT_MOSAIC_LIMIT = 6;
@@ -13,18 +14,21 @@ export function playlistReviewUrl(reviewId: number): string {
 /** Return unique artist lookups for playlist image batch requests. */
 export function uniquePlaylistArtistLookups(
   items: PlaylistExportItem[],
-): Array<{ artistName: string }> {
+): ArtistImageLookup[] {
   const seen = new Set<string>();
-  const lookups: Array<{ artistName: string }> = [];
+  const lookups: ArtistImageLookup[] = [];
 
   for (const item of items) {
     const artistName = item.artist.trim();
-    const key = artistName.toLowerCase();
-    if (!key || seen.has(key)) {
+    const artistMbid = item.artist_mbid?.trim() ?? undefined;
+    const keys = artistDedupeKeys({ artistMbid, artistName });
+    if (keys.length === 0 || keys.some((key) => seen.has(key))) {
       continue;
     }
-    seen.add(key);
-    lookups.push({ artistName });
+    for (const key of keys) {
+      seen.add(key);
+    }
+    lookups.push({ artistName, artistMbid });
   }
 
   return lookups;
@@ -41,7 +45,8 @@ export function selectPlaylistMosaicLookups(
 
   for (const item of items) {
     const artistName = item.artist.trim();
-    const lookupKey = artistImageLookupKey({ artistName });
+    const artistMbid = item.artist_mbid?.trim() ?? undefined;
+    const lookupKey = artistImageLookupKey({ artistMbid, artistName });
     if (!lookupKey || seen.has(lookupKey)) {
       continue;
     }

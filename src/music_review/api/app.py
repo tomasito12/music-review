@@ -457,6 +457,7 @@ def create_app() -> FastAPI:
                 selection_strategy=request.selection_strategy,
             ),
             rng=random.Random(),
+            artist_mbid_for_review=provider.artist_mbid_for_review,
         )
         return result.csv_export if request.format == "csv" else result.txt_export
 
