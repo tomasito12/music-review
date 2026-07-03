@@ -2,12 +2,14 @@ import { describe, expect, it } from "vitest";
 
 import {
   archiveAlbumLimitBounds,
+  archivePoolChipLabel,
   archivePoolChipLimits,
   archivePoolSummary,
   clampArchiveAlbumLimit,
   clampTrackCount,
   defaultArchiveAlbumLimit,
   playlistSourceContextLine,
+  playlistSuccessHeadline,
   trackCountHint,
 } from "./playlistForm";
 
@@ -76,6 +78,31 @@ describe("trackCountHint", () => {
   it("returns short helper copy for presets", () => {
     expect(trackCountHint(30)).toBe("30 Titel — gut zum Reinhören");
     expect(trackCountHint(50)).toBe("50 Titel — längere Hörsession");
+  });
+});
+
+describe("archivePoolChipLabel", () => {
+  it("labels capped pools with Bis 1000", () => {
+    expect(archivePoolChipLabel(1000, 6236, 1000)).toBe("Bis 1000");
+  });
+
+  it("labels full pools within the API limit as Alle", () => {
+    expect(archivePoolChipLabel(347, 347, 347)).toBe("Alle");
+  });
+
+  it("returns numeric labels for intermediate chips", () => {
+    expect(archivePoolChipLabel(200, 6236, 1000)).toBe("200");
+  });
+});
+
+describe("playlistSuccessHeadline", () => {
+  it("describes newest and archive results", () => {
+    expect(playlistSuccessHeadline("aktuell", 30)).toBe(
+      "Deine Playlist ist fertig — 30 Titel aus deinen Neuheiten.",
+    );
+    expect(playlistSuccessHeadline("entdecken", 12)).toBe(
+      "Deine Playlist ist fertig — 12 Titel aus dem Archiv.",
+    );
   });
 });
 

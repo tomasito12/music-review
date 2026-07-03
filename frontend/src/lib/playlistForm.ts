@@ -100,3 +100,27 @@ export function playlistSourceContextLine(
     "gewählter Zeitraum";
   return `Aus deinen Neuheiten · ${label}`;
 }
+
+/** Label for one archive pool quick-pick chip. */
+export function archivePoolChipLabel(
+  chipValue: number,
+  poolSize: number,
+  boundsMax: number,
+): string {
+  if (chipValue >= boundsMax) {
+    if (poolSize > PLAYLIST_ARCHIVE_LIMIT_MAX) {
+      return "Bis 1000";
+    }
+    return "Alle";
+  }
+  return String(chipValue);
+}
+
+/** Success headline shown after playlist generation. */
+export function playlistSuccessHeadline(
+  source: RecommendationSource,
+  itemCount: number,
+): string {
+  const sourceLabel = source === "entdecken" ? "dem Archiv" : "deinen Neuheiten";
+  return `Deine Playlist ist fertig — ${itemCount} Titel aus ${sourceLabel}.`;
+}

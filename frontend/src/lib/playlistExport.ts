@@ -43,6 +43,13 @@ export interface PlaylistExportResult {
 const PLAYLIST_NAME_SUFFIX_RE = /^(.*) \((\d+)\)$/;
 const VISUAL_TEST_REFERENCE_DATE = new Date("2026-06-27T12:00:00.000Z");
 
+/** TuneMyMusic homepage (general import entry). */
+export const TUNEMYMUSIC_URL = "https://www.tunemymusic.com";
+
+/** TuneMyMusic file-upload transfer flow (used after CSV download). */
+export const TUNEMYMUSIC_FILE_UPLOAD_URL =
+  "https://www.tunemymusic.com/transfer/file-to-deezer";
+
 /** Maps UI recommendation sources to API playlist sources. */
 export function playlistApiSource(source: RecommendationSource): PlaylistApiSource {
   return source === "entdecken" ? "archive" : "new_reviews";
@@ -109,7 +116,7 @@ export function defaultPlaylistNameForSource(
 ): string {
   const datePart = date.toISOString().slice(0, 10);
   if (source === "entdecken") {
-    return `Platten-Archiv ${datePart}`;
+    return `Plattenarchiv ${datePart}`;
   }
   return `Plattenradar ${datePart}`;
 }

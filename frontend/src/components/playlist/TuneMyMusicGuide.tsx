@@ -1,35 +1,50 @@
 import type { ReactElement } from "react";
 
-const TUNEMYMUSIC_URL = "https://www.tunemymusic.com";
+import { TUNEMYMUSIC_FILE_UPLOAD_URL, TUNEMYMUSIC_URL } from "../../lib/playlistExport";
 
 interface TuneMyMusicGuideProps {
+  /** When true, freetext is shown as an alternative import path. */
+  showFreetextAlternative?: boolean;
   txtContent: string;
 }
 
-/** Collapsible generic TuneMyMusic import steps shown after playlist generation. */
-export function TuneMyMusicGuide({ txtContent }: TuneMyMusicGuideProps): ReactElement {
+/** TuneMyMusic import steps shown open after playlist generation. */
+export function TuneMyMusicGuide({
+  showFreetextAlternative = true,
+  txtContent,
+}: TuneMyMusicGuideProps): ReactElement {
   return (
-    <details className="playlist-tunemymusic-guide">
-      <summary>In deinen Musikdienst importieren (TuneMyMusic)</summary>
+    <section aria-label="TuneMyMusic Import" className="playlist-tunemymusic-guide">
+      <h3 className="playlist-tunemymusic-heading">In deinen Musikdienst importieren</h3>
+      <p className="field-hint playlist-tunemymusic-lead">
+        Empfohlen: CSV herunterladen und bei TuneMyMusic als Datei hochladen.
+      </p>
       <ol className="playlist-tunemymusic-steps">
         <li>
-          <a href={TUNEMYMUSIC_URL} rel="noreferrer" target="_blank">
+          <a href={TUNEMYMUSIC_FILE_UPLOAD_URL} rel="noreferrer" target="_blank">
             TuneMyMusic öffnen
-          </a>
-          .
+          </a>{" "}
+          (Datei hochladen).
         </li>
-        <li>
-          Als Quelle <strong>Datei hochladen</strong> (CSV) oder <strong>Freitext</strong>{" "}
-          wählen.
-        </li>
+        <li>Die heruntergeladene CSV-Datei auswählen.</li>
         <li>Deinen Streamingdienst verbinden und den Transfer starten.</li>
       </ol>
-      {txtContent.length > 0 && (
-        <label>
-          Für TuneMyMusic (Freitext)
-          <textarea readOnly rows={8} value={txtContent} />
-        </label>
+      <p className="field-hint">
+        Alternativ:{" "}
+        <a href={TUNEMYMUSIC_URL} rel="noreferrer" target="_blank">
+          TuneMyMusic Startseite
+        </a>{" "}
+        und Freitext-Import nutzen.
+      </p>
+      {showFreetextAlternative && txtContent.length > 0 && (
+        <details className="playlist-tunemymusic-freetext">
+          <summary>Freitext-Alternative (TuneMyMusic)</summary>
+          <label>
+            Zeilen zum Einfügen
+            <textarea readOnly rows={8} value={txtContent} />
+          </label>
+        </details>
       )}
-    </details>
+    </section>
   );
 }

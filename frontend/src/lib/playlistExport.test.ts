@@ -35,7 +35,7 @@ describe("defaultPlaylistNameForSource", () => {
 
     expect(defaultPlaylistNameForSource("aktuell", date)).toBe("Plattenradar 2026-07-02");
     expect(defaultPlaylistNameForSource("entdecken", date)).toBe(
-      "Platten-Archiv 2026-07-02",
+      "Plattenarchiv 2026-07-02",
     );
   });
 });
@@ -69,7 +69,7 @@ describe("playlistNameForExportDownload", () => {
 
     expect(defaultPlaylistNameForSource("aktuell")).toBe("Plattenradar 2026-06-27");
     expect(defaultPlaylistNameForSource("entdecken")).toBe(
-      "Platten-Archiv 2026-06-27",
+      "Plattenarchiv 2026-06-27",
     );
   });
 });
@@ -82,8 +82,8 @@ describe("bumpPlaylistNameSuffix", () => {
   });
 
   it("increments an existing numeric suffix", () => {
-    expect(bumpPlaylistNameSuffix("Platten-Archiv 2026-07-02 (2)")).toBe(
-      "Platten-Archiv 2026-07-02 (3)",
+    expect(bumpPlaylistNameSuffix("Plattenarchiv 2026-07-02 (2)")).toBe(
+      "Plattenarchiv 2026-07-02 (3)",
     );
   });
 });
@@ -190,7 +190,7 @@ describe("buildPlaylistExportPayload", () => {
       format: "csv",
     });
 
-    expect(payload.playlist_name).toMatch(/^Platten-Archiv \d{4}-\d{2}-\d{2}$/);
+    expect(payload.playlist_name).toMatch(/^Plattenarchiv \d{4}-\d{2}-\d{2}$/);
   });
 });
 
@@ -208,19 +208,19 @@ describe("playlistItemsToCsv", () => {
           raw_score: 0.8,
         },
       ],
-      "Platten-Archiv 2026-07-02",
+      "Plattenarchiv 2026-07-02",
     );
 
     expect(csv).toBe(
-      "Track name,Artist name,Playlist name\nSong,Alpha,Platten-Archiv 2026-07-02",
+      "Track name,Artist name,Playlist name\nSong,Alpha,Plattenarchiv 2026-07-02",
     );
   });
 });
 
 describe("suggestedPlaylistExportFilename", () => {
   it("builds a safe filename from the playlist name", () => {
-    expect(suggestedPlaylistExportFilename("Platten-Archiv 2026-07-02", ".csv")).toBe(
-      "Platten-Archiv-2026-07-02.csv",
+    expect(suggestedPlaylistExportFilename("Plattenarchiv 2026-07-02", ".csv")).toBe(
+      "Plattenarchiv-2026-07-02.csv",
     );
   });
 });
