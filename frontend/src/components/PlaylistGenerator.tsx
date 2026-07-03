@@ -198,6 +198,11 @@ export function PlaylistGenerator({
         >
           {isGenerating ? "Playlist wird erzeugt …" : "Playlist vorbereiten"}
         </button>
+        {exportResult === null && (
+          <p className="playlist-export-hint">
+            Export über TuneMyMusic — Anleitung und Download erscheinen nach der Generierung.
+          </p>
+        )}
         {error !== null && (
           <div className="playlist-error" role="alert">
             <p>{error}</p>
@@ -214,21 +219,18 @@ export function PlaylistGenerator({
       </div>
       {exportResult !== null && (
         <div className="playlist-results">
-          <h2>{exportResult.name}</h2>
-          {exportResult.items.length < trackCount && (
-            <p className="playlist-warning">
-              Es wurden {exportResult.items.length} von {trackCount} gewünschten Titeln
-              gefunden (wenige eindeutige Tracks im Pool).
-            </p>
-          )}
-          {exportResult.items.length === 0 ? (
-            <p>
-              Es konnten keine Playlist-Vorschläge erzeugt werden. Bitte Pool oder
-              Einstellungen prüfen.
-            </p>
-          ) : (
-            <>
-              <div className="playlist-actions">
+          <div className="playlist-results-head">
+            <div className="playlist-results-title">
+              <h2>{exportResult.name}</h2>
+              {exportResult.items.length < trackCount && (
+                <p className="playlist-warning">
+                  Es wurden {exportResult.items.length} von {trackCount} gewünschten Titeln
+                  gefunden (wenige eindeutige Tracks im Pool).
+                </p>
+              )}
+            </div>
+            {exportResult.items.length > 0 && (
+              <div className="playlist-export-bar playlist-actions">
                 <button
                   className="secondary-button"
                   onClick={() => {
@@ -268,7 +270,16 @@ export function PlaylistGenerator({
                   Als CSV herunterladen
                 </button>
               </div>
-              {copyMessage !== null && <p className="field-hint">{copyMessage}</p>}
+            )}
+          </div>
+          {copyMessage !== null && <p className="field-hint">{copyMessage}</p>}
+          {exportResult.items.length === 0 ? (
+            <p>
+              Es konnten keine Playlist-Vorschläge erzeugt werden. Bitte Pool oder
+              Einstellungen prüfen.
+            </p>
+          ) : (
+            <>
               <table className="playlist-table">
                 <thead>
                   <tr>
@@ -295,13 +306,6 @@ export function PlaylistGenerator({
           )}
         </div>
       )}
-      <aside className="import-note">
-        <h2>Danach</h2>
-        <p>
-          Die fertige Liste wird hier angezeigt. Von dort kannst du den Text
-          kopieren oder TXT/CSV herunterladen und in TuneMyMusic importieren.
-        </p>
-      </aside>
     </section>
   );
 }
