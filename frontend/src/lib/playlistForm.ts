@@ -8,15 +8,27 @@ export const PLAYLIST_DEFAULT_TRACK_COUNT = 30;
 
 export const ARCHIVE_POOL_CHIP_VALUES = [50, 200] as const;
 
+/** Maximum archive pool size accepted by POST /v1/playlists/export. */
+export const PLAYLIST_ARCHIVE_LIMIT_MAX = 1000;
+
+/** Highest selectable top-N album count for one archive playlist. */
+export function archiveAlbumLimitCap(poolSize: number): number {
+  if (poolSize <= 0) {
+    return 0;
+  }
+  return Math.min(poolSize, PLAYLIST_ARCHIVE_LIMIT_MAX);
+}
+
 /** Lower and upper bounds for the archive top-N slider. */
 export function archiveAlbumLimitBounds(poolSize: number): { max: number; min: number } {
-  if (poolSize <= 0) {
+  const max = archiveAlbumLimitCap(poolSize);
+  if (max <= 0) {
     return { min: 0, max: 0 };
   }
-  if (poolSize < 20) {
-    return { min: 1, max: poolSize };
+  if (max < 20) {
+    return { min: 1, max };
   }
-  return { min: 20, max: poolSize };
+  return { min: 20, max };
 }
 
 /** Default top-N album count for a personalized archive pool. */
@@ -24,7 +36,7 @@ export function defaultArchiveAlbumLimit(poolSize: number): number {
   if (poolSize <= 0) {
     return 0;
   }
-  return Math.min(200, poolSize);
+  return Math.min(200, archiveAlbumLimitCap(poolSize));
 }
 
 /** Clamp a top-N album selection into the valid pool range. */
@@ -51,10 +63,12 @@ export function archivePoolSummary(poolSize: number, albumLimit: number): string
   if (poolSize <= 0) {
     return "Keine passenden Alben für dein Profil gefunden.";
   }
-  if (albumLimit >= poolSize) {
+  const cap = archiveAlbumLimitCap(poolSize);
+  const effectiveLimit = Math.min(albumLimit, cap);
+  if (effectiveLimit >= cap && poolSize <= PLAYLIST_ARCHIVE_LIMIT_MAX) {
     return `${poolSize} Alben passen zu deinem Profil — Playlist aus allen.`;
   }
-  return `${poolSize} Alben passen zu deinem Profil — Playlist aus den Top ${albumLimit}.`;
+  return `${poolSize} Alben passen zu deinem Profil — Playlist aus den Top ${effectiveLimit}.`;
 }
 
 /** Clamp playlist track count into the supported range. */

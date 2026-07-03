@@ -28,6 +28,44 @@ export class ApiError extends Error {
   }
 }
 
+/** Extract a readable message from a FastAPI-style error JSON body. */
+export function parseApiErrorMessage(body: unknown, fallback: string): string {
+  if (typeof body !== "object" || body === null) {
+    return fallback;
+  }
+
+  const detail = (body as { detail?: unknown }).detail;
+  if (typeof detail === "string" && detail.length > 0) {
+    return detail;
+  }
+
+  if (!Array.isArray(detail)) {
+    return fallback;
+  }
+
+  const messages = detail
+    .map((item) => {
+      if (typeof item !== "object" || item === null) {
+        return null;
+      }
+      const msg = (item as { msg?: unknown }).msg;
+      if (typeof msg !== "string" || msg.length === 0) {
+        return null;
+      }
+      const loc = (item as { loc?: unknown }).loc;
+      if (Array.isArray(loc)) {
+        const field = loc
+          .filter((part): part is string => typeof part === "string")
+          .join(".");
+        return field.length > 0 ? `${field}: ${msg}` : msg;
+      }
+      return msg;
+    })
+    .filter((message): message is string => message !== null);
+
+  return messages.length > 0 ? messages.join(" ") : fallback;
+}
+
 export class ApiClient {
   private readonly baseUrl: string;
 
@@ -78,10 +116,8 @@ export class ApiClient {
     if (!response.ok) {
       let message = response.statusText;
       try {
-        const errorBody = (await response.json()) as { detail?: string };
-        if (typeof errorBody.detail === "string" && errorBody.detail.length > 0) {
-          message = errorBody.detail;
-        }
+        const errorBody: unknown = await response.json();
+        message = parseApiErrorMessage(errorBody, message);
       } catch {
         // Keep the status text when the error body is not JSON.
       }
@@ -106,10 +142,8 @@ export class ApiClient {
     if (!response.ok) {
       let message = response.statusText;
       try {
-        const errorBody = (await response.json()) as { detail?: string };
-        if (typeof errorBody.detail === "string" && errorBody.detail.length > 0) {
-          message = errorBody.detail;
-        }
+        const errorBody: unknown = await response.json();
+        message = parseApiErrorMessage(errorBody, message);
       } catch {
         // Keep the status text when the error body is not JSON.
       }

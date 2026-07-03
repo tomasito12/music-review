@@ -10,6 +10,7 @@ import {
   archivePoolChipLimits,
   archivePoolSummary,
   clampArchiveAlbumLimit,
+  PLAYLIST_ARCHIVE_LIMIT_MAX,
   clampTrackCount,
   defaultArchiveAlbumLimit,
   PLAYLIST_DEFAULT_TRACK_COUNT,
@@ -305,7 +306,11 @@ export function PlaylistGenerator({
                           }}
                           type="button"
                         >
-                          {chipValue >= archivePoolSize ? "Alle" : chipValue}
+                          {chipValue >= archiveBounds.max
+                            ? archivePoolSize > PLAYLIST_ARCHIVE_LIMIT_MAX
+                              ? "Max."
+                              : "Alle"
+                            : chipValue}
                         </button>
                       ))}
                     </div>
