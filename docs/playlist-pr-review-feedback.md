@@ -14,7 +14,8 @@ nicht in separaten Einzeldateien pro PR.
 
 | Einstellung | Wert |
 |-------------|------|
-| Branch PR3 | `cursor/playlist-pr3-export-c980` (enthält PR1 + PR2 + PR3) |
+| **Integrations-Branch (empfohlen)** | `cursor/playlist-integration-c980` (PR1–PR5 zusammen) |
+| Branch PR3 (historisch) | `cursor/playlist-pr3-export-c980` |
 | Frontend | `hatch run frontend` → http://127.0.0.1:5173 |
 | API | `hatch run api` → http://127.0.0.1:8000 |
 | Daten | `data/reviews.jsonl` muss lokal vorhanden sein (z. B. `./sync_data.sh pull`) |
@@ -213,28 +214,351 @@ Die reine Track-Tabelle bleibt bis PR4 das Hauptästhetik-Problem.
 
 ---
 
+## Integration v2 — Gesamtreview (Product Owner)
+
+**Branch:** `cursor/playlist-integration-c980`  
+**Review-Datum:** 2026-07-03  
+**Tester:** Product Owner (manuelles Durchklicken nach Zusammenführung PR2–PR5)
+
+Dieser Abschnitt bündelt **neues Nutzer-Feedback** auf dem Integrations-Stand. Er ist die
+Basis für die **nächste Implementierungsrunde** (v2). Agent-Reviews aus PR1–PR3 bleiben
+darunter als Referenz erhalten.
+
+### Gesamteindruck
+
+Die Playlist-Generierung ist funktional weit — Formular, Ergebniszeilen mit Fotos und
+Export sind grundsätzlich da. In der Nutzung wirkt die Seite aber noch **unruhig**
+(Moduswechsel, Button-Leiste, unklare Slider) und der Export-Flow zu **mehrstufig**
+(TuneMyMusic-Link versteckt, viele gleichwertige Buttons). Mehrere Punkte aus dem
+Agent-Review (PR2/PR3) werden hier **bestätigt und verschärft**.
+
+---
+
+### 1. Moduswechsel Neuheiten ↔ Archiv — springende Box
+
+**Befund:** Bei Neuheiten erscheint oberhalb der Formular-Box eine Zeile wie
+*„Aus deinen Neuheiten · Letzte Update-Runde“*. Bei Archiv fehlt diese Zeile — die Box
+rutscht nach oben/unten. Beim Hin- und Herspringen wirkt das Layout instabil.
+
+**Einordnung:** Die Zeile ist **keine Überschrift**, sondern eine **Kontextzeile**
+(Deep-Link-Herkunft + gewählter Zeitraum). Sie wird nur im Neuheiten-Modus gerendert,
+wenn man von Neuheiten in die Playlist-Seite kam (`playlistSourceContextLine`).
+
+**Empfehlung (Agent):** Die Zeile im Formularbereich **entfernen oder beidseitig
+stabilisieren**. Modus-Karten (Neuheiten / Archiv) und das Zeitraum-Dropdown erklären
+den Kontext bereits; die Kontextzeile ist redundant und verursacht den Layout-Sprung.
+Falls Herkunft wichtig bleibt: für **beide** Modi eine gleich hohe Zeile reservieren
+(z. B. Archiv: *„Aus dem Plattentests-Archiv“*) — aber lieber ganz weg und nur in
+Modus-Karte + Feldern kommunizieren.
+
+| Priorität | Aktion |
+|-----------|--------|
+| P1 | Kontextzeile nicht modus-abhängig ein-/ausblenden (entfernen oder symmetrisch) |
+
+---
+
+### 2. Zeitraum / Update-Runden — nur drei Optionen
+
+**Befund:** Dropdown bietet nur *Letzte Update-Runde*, *Letzte 4*, *Letzte 8*.
+Das fühlt sich zu grob an — vor allem wenn lokal nur wenige echte Scrape-Batches existieren
+(unregelmäßige Updates in den letzten Wochen → effektiv ~3 unterscheidbare „Runden“).
+
+**Technischer Hintergrund (Ist-Stand Code):**
+
+- Backend: `select_reviews_for_update_rounds` — bis **20 Runden** (`MAX_UPDATE_ROUNDS`).
+  Mit Batch-Historie (`update_batches.jsonl`) werden echte Scrape-Läufe genutzt;
+  **ohne** Historie: Fallback **20 Reviews pro Runde** (`REVIEWS_PER_ROUND_FALLBACK = 20`,
+  analog `NEW_REVIEWS_PER_ROUND` im Frontend).
+- Frontend Playlist: nur **3 feste Optionen** (`UPDATE_ROUND_OPTIONS`: 1 / 4 / 8).
+- Stündlicher Cron auf Produktion soll Batch-Historie langfristig füllen — dann werden
+  mehr echte Runden verfügbar.
+
+**Nutzer-Wunsch:** Zwischenlösung, bis tägliche/stündliche Updates die Batch-Lücken
+schließen. Erinnerung an Diskussion: *„Jede Update-Runde = 20 Titel“* als Fallback-Logik
+— im Code bereits angelegt, aber in der UI nicht transparent.
+
+**Offene Produktfragen:**
+
+| Frage | Notizen |
+|-------|---------|
+| Mehr als 3 Optionen? | Backend erlaubt 1–20; UI könnte z. B. 1 / 2 / 4 / 8 / 12 / 20 oder Slider „letzte N Runden“ anbieten. |
+| Dropdown skaliert? | Bei 1–20 Runden noch okay; ab ~10 eher **Segment-Chips** oder **Slider mit Label** (*„ca. 60 neueste Reviews“*). |
+| Fallback sichtbar machen? | Wenn keine Batch-Historie: Hinweis *„Zeitraum geschätzt (je ~20 Reviews pro Runde)“* statt stiller Fallback. |
+| Abhängigkeit Cron | Kein reines UI-Problem — mit regelmäßigen Scrapes wird Batch-Modus dominieren. |
+
+| Priorität | Aktion |
+|-----------|--------|
+| P1 | Zeitraum-Auswahl erweitern (mind. feinere Stufen bis 20) und Fallback in Copy erklären |
+| P2 | Pool-Größe im UI anzeigen (*„~40 Reviews aus 2 Runden“*) |
+
+---
+
+### 3. Fokus-Slider (Neuheiten) — nicht intuitiv
+
+**Befund:** Slider *Entdecken ↔ Fokus* ist inhaltlich unklar. **„Fokus“** kommt doppelt vor
+(Feldlabel und rechter Endpunkt). Keine Erklärung, was sich an der Playlist ändert.
+Entspricht nicht dem Anspruch an intuitive Bedienung.
+
+**Technisch:** Steuert `tasteExponent` + `selectionStrategy` (gewichtete vs. stratifizierte
+Auswahl) — für Nutzer nicht erkennbar.
+
+**Bestätigt:** Entspricht Agent-Finding PR2 (P2 „Label Fokus doppelt“, Slider ohne Zwischenfeedback).
+
+| Priorität | Aktion |
+|-----------|--------|
+| P0 | Slider neu benennen + Kurztext/Hilfe (*was passiert bei links vs. rechts?*) |
+| P1 | Zwischenfeedback oder Beispiel-Sätze statt nackter Endlabels |
+
+---
+
+### 4. Formular — Positives (beide Modi)
+
+| Element | Eindruck |
+|---------|----------|
+| **Anzahl Tracks** | Gut umgesetzt (Chips + Hinweise) — gilt für Neuheiten und Archiv. |
+| **Playlist-Name Neuheiten** | Gut; Default `Plattenradar YYYY-MM-DD` passt. |
+| **Playlist-Name Archiv** | Default soll **`Plattenarchiv YYYY-MM-DD`** heißen (ein Wort, **ohne** Bindestrich). Aktuell: `Platten-Archiv …`. |
+
+| Priorität | Aktion |
+|-----------|--------|
+| P2 | Default-Name Archiv auf `Plattenarchiv` umstellen (Code + Tests + Screenshots) |
+
+---
+
+### 4a. Archiv — Top-Alben aus deinem Profil
+
+**Befund:** UI meldet z. B. *„10.000 Alben passen zu deinem Profil“*, Auswahl ist aber auf
+**max. 1000** begrenzt (API-Limit `archive_limit`). Wirkt widersprüchlich.
+
+**Einordnung:** Technisches API-Maximum; Chip **Max.** bei großen Pools ist korrekt, aber
+die Diskrepanz zwischen angezeigtem Pool und wählbarem Maximum irritiert.
+
+**Entscheidung (PO):** Erst mal **so lassen** — kein v2-Blocker. Langfristig API-Limit oder
+Kommunikation prüfen (*„Playlist aus bis zu 1000 Top-Alben“*).
+
+| Priorität | Aktion |
+|-----------|--------|
+| P3 | Copy/Hilfetext: erklären, warum bei sehr großen Pools nur 1000 wählbar sind |
+| — | API-Limit erhöhen | bewusst zurückgestellt |
+
+---
+
+### 4b. Archiv — „Titel pro Album“ (Breit streuen ↔ Alben vertiefen)
+
+**Befund:** Slider *Breit streuen* / *Alben vertiefen* ist — wie der Fokus-Slider bei
+Neuheiten — **inhaltlich nicht verständlich**. Nutzer erwartet konkretes Verhalten:
+
+| Position | Erwartetes Verhalten (PO) |
+|----------|---------------------------|
+| **Ganz links (Breit streuen)** | Jedes Album höchstens **ein** Track in der Playlist |
+| **Ganz rechts (Alben vertiefen)** | Wenige Alben (ca. **1–2**), dafür **mehrere Titel pro Album** (bis ca. **4**) |
+
+**Technischer Ist-Stand:** `archiveDepth` steuert nur `tasteExponent` + `selectionStrategy`
+(gewichtete vs. stratifizierte Ziehung) — **keine** explizite Obergrenze „Tracks pro Album“.
+Das erklärt die Lücke zwischen UI-Versprechen und tatsächlichem Ergebnis.
+
+**Frage:** Slider oder Presets?
+
+**Empfehlung (Agent):** **Presets (Segment-Chips)** statt kontinuierlichem Slider — analog
+zu „Anzahl Tracks“, das gut ankommt.
+
+| Preset (Vorschlag) | Nutzerversprechen | Umsetzung (Ziel) |
+|--------------------|-------------------|------------------|
+| **Vielfalt** | Möglichst viele verschiedene Alben | Max. 1 Highlight-Track pro Album erzwingen |
+| **Ausgewogen** | Mix aus Breite und Tiefe | Default; moderates Album-Limit (z. B. 2–3 Tracks/Album) |
+| **Album vertiefen** | Wenige Alben, mehr Songs davon | Max. 2–3 Alben dominieren, bis 4 Tracks/Album |
+
+**Warum keine Skala:** Die gewünschten Endpunkte sind **diskrete Playlist-Logiken**, keine
+feine Gewichtungskurve. Drei benannte Modi sind leichter zu testen, zu erklären und in der
+Hilfe zu beschreiben als „35 % Archiv-Tiefe“.
+
+**Optional später:** Unter „Erweitert“ ein Slider — für v2 reichen Presets + ein Satz
+Hilfetext unter der Auswahl.
+
+| Priorität | Aktion |
+|-----------|--------|
+| P0 | Slider durch **3 Presets** ersetzen (Vielfalt / Ausgewogen / Album vertiefen) |
+| P0 | Backend/Builder: echte Regeln **max. Tracks pro Album** (nicht nur Gewichtung) |
+| P1 | Kurztext unter Presets mit Beispiel (*„bis zu 30 Alben · je 1 Titel“*) |
+
+---
+
+### 5. Ergebnis — Export-Buttons (vier in einer Reihe)
+
+**Gilt für Neuheiten und Archiv** (gleiche Ergebnisansicht).
+
+**Befund:** Nach „Playlist vorbereiten“ oben **vier Buttons**: CSV, Nochmal mischen, Text
+kopieren, TXT. Passen nicht in eine Zeile → umbrechen, wirkt unruhig und billig.
+
+**Zusätzlich:** **Nochmal mischen** hat eine andere Funktion (neue Zufallsziehung) als die
+drei Export-Aktionen — sollte visuell getrennt sein.
+
+**Bestätigt:** Agent-Review PR3 (P1 Button-Gruppierung, P3 Mobile-Umbruch).
+
+| Priorität | Aktion |
+|-----------|--------|
+| P0 | Zwei Gruppen: **Export** (CSV primär, TXT/Kopieren sekundär) vs. **Neue Ziehung** (Mischen) |
+| P1 | Layout: CSV full-width oder 2-Zeilen-Raster; kein 4er-Chaos in einer Zeile |
+
+---
+
+### 6. Ergebnis — Künstler-Mosaik (max. 6 Kacheln)
+
+**Befund:** Oben maximal **6 Künstlerbilder** als Kacheln; darunter deutlich mehr Zeilen
+mit Fotos. Nutzer fragen sich: *Warum nur diese sechs?*
+
+**Agent-Einordnung (UX):**
+
+| Option | Pro | Contra |
+|--------|-----|--------|
+| **Mosaik entfernen** | Keine Redundanz; Fotos nur in Zeilen — konsistent. | Weniger „Playlist-Cover“-Gefühl oben. |
+| **Mosaik behalten, erklären** | Dekorativer Header möglich. | Braucht Copy (*„Auszug aus deiner Playlist“*) — erklärt trotzdem nicht die Zahl 6. |
+| **Alle Künstler als Mosaik** | Keine willkürliche Grenze. | Bei 30+ Tracks unübersichtlich und langsam (Bilder). |
+
+**Empfehlung:** Mosaik **streichen** oder durch **kompakten Erfolgskopf** ersetzen
+(*„30 Titel · Plattenarchiv 2026-07-03“*). Fotos gehören in die Zeilen — dort sind sie
+funktional (Orientierung pro Track). Die 6er-Kachel wirkt wie ein halbes Feature.
+
+| Priorität | Aktion |
+|-----------|--------|
+| P1 | Mosaik entfernen oder durch statischen Kopf ersetzen |
+| P2 | Falls Mosaik bleibt: kurze Begründung in UI |
+
+---
+
+### 7. Ergebnis — Zeilen: Metadaten & Leerraum
+
+**Gilt für Neuheiten und Archiv** — PO-Feedback aus beiden Modi.
+
+**Befund:** Rechts in den Ergebniszeilen ist viel **ungenutzter Platz**. Bei langen
+ersten Zeilen (Künstler · Album) ist der Platz gut (kein unschöner Umbruch); bei kurzen
+Zeilen wirkt die rechte Hälfte leer.
+
+**Wunsch:** Zusätzliche Metadaten in den Zeilen, z. B.:
+
+- **Erscheinungsjahr**
+- **Plattenlabel**
+
+(Daten in `metadata` / MusicBrainz grundsätzlich im System vorhanden — Anbindung an
+Playlist-Export-Items prüfen.)
+
+| Priorität | Aktion |
+|-----------|--------|
+| P1 | Jahr + Label in Ergebniszeile (rechte Spalte oder zweite Zeile) |
+| P2 | Layout: rechte Spalte nur wenn Metadaten da; sonst schmalere Zeile |
+
+---
+
+### 7a. Ergebnis — Künstler-Thumbnails (Größe & Nutzen)
+
+**Gilt für Neuheiten und Archiv.**
+
+**Befund:** Thumbnails in den Ergebniszeilen sind oft **sehr klein**; auf dem Foto erkennt
+man häufig nichts. Nutzer fragt sich: *Warum überhaupt Bilder, wenn sie nichts zeigen?*
+Zusatzfrage: Soll ein Klick das Bild vergrößern?
+
+**Einordnung:** Fotos sind **Dekoration / Orientierung**, kein Kernfeature der Playlist.
+Sie sollen „Farbe“ und Wiedererkennung bringen — funktionieren nur, wenn das Motiv
+erkennbar ist.
+
+**Empfehlung (Agent):**
+
+| Option | Bewertung |
+|--------|-----------|
+| **Klick → Lightbox / groß** | Für v2 **nicht empfohlen** — extra UI, wenig Mehrwert für den Export-Flow; Nutzer will danach exportieren, nicht Bilder betrachten. |
+| **Größe leicht erhöhen** | Sinnvoll, wenn Layout es zulässt (z. B. 40–48 px statt aktuell kleiner). |
+| **Fallback Initialen-Avatar** | Wenn kein brauchbares Bild: farbiger Kreis mit Initialen (wie Entdecken) — klarer als unlesbares Foto. |
+| **Thumbnails ganz weglassen** | Nur wenn Metadaten (Jahr, Label) die Zeile tragen; sonst wirkt Liste zu textlastig. |
+
+**Fazit:** Kleine unlesbare Fotos sind schlechter als gut lesbare Initialen. **Kein**
+Tap-to-Zoom in v2; stattdessen erkennbare Größe oder Initialen-Fallback. Kein P0.
+
+| Priorität | Aktion |
+|-----------|--------|
+| P2 | Thumbnail-Größe prüfen; Initialen-Fallback wenn Bild fehlt/unbrauchbar |
+| P3 | Kein Lightbox-Zoom (bewusst nicht) |
+
+---
+
+### 8. TuneMyMusic — Import vereinfachen
+
+**Befund:** Link *„TuneMyMusic öffnen“* in der Anleitung ist **versteckt** (in `<details>`,
+unter der Trackliste). Für jeden Import nötig — zu viele Schritte: CSV laden, Seite
+suchen, Link klicken, Datei hochladen.
+
+**Nutzer-Idee:** Download und TuneMyMusic in **einem Schritt** — z. B.:
+
+- Ein Button *„CSV herunterladen und TuneMyMusic öffnen“* (Download + `window.open` auf
+  TuneMyMusic-Import-URL mit Hinweis zum Datei-Upload), oder
+- Deep-Link soweit TuneMyMusic API/URL-Schema es erlaubt (zu prüfen).
+
+**Bestätigt:** Agent-Review PR3 (Anleitung versteckt, Export nicht geleitet).
+
+| Priorität | Aktion |
+|-----------|--------|
+| P0 | TuneMyMusic-Schritt **prominent** direkt neben CSV (nicht nur in Details) |
+| P1 | Kombi-Aktion „Export + TuneMyMusic öffnen“ |
+| P2 | Anleitung nach Generierung standardmäßig **aufgeklappt** |
+
+---
+
+### Prioritäten v2 (Konsolidiert)
+
+| P | Thema | Quelle |
+|---|-------|--------|
+| P0 | Fokus-Slider (Neuheiten) verständlich machen | PO + PR2 |
+| P0 | Archiv „Titel pro Album“ als Presets + echte Album-Regeln | PO |
+| P0 | Export-Buttons gruppieren + Layout beruhigen | PO + PR3 |
+| P0 | TuneMyMusic prominenter / Kombi-Schritt | PO + PR3 |
+| P1 | Kontextzeile Moduswechsel (Layout-Sprung) | PO |
+| P1 | Update-Runden: mehr Optionen + Fallback erklären | PO |
+| P1 | Mosaik oben entfernen oder ersetzen | PO |
+| P1 | Jahr + Label in Ergebniszeilen (Neuheiten + Archiv) | PO |
+| P2 | Default-Name `Plattenarchiv` (ohne Bindestrich) | PO |
+| P2 | Thumbnail-Größe / Initialen-Fallback | PO |
+| P2 | Ergebnis als eigene Phase (Formular einklappen) | PR3 |
+| P2 | Archiv-Pool Doppelsteuerung (Chips + Slider) | PR2 |
+| P3 | Archiv-Pool 1000 vs. angezeigtes Total erklären | PO |
+
+### Fazit Integration v2
+
+**Nicht neu bauen, sondern polieren:** Die Pipeline steht; die nächste Runde soll
+**Ruhe ins Layout** (symmetrisches Formular, ruhige Button-Hierarchie), **Klarheit bei
+Steuerungen** (Zeitraum, Fokus, **Archiv-Titel-pro-Album**) und **Export in einem Atemzug**
+(TuneMyMusic) bringen. Ergebniszeilen können mit Metadaten, erkennbaren Avataren und ohne
+redundantes Mosaik professioneller wirken.
+
+---
+
 ## PR4 — Ergebnisliste (Hybrid-Zeilen, Kontext)
 
 **Branch:** `cursor/playlist-pr4-results-c980`  
-**Review-Datum:** _noch nicht reviewed_
+**Review-Datum:** 2026-07-03 (Agent + PO auf Integrations-Branch)
 
-### Geplant laut Umsetzungsplan
+### Umgesetzt (Kurz)
 
-- Ergebniszeilen mit Rating, Passung, Review-Link, ggf. Fotos
-- Weniger „HTML-Tabelle“, mehr Anbindung an Entdecken-Ästhetik
+- Hybrid-Zeilen mit Künstlerfoto, Review-Link, Track/Album-Zeile
+- Optional: Künstler-Mosaik (max. 6 Bilder) über der Liste
+- `artist_mbid` für zuverlässige Bild-Lookups
+- Default-Namen: `Plattenradar` / `Platten-Archiv` + Datum; Export-Suffix `(2)` nur beim Download
 
-### Review-Checkliste (auszufüllen)
+### Feedback (Product Owner — siehe auch **Integration v2**)
+
+| Kategorie | Befund |
+|-----------|--------|
+| **UX** | Mosaik (6 Kacheln) vs. Zeilen-Fotos — wirkt willkürlich; siehe Integration v2 §6. |
+| **UX** | Rechts viel Leerraum in Zeilen; Wunsch: Erscheinungsjahr + Label. |
+| **UI** | Lange Albumtitel nutzen Platz gut; kurze Zeilen wirken unausgewogen. |
+| **Positiv** | Fotos in Zeilen grundsätzlich hilfreich; Review-Links sinnvoll. |
+
+### Review-Checkliste (Agent)
 
 | Kategorie | Fragen | Notizen |
 |-----------|----------|---------|
-| **UX** | Erkennt man sofort, warum ein Track in der Playlist ist? | |
-| **UI** | Anschluss an Highlight-Kacheln / RecommendationList? | |
-| **Mobile** | Tabelle vs. Karten auf 390px? | |
-| **Ästhetik** | Fühlt sich die Seite wie Abschluss der Entdeckungsreise an? | |
-
-### Feedback
-
-_(noch offen)_
+| **UX** | Erkennt man sofort, warum ein Track in der Playlist ist? | Noch schwach — keine Passung/Rating in Zeile. |
+| **UI** | Anschluss an Highlight-Kacheln / RecommendationList? | Teilweise (Fotos); weniger narrative Tiefe. |
+| **Mobile** | Tabelle vs. Karten auf 390px? | Hybrid-Zeilen okay; Button-Leiste problematisch (v2). |
+| **Ästhetik** | Fühlt sich die Seite wie Abschluss der Entdeckungsreise an? | Noch nicht — Formular bleibt sichtbar. |
 
 ---
 
@@ -264,14 +588,23 @@ _(noch offen)_
 
 ## Übergreifende Themen (alle PRs)
 
-| Thema | Status | Ziel-PR |
-|-------|--------|---------|
-| Emotionaler Anschluss an Aktuell/Entdecken | offen | PR4 |
-| TuneMyMusic-Export erklären | teilweise (PR3: Anleitung vorhanden, aber versteckt) | PR3-Follow-up |
-| Archiv-Pool-Steuerung vereinfachen | teilweise (Limit-Fix; Doppelsteuerung offen) | PR2/PR3-Follow-up |
-| Slider-Zwischenfeedback | offen | PR2-Follow-up |
-| Ergebnis als eigene Phase (Formular nach Generierung) | offen | PR3-Follow-up oder PR4 |
-| Export-Button-Gruppierung (Export vs. Remix) | offen | PR3-Follow-up |
+| Thema | Status | Ziel |
+|-------|--------|------|
+| Emotionaler Anschluss an Aktuell/Entdecken | offen | v2 |
+| TuneMyMusic-Export erklären + Kombi-Schritt | offen (PO P0) | v2 |
+| Archiv-Pool-Steuerung vereinfachen | teilweise (Limit-Fix; Doppelsteuerung offen) | v2 |
+| Fokus-/Tiefen-Slider verständlich | offen (PO P0) | v2 |
+| Zeitraum/Update-Runden (mehr Optionen, Fallback-Copy) | offen (PO P1) | v2 |
+| Archiv „Titel pro Album“ (Presets statt Slider) | offen (PO P0) | v2 |
+| Default-Name `Plattenarchiv` (ohne Bindestrich) | offen (PO P2) | v2 |
+| Archiv-Pool Anzeige vs. Limit 1000 | zurückgestellt (PO P3) | später |
+| Künstler-Thumbnails (Größe, Initialen, kein Zoom) | offen (PO P2) | v2 |
+| Kontextzeile Layout-Sprung Neuheiten/Archiv | offen (PO P1) | v2 |
+| Export-Button-Gruppierung (Export vs. Remix) | offen (PO P0) | v2 |
+| Künstler-Mosaik (6er) vs. Zeilen-Fotos | offen (PO P1) | v2 |
+| Metadaten Jahr + Label in Ergebniszeilen | offen (PO P1) | v2 |
+| Ergebnis als eigene Phase (Formular nach Generierung) | offen | v2 |
+| Slider-Zwischenfeedback | offen | v2 |
 | Aktive Profil-Filter auf Playlist-Seite sichtbar | offen | später |
 | Vorschau vor Generierung | bewusst nicht in v1 | — |
 
@@ -284,3 +617,5 @@ _(noch offen)_
 | 2026-07-03 | PR1 | Erstreview: Mobile-Fix bestätigt, keine Regression |
 | 2026-07-03 | PR2 | UX/UI-Review mit Screenshots (Desktop + Mobile, Neuheiten + Archiv) |
 | 2026-07-03 | PR3 | UX/UI-Review Export-Flow, Ergebnisansicht, Remix; Screenshot Ergebnis Mobile |
+| 2026-07-03 | Integration v2 | Product-Owner-Review auf `cursor/playlist-integration-c980`; Prioritäten für nächste Runde |
+| 2026-07-03 | Integration v2 | Archiv-Feedback: Pool-Limit, Titel-pro-Album-Presets, Plattenarchiv, Thumbnails |

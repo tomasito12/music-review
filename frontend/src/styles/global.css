@@ -2472,6 +2472,66 @@ p {
   gap: 0.75rem 1rem;
 }
 
+.playlist-settings-toggle {
+  justify-self: start;
+  margin: 0;
+}
+
+.playlist-success-header {
+  display: grid;
+  gap: 0.35rem;
+}
+
+.playlist-success-kicker {
+  margin: 0;
+  color: var(--accent);
+  font-size: 0.78rem;
+  font-weight: 650;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+}
+
+.playlist-success-title {
+  margin: 0;
+  font-size: 1.35rem;
+  line-height: 1.25;
+}
+
+.playlist-success-name {
+  margin: 0;
+  color: var(--muted);
+  font-size: 0.92rem;
+}
+
+.playlist-result-actions {
+  display: grid;
+  gap: 1rem;
+}
+
+.playlist-export-section,
+.playlist-remix-section {
+  display: grid;
+  gap: 0.55rem;
+  padding: 0.85rem 1rem;
+  border: 1px solid rgba(44, 36, 32, 0.1);
+  border-radius: 0.65rem;
+  background: rgba(255, 253, 250, 0.72);
+}
+
+.playlist-export-primary {
+  width: 100%;
+}
+
+.playlist-export-lead {
+  margin: 0;
+}
+
+.playlist-export-secondary {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+}
+
 .playlist-results-title {
   display: grid;
   gap: 0.35rem;
@@ -2606,19 +2666,31 @@ p {
 }
 
 .playlist-tunemymusic-guide {
+  display: grid;
+  gap: 0.65rem;
   border: 1px solid var(--line);
   border-radius: 0.65rem;
-  padding: 0.65rem 0.85rem;
-  background: var(--surface-raised, #fff);
+  padding: 0.85rem 1rem;
+  background: rgba(255, 253, 250, 0.72);
 }
 
-.playlist-tunemymusic-guide summary {
+.playlist-tunemymusic-heading {
+  margin: 0;
+  font-size: 1rem;
+}
+
+.playlist-tunemymusic-lead {
+  margin: 0;
+}
+
+.playlist-tunemymusic-freetext summary {
   cursor: pointer;
-  font-weight: 600;
+  font-size: 0.88rem;
+  font-weight: 550;
 }
 
 .playlist-tunemymusic-steps {
-  margin: 0.65rem 0 0.85rem;
+  margin: 0;
   padding-left: 1.2rem;
   display: grid;
   gap: 0.35rem;
@@ -2859,8 +2931,12 @@ select {
     align-items: stretch;
   }
 
-  .playlist-export-bar {
-    justify-content: flex-start;
+  .playlist-export-secondary {
+    flex-direction: column;
+  }
+
+  .playlist-export-secondary .secondary-button {
+    width: 100%;
   }
 
   .playlist-track-row,
