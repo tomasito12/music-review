@@ -4,6 +4,7 @@ import type { ArtistImageData } from "./artistImageApi";
 import type { PlaylistExportItem } from "./playlistExport";
 import {
   playlistReviewUrl,
+  playlistTrackAsideParts,
   selectPlaylistMosaicLookups,
   uniquePlaylistArtistLookups,
 } from "./playlistResults";
@@ -87,5 +88,33 @@ describe("selectPlaylistMosaicLookups", () => {
     );
 
     expect(tiles).toEqual([{ artistName: "Alpha", lookupKey: "mbid-alpha" }]);
+  });
+});
+
+describe("playlistTrackAsideParts", () => {
+  it("returns year and label when present", () => {
+    expect(
+      playlistTrackAsideParts({
+        ...sampleItem(1, "Artist", "Album", "Song"),
+        release_year: 2019,
+        label: "Domino",
+      }),
+    ).toEqual({
+      year: "2019",
+      label: "Domino",
+    });
+  });
+
+  it("omits empty metadata values", () => {
+    expect(
+      playlistTrackAsideParts({
+        ...sampleItem(1, "Artist", "Album", "Song"),
+        release_year: null,
+        label: "   ",
+      }),
+    ).toEqual({
+      year: null,
+      label: null,
+    });
   });
 });

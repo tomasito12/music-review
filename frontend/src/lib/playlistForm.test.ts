@@ -5,6 +5,7 @@ import {
   archivePoolChipLabel,
   archivePoolChipLimits,
   archivePoolSummary,
+  archiveSpreadHint,
   clampArchiveAlbumLimit,
   clampTrackCount,
   defaultArchiveAlbumLimit,
@@ -108,6 +109,13 @@ describe("playlistSuccessHeadline", () => {
     expect(playlistSuccessHeadline("entdecken", 12)).toBe(
       "Deine Playlist ist fertig — 12 Titel aus dem Archiv.",
     );
+  });
+});
+
+describe("archiveSpreadHint", () => {
+  it("returns helper copy for archive spread presets", () => {
+    expect(archiveSpreadHint("variety")).toContain("je 1 Titel");
+    expect(archiveSpreadHint("deep")).toContain("4 Titel");
   });
 });
 

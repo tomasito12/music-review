@@ -12,7 +12,7 @@ from music_review.application.models import (
     RecommendationSource,
     TasteProfile,
 )
-from music_review.dashboard.playlist_builder import SelectionStrategy
+from music_review.dashboard.playlist_builder import AlbumSpreadMode, SelectionStrategy
 
 
 class RecommendationRequest(ApiModel):
@@ -39,6 +39,7 @@ class PlaylistExportRequest(ApiModel):
     target_count: int = Field(default=30, ge=1, le=100)
     taste_exponent: float = Field(default=1.0, ge=1.0, le=5.0)
     selection_strategy: SelectionStrategy = "stratified"
+    album_spread_mode: AlbumSpreadMode = "balanced"
     format: PlaylistExportFormat = "txt"
     update_rounds: int = Field(default=1, ge=1, le=20)
     newest_count: int | None = Field(default=None, ge=1, le=200)

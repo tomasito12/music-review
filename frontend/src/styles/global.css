@@ -2620,6 +2620,10 @@ p {
   box-shadow: 0 2px 10px rgba(23, 32, 51, 0.04);
 }
 
+.playlist-track-row-with-aside {
+  grid-template-columns: 2.35rem 3rem minmax(0, 1fr) minmax(4.5rem, auto);
+}
+
 .playlist-track-media {
   display: flex;
   align-items: center;
@@ -2686,6 +2690,22 @@ p {
 
 .playlist-track-review-link:hover {
   text-decoration: underline;
+}
+
+.playlist-track-aside {
+  display: grid;
+  gap: 0.15rem;
+  justify-items: end;
+  align-content: start;
+  text-align: right;
+  color: var(--muted);
+  font-size: 0.8rem;
+  line-height: 1.35;
+}
+
+.playlist-track-label {
+  max-width: 9rem;
+  overflow-wrap: anywhere;
 }
 
 .playlist-tunemymusic-guide {
@@ -2962,7 +2982,8 @@ select {
     width: 100%;
   }
 
-  .playlist-track-row {
+  .playlist-track-row,
+  .playlist-track-row-with-aside {
     grid-template-columns: 2rem 2.75rem minmax(0, 1fr);
     gap: 0.65rem;
   }
@@ -2976,6 +2997,13 @@ select {
   .playlist-track-initials {
     width: 2.75rem;
     height: 2.75rem;
+  }
+
+  .playlist-track-aside {
+    grid-column: 3;
+    justify-items: start;
+    text-align: left;
+    margin-top: 0.15rem;
   }
 
   .highlight-tile {

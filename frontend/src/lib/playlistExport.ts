@@ -1,5 +1,6 @@
 import type { RecommendationSource } from "../types";
 import { PLAYLIST_ARCHIVE_LIMIT_MAX } from "./playlistForm";
+import type { ArchiveSpreadPreset } from "./playlistForm";
 import type { TemporaryTasteProfile } from "./plattenradarApi";
 import { temporaryProfileToApi } from "./plattenradarApi";
 import { isVisualTestMode } from "./visualTestMode";
@@ -9,7 +10,7 @@ export type PlaylistSelectionStrategy = "stratified" | "weighted_sample";
 
 export interface PlaylistExportRequestOptions {
   archiveAlbumLimit: number;
-  archiveDepth: number;
+  archiveSpread: ArchiveSpreadPreset;
   format: "txt" | "csv";
   name: string;
   newestTasteFocus: number;
@@ -23,7 +24,9 @@ export interface PlaylistExportItem {
   album: string;
   artist: string;
   artist_mbid?: string | null;
+  label?: string | null;
   raw_score: number;
+  release_year?: number | null;
   review_id: number;
   score_weight: number;
   source_kind: string;
@@ -67,16 +70,19 @@ export function tasteSettingsForNewest(tasteFocus: number): {
   };
 }
 
-/** Map archive depth slider to API weighting parameters. */
-export function tasteSettingsForArchive(depth: number): {
+/** Map archive spread preset to API weighting parameters. */
+export function tasteSettingsForArchiveSpread(preset: ArchiveSpreadPreset): {
   selectionStrategy: PlaylistSelectionStrategy;
   tasteExponent: number;
 } {
-  const clamped = Math.min(1, Math.max(0, depth));
-  return {
-    tasteExponent: 1 + clamped * 2,
-    selectionStrategy: clamped < 0.5 ? "weighted_sample" : "stratified",
-  };
+  switch (preset) {
+    case "variety":
+      return { tasteExponent: 1, selectionStrategy: "weighted_sample" };
+    case "deep":
+      return { tasteExponent: 3, selectionStrategy: "stratified" };
+    default:
+      return { tasteExponent: 1.7, selectionStrategy: "weighted_sample" };
+  }
 }
 
 /** Builds the JSON body for POST /v1/playlists/export. */
@@ -86,7 +92,7 @@ export function buildPlaylistExportPayload(
   const apiSource = playlistApiSource(options.source);
   const taste =
     options.source === "entdecken"
-      ? tasteSettingsForArchive(options.archiveDepth)
+      ? tasteSettingsForArchiveSpread(options.archiveSpread)
       : tasteSettingsForNewest(options.newestTasteFocus);
 
   return {
@@ -97,6 +103,7 @@ export function buildPlaylistExportPayload(
     target_count: options.targetCount,
     taste_exponent: taste.tasteExponent,
     selection_strategy: taste.selectionStrategy,
+    album_spread_mode: options.source === "entdecken" ? options.archiveSpread : undefined,
     format: options.format,
     update_rounds: Number(options.updateRounds),
     archive_limit:

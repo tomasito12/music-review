@@ -373,6 +373,8 @@ class PlaylistExportItem(ApiModel):
     score_weight: float
     raw_score: float
     artist_mbid: str | None = None
+    release_year: int | None = None
+    label: str | None = None
 
 
 class PlaylistExport(ApiModel):

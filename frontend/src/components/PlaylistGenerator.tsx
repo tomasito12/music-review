@@ -1,7 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import type { ReactElement } from "react";
 
-import { PlaylistDualSlider } from "./playlist/PlaylistDualSlider";
 import { PlaylistTrackList } from "./playlist/PlaylistTrackList";
 import { TuneMyMusicGuide } from "./playlist/TuneMyMusicGuide";
 import type { ApiClient } from "../lib/apiClient";
@@ -9,8 +8,11 @@ import {
   archivePoolChipLabel,
   archivePoolChipLimits,
   archivePoolSummary,
+  ARCHIVE_SPREAD_PRESETS,
+  archiveSpreadHint,
   clampArchiveAlbumLimit,
   clampTrackCount,
+  DEFAULT_ARCHIVE_SPREAD_PRESET,
   DEFAULT_NEWEST_MOOD_PRESET,
   defaultArchiveAlbumLimit,
   NEWEST_MOOD_PRESETS,
@@ -25,6 +27,7 @@ import {
   playlistSuccessHeadline,
   playlistUpdateRoundPoolHint,
   trackCountHint,
+  type ArchiveSpreadPreset,
   type NewestMoodPreset,
 } from "../lib/playlistForm";
 import { exportPlaylist, loadArchiveRecommendations } from "../lib/plattenradarApi";
@@ -63,7 +66,9 @@ export function PlaylistGenerator({
   const [trackCount, setTrackCount] = useState(PLAYLIST_DEFAULT_TRACK_COUNT);
   const [customTrackCount, setCustomTrackCount] = useState(false);
   const [newestMood, setNewestMood] = useState<NewestMoodPreset>(DEFAULT_NEWEST_MOOD_PRESET);
-  const [archiveDepth, setArchiveDepth] = useState(0.35);
+  const [archiveSpread, setArchiveSpread] = useState<ArchiveSpreadPreset>(
+    DEFAULT_ARCHIVE_SPREAD_PRESET,
+  );
   const [archivePoolSize, setArchivePoolSize] = useState<number | null>(null);
   const [archiveAlbumLimit, setArchiveAlbumLimit] = useState(200);
   const [archivePoolLoading, setArchivePoolLoading] = useState(false);
@@ -153,7 +158,7 @@ export function PlaylistGenerator({
           name: playlistName,
           targetCount: trackCount,
           newestTasteFocus: newestMoodToTasteFocus(newestMood),
-          archiveDepth,
+          archiveSpread,
           archiveAlbumLimit,
           updateRounds,
           format: "csv",
@@ -174,7 +179,7 @@ export function PlaylistGenerator({
     [
       apiClient,
       archiveAlbumLimit,
-      archiveDepth,
+      archiveSpread,
       name,
       newestMood,
       profile,
@@ -346,16 +351,24 @@ export function PlaylistGenerator({
       )}
 
       {source === "entdecken" && archivePoolReady && (
-        <div className="playlist-fieldset">
-          <span className="playlist-field-label">Titel pro Album</span>
-          <PlaylistDualSlider
-            ariaLabel="Breit streuen oder Alben vertiefen"
-            leftLabel="Breit streuen"
-            onChange={setArchiveDepth}
-            rightLabel="Alben vertiefen"
-            value={archiveDepth}
-          />
-        </div>
+        <fieldset className="playlist-fieldset">
+          <legend>Titel pro Album</legend>
+          <div className="filter-segmented">
+            {ARCHIVE_SPREAD_PRESETS.map((preset) => (
+              <button
+                className={archiveSpread === preset.id ? "selected" : undefined}
+                key={preset.id}
+                onClick={() => {
+                  setArchiveSpread(preset.id);
+                }}
+                type="button"
+              >
+                {preset.label}
+              </button>
+            ))}
+          </div>
+          <p className="field-hint">{archiveSpreadHint(archiveSpread)}</p>
+        </fieldset>
       )}
 
       <fieldset className="playlist-fieldset">

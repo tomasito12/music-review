@@ -14,7 +14,7 @@ import {
   playlistTxtFilename,
   stripPlaylistNameSuffix,
   suggestedPlaylistExportFilename,
-  tasteSettingsForArchive,
+  tasteSettingsForArchiveSpread,
   tasteSettingsForNewest,
 } from "./playlistExport";
 
@@ -104,16 +104,17 @@ describe("tasteSettingsForNewest", () => {
   });
 });
 
-describe("tasteSettingsForArchive", () => {
-  it("favors broad spread at the low end", () => {
-    expect(tasteSettingsForArchive(0)).toEqual({
+describe("tasteSettingsForArchiveSpread", () => {
+  it("maps spread presets to API weighting parameters", () => {
+    expect(tasteSettingsForArchiveSpread("variety")).toEqual({
       tasteExponent: 1,
       selectionStrategy: "weighted_sample",
     });
-  });
-
-  it("favors album depth at the high end", () => {
-    expect(tasteSettingsForArchive(1)).toEqual({
+    expect(tasteSettingsForArchiveSpread("balanced")).toEqual({
+      tasteExponent: 1.7,
+      selectionStrategy: "weighted_sample",
+    });
+    expect(tasteSettingsForArchiveSpread("deep")).toEqual({
       tasteExponent: 3,
       selectionStrategy: "stratified",
     });
@@ -121,14 +122,14 @@ describe("tasteSettingsForArchive", () => {
 });
 
 describe("buildPlaylistExportPayload", () => {
-  it("includes archive pool and depth settings for entdecken", () => {
+  it("includes archive pool and spread settings for entdecken", () => {
     const payload = buildPlaylistExportPayload({
       source: "entdecken",
       profile: createTemporaryTasteProfile(["C001"]),
       name: "Meine Liste",
       targetCount: 25,
       newestTasteFocus: 0,
-      archiveDepth: 0.2,
+      archiveSpread: "variety",
       archiveAlbumLimit: 120,
       updateRounds: "4",
       format: "csv",
@@ -138,7 +139,8 @@ describe("buildPlaylistExportPayload", () => {
     expect(payload.target_count).toBe(25);
     expect(payload.selection_strategy).toBe("weighted_sample");
     expect(payload.archive_limit).toBe(120);
-    expect(payload.taste_exponent).toBe(1.4);
+    expect(payload.taste_exponent).toBe(1);
+    expect(payload.album_spread_mode).toBe("variety");
     expect(payload.format).toBe("csv");
   });
 
@@ -149,7 +151,7 @@ describe("buildPlaylistExportPayload", () => {
       name: "Großes Archiv",
       targetCount: 30,
       newestTasteFocus: 0,
-      archiveDepth: 0.5,
+      archiveSpread: "balanced",
       archiveAlbumLimit: 6236,
       updateRounds: "1",
       format: "csv",
@@ -165,7 +167,7 @@ describe("buildPlaylistExportPayload", () => {
       name: "Neu",
       targetCount: 10,
       newestTasteFocus: 1,
-      archiveDepth: 0,
+      archiveSpread: "balanced",
       archiveAlbumLimit: 200,
       updateRounds: "4",
       format: "csv",
@@ -175,6 +177,7 @@ describe("buildPlaylistExportPayload", () => {
     expect(payload.update_rounds).toBe(4);
     expect(payload.taste_exponent).toBe(3);
     expect(payload.selection_strategy).toBe("weighted_sample");
+    expect(payload.album_spread_mode).toBeUndefined();
   });
 
   it("falls back to a mode-specific default playlist name", () => {
@@ -184,7 +187,7 @@ describe("buildPlaylistExportPayload", () => {
       name: "   ",
       targetCount: 10,
       newestTasteFocus: 0,
-      archiveDepth: 0,
+      archiveSpread: "balanced",
       archiveAlbumLimit: 50,
       updateRounds: "1",
       format: "csv",

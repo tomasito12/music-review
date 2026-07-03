@@ -56,6 +56,38 @@ export const NEWEST_MOOD_PRESETS: ReadonlyArray<{
 
 export const DEFAULT_NEWEST_MOOD_PRESET: NewestMoodPreset = "balanced";
 
+export type ArchiveSpreadPreset = "variety" | "balanced" | "deep";
+
+export const ARCHIVE_SPREAD_PRESETS: ReadonlyArray<{
+  hint: string;
+  id: ArchiveSpreadPreset;
+  label: string;
+}> = [
+  {
+    id: "variety",
+    label: "Vielfalt",
+    hint: "Bis zu 30 Alben · je 1 Titel.",
+  },
+  {
+    id: "balanced",
+    label: "Ausgewogen",
+    hint: "Mix aus Breite und Tiefe · bis zu 3 Titel pro Album.",
+  },
+  {
+    id: "deep",
+    label: "Album vertiefen",
+    hint: "Wenige Alben, dafür bis zu 4 Titel pro Album.",
+  },
+];
+
+export const DEFAULT_ARCHIVE_SPREAD_PRESET: ArchiveSpreadPreset = "balanced";
+
+/** Helper copy under the archive spread preset chips. */
+export function archiveSpreadHint(preset: ArchiveSpreadPreset): string {
+  const match = ARCHIVE_SPREAD_PRESETS.find((entry) => entry.id === preset);
+  return match?.hint ?? "";
+}
+
 /** Maximum archive pool size accepted by POST /v1/playlists/export. */
 export const PLAYLIST_ARCHIVE_LIMIT_MAX = 1000;
 

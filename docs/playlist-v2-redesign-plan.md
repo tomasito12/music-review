@@ -119,7 +119,7 @@ Expand options (1 / 2 / 4 / 8 / 12 / 20), show estimated pool size, explain fall
 4. Remove mosaic, compact success header (F1)
 5. Thumbnail size + initials fallback (F3)
 
-### Phase 3 — Backend album-spread logic
+### Phase 3 — Backend album-spread logic ✅ done
 
 1. Per-album track caps in `playlist_builder.py` (C)
 2. API schema + service wiring
@@ -181,3 +181,4 @@ After v2, a tester should answer **yes** to:
 | 2026-07-03 | Plan | Initial v2 redesign plan from PR feedback doc |
 | 2026-07-03 | Phase 1 | Quick wins: export flow, form collapse, copy fixes |
 | 2026-07-03 | Phase 2 | Mood presets, update-round chips, pool chips only, mosaic removed, initials |
+| 2026-07-03 | Phase 3 | Album-spread backend rules, API field, year/label in export rows |

@@ -3,7 +3,7 @@ import { useEffect, useState, type ReactElement } from "react";
 import type { ArtistImageData } from "../../lib/artistImageApi";
 import { artistInitials } from "../../lib/artistInitials";
 import type { PlaylistExportItem } from "../../lib/playlistExport";
-import { playlistReviewUrl } from "../../lib/playlistResults";
+import { playlistReviewUrl, playlistTrackAsideParts } from "../../lib/playlistResults";
 
 import { ArtistListThumbnail } from "../ArtistListThumbnail";
 
@@ -22,13 +22,17 @@ export function PlaylistTrackRow({
   const [thumbnailVisible, setThumbnailVisible] = useState(artistImage !== null);
   const reviewUrl = playlistReviewUrl(item.review_id);
   const showThumbnail = artistImage !== null && thumbnailVisible;
+  const aside = playlistTrackAsideParts(item);
+  const hasAside = aside.year !== null || aside.label !== null;
 
   useEffect(() => {
     setThumbnailVisible(artistImage !== null);
   }, [artistImage]);
 
   return (
-    <article className="playlist-track-row">
+    <article
+      className={`playlist-track-row${hasAside ? " playlist-track-row-with-aside" : ""}`}
+    >
       <div aria-label={`Titel ${index + 1}`} className="rank">
         <span>{(index + 1).toString().padStart(2, "0")}</span>
       </div>
@@ -58,6 +62,12 @@ export function PlaylistTrackRow({
           Zur Rezension
         </a>
       </div>
+      {hasAside && (
+        <div className="playlist-track-aside">
+          {aside.year !== null && <span className="playlist-track-year">{aside.year}</span>}
+          {aside.label !== null && <span className="playlist-track-label">{aside.label}</span>}
+        </div>
+      )}
     </article>
   );
 }

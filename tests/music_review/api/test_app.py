@@ -29,8 +29,24 @@ class FakeCorpusProvider:
     def __init__(self) -> None:
         """Build a tiny corpus with affinities and tracklists."""
         self._reviews = [
-            _review(1, artist="Alpha", album="First", track_title="Spark", rating=9),
-            _review(2, artist="Beta", album="Second", track_title="Drift", rating=7),
+            _review(
+                1,
+                artist="Alpha",
+                album="First",
+                track_title="Spark",
+                rating=9,
+                labels=["Tiny Label"],
+                release_year=2020,
+            ),
+            _review(
+                2,
+                artist="Beta",
+                album="Second",
+                track_title="Drift",
+                rating=7,
+                labels=["Other Label"],
+                release_year=2019,
+            ),
         ]
 
     def reviews(self) -> Sequence[Review]:
@@ -109,6 +125,8 @@ def _review(
     album: str,
     track_title: str,
     rating: float,
+    labels: list[str] | None = None,
+    release_year: int = 2024,
 ) -> Review:
     """Build one fake review."""
     return Review(
@@ -118,9 +136,9 @@ def _review(
         album=album,
         text=f"{artist} {album} review text",
         rating=rating,
-        release_date=date(2024, 5, review_id),
-        release_year=2024,
-        labels=[],
+        release_date=date(release_year, 5, review_id),
+        release_year=release_year,
+        labels=labels or [],
         tracklist=[
             Track(number=1, title=track_title, is_highlight=True),
             Track(number=2, title=f"{track_title} Outro"),
@@ -308,7 +326,7 @@ def test_archive_recommendations_endpoint_ranks_profile_matches() -> None:
     assert payload["total"] == 2
     item = payload["items"][0]
     assert item["artist"] == "Alpha"
-    assert item["release_date"] == "2024-05-01"
+    assert item["release_date"] == "2020-05-01"
     assert item["score_display"].endswith("% Fit")
     assert item["playlist_available"] is True
     assert item["has_tracks"] is True
@@ -418,6 +436,30 @@ def test_playlist_export_endpoint_returns_tunemymusic_text() -> None:
     mbid_by_artist = {item["artist"]: item["artist_mbid"] for item in payload["items"]}
     assert mbid_by_artist["Alpha"] == "mbid-alpha"
     assert mbid_by_artist["Beta"] == "mbid-beta"
+
+
+def test_playlist_export_includes_review_metadata() -> None:
+    """Playlist export items expose release year and label from reviews."""
+    response = _client().post(
+        "/v1/playlists/export",
+        json={
+            "source": "archive",
+            "profile": _profile_payload(),
+            "playlist_name": "Metadata Playlist",
+            "target_count": 2,
+            "format": "txt",
+            "album_spread_mode": "variety",
+        },
+    )
+
+    assert response.status_code == 200
+    items = response.json()["items"]
+    assert len(items) == 2
+    by_artist = {item["artist"]: item for item in items}
+    assert by_artist["Alpha"]["release_year"] == 2020
+    assert by_artist["Alpha"]["label"] == "Tiny Label"
+    assert by_artist["Beta"]["release_year"] == 2019
+    assert by_artist["Beta"]["label"] == "Other Label"
 
 
 def test_playlist_export_accepts_large_update_round_selection() -> None:
