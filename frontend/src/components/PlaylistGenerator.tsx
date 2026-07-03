@@ -4,22 +4,28 @@ import type { ReactElement } from "react";
 import { PlaylistDualSlider } from "./playlist/PlaylistDualSlider";
 import { PlaylistTrackList } from "./playlist/PlaylistTrackList";
 import { TuneMyMusicGuide } from "./playlist/TuneMyMusicGuide";
-import { UPDATE_ROUND_OPTIONS } from "../lib/aktuellPage";
 import type { ApiClient } from "../lib/apiClient";
 import {
-  archiveAlbumLimitBounds,
   archivePoolChipLabel,
   archivePoolChipLimits,
   archivePoolSummary,
   clampArchiveAlbumLimit,
   clampTrackCount,
+  DEFAULT_NEWEST_MOOD_PRESET,
   defaultArchiveAlbumLimit,
+  NEWEST_MOOD_PRESETS,
+  newestMoodHint,
+  newestMoodToTasteFocus,
+  normalizePlaylistUpdateRounds,
   PLAYLIST_DEFAULT_TRACK_COUNT,
   PLAYLIST_TRACK_MAX,
   PLAYLIST_TRACK_MIN,
   PLAYLIST_TRACK_PRESETS,
+  PLAYLIST_UPDATE_ROUND_OPTIONS,
   playlistSuccessHeadline,
+  playlistUpdateRoundPoolHint,
   trackCountHint,
+  type NewestMoodPreset,
 } from "../lib/playlistForm";
 import { exportPlaylist, loadArchiveRecommendations } from "../lib/plattenradarApi";
 import type { TemporaryTasteProfile } from "../lib/plattenradarApi";
@@ -51,10 +57,12 @@ export function PlaylistGenerator({
   updateRounds: initialUpdateRounds,
 }: PlaylistGeneratorProps): ReactElement {
   const [source, setSource] = useState<RecommendationSource>(initialSource);
-  const [updateRounds, setUpdateRounds] = useState(initialUpdateRounds);
+  const [updateRounds, setUpdateRounds] = useState(() =>
+    normalizePlaylistUpdateRounds(initialUpdateRounds),
+  );
   const [trackCount, setTrackCount] = useState(PLAYLIST_DEFAULT_TRACK_COUNT);
   const [customTrackCount, setCustomTrackCount] = useState(false);
-  const [newestTasteFocus, setNewestTasteFocus] = useState(0.25);
+  const [newestMood, setNewestMood] = useState<NewestMoodPreset>(DEFAULT_NEWEST_MOOD_PRESET);
   const [archiveDepth, setArchiveDepth] = useState(0.35);
   const [archivePoolSize, setArchivePoolSize] = useState<number | null>(null);
   const [archiveAlbumLimit, setArchiveAlbumLimit] = useState(200);
@@ -74,7 +82,7 @@ export function PlaylistGenerator({
   }, [initialSource]);
 
   useEffect(() => {
-    setUpdateRounds(initialUpdateRounds);
+    setUpdateRounds(normalizePlaylistUpdateRounds(initialUpdateRounds));
   }, [initialUpdateRounds]);
 
   useEffect(() => {
@@ -144,7 +152,7 @@ export function PlaylistGenerator({
           profile,
           name: playlistName,
           targetCount: trackCount,
-          newestTasteFocus,
+          newestTasteFocus: newestMoodToTasteFocus(newestMood),
           archiveDepth,
           archiveAlbumLimit,
           updateRounds,
@@ -168,7 +176,7 @@ export function PlaylistGenerator({
       archiveAlbumLimit,
       archiveDepth,
       name,
-      newestTasteFocus,
+      newestMood,
       profile,
       source,
       trackCount,
@@ -216,10 +224,8 @@ export function PlaylistGenerator({
   const archivePoolReady = archivePoolSize !== null && archivePoolSize > 0;
   const archiveChips =
     archivePoolSize === null ? [] : archivePoolChipLimits(archivePoolSize);
-  const archiveBounds =
-    archivePoolSize === null
-      ? { min: 0, max: 0 }
-      : archiveAlbumLimitBounds(archivePoolSize);
+  const archiveBoundsMax =
+    archivePoolSize === null ? 0 : archivePoolChipLimits(archivePoolSize).at(-1) ?? 0;
   const txtContent =
     exportResult === null || exportResult.items.length === 0
       ? ""
@@ -266,32 +272,45 @@ export function PlaylistGenerator({
       </fieldset>
 
       {source === "aktuell" && (
-        <label>
-          Zeitraum
-          <select
-            onChange={(event) => setUpdateRounds(event.target.value)}
-            value={updateRounds}
-          >
-            {UPDATE_ROUND_OPTIONS.map((option) => (
-              <option key={option.value} value={option.value}>
+        <fieldset className="playlist-fieldset">
+          <legend>Zeitraum</legend>
+          <div className="filter-segmented playlist-update-round-chips">
+            {PLAYLIST_UPDATE_ROUND_OPTIONS.map((option) => (
+              <button
+                className={updateRounds === option.value ? "selected" : undefined}
+                key={option.value}
+                onClick={() => {
+                  setUpdateRounds(option.value);
+                }}
+                type="button"
+              >
                 {option.label}
-              </option>
+              </button>
             ))}
-          </select>
-        </label>
+          </div>
+          <p className="field-hint">{playlistUpdateRoundPoolHint(updateRounds)}</p>
+        </fieldset>
       )}
 
       {source === "aktuell" && (
-        <div className="playlist-fieldset">
-          <span className="playlist-field-label">Fokus</span>
-          <PlaylistDualSlider
-            ariaLabel="Fokus oder Entdecken bei Neuheiten"
-            leftLabel="Entdecken"
-            onChange={setNewestTasteFocus}
-            rightLabel="Fokus"
-            value={newestTasteFocus}
-          />
-        </div>
+        <fieldset className="playlist-fieldset">
+          <legend>Auswahl-Stil</legend>
+          <div className="filter-segmented">
+            {NEWEST_MOOD_PRESETS.map((preset) => (
+              <button
+                className={newestMood === preset.id ? "selected" : undefined}
+                key={preset.id}
+                onClick={() => {
+                  setNewestMood(preset.id);
+                }}
+                type="button"
+              >
+                {preset.label}
+              </button>
+            ))}
+          </div>
+          <p className="field-hint">{newestMoodHint(newestMood)}</p>
+        </fieldset>
       )}
 
       {source === "entdecken" && (
@@ -306,42 +325,20 @@ export function PlaylistGenerator({
                 {archivePoolSummary(archivePoolSize, archiveAlbumLimit)}
               </p>
               {archivePoolReady && (
-                <>
-                  <div className="filter-segmented playlist-pool-chips">
-                    {archiveChips.map((chipValue) => (
-                      <button
-                        className={
-                          archiveAlbumLimit === chipValue ? "selected" : undefined
-                        }
-                        key={chipValue}
-                        onClick={() => {
-                          setArchiveAlbumLimit(chipValue);
-                        }}
-                        type="button"
-                      >
-                        {archivePoolChipLabel(
-                          chipValue,
-                          archivePoolSize,
-                          archiveBounds.max,
-                        )}
-                      </button>
-                    ))}
-                  </div>
-                  <input
-                    aria-label="Wie viele Top-Alben"
-                    className="playlist-dual-slider-input"
-                    max={archiveBounds.max}
-                    min={archiveBounds.min}
-                    onChange={(event) => {
-                      setArchiveAlbumLimit(
-                        clampArchiveAlbumLimit(archivePoolSize, Number(event.target.value)),
-                      );
-                    }}
-                    step={1}
-                    type="range"
-                    value={archiveAlbumLimit}
-                  />
-                </>
+                <div className="filter-segmented playlist-pool-chips">
+                  {archiveChips.map((chipValue) => (
+                    <button
+                      className={archiveAlbumLimit === chipValue ? "selected" : undefined}
+                      key={chipValue}
+                      onClick={() => {
+                        setArchiveAlbumLimit(chipValue);
+                      }}
+                      type="button"
+                    >
+                      {archivePoolChipLabel(chipValue, archivePoolSize, archiveBoundsMax)}
+                    </button>
+                  ))}
+                </div>
               )}
             </>
           )}

@@ -8,8 +8,13 @@ import {
   clampArchiveAlbumLimit,
   clampTrackCount,
   defaultArchiveAlbumLimit,
+  newestMoodHint,
+  newestMoodToTasteFocus,
+  normalizePlaylistUpdateRounds,
   playlistSourceContextLine,
   playlistSuccessHeadline,
+  playlistUpdateRoundLabel,
+  playlistUpdateRoundPoolHint,
   trackCountHint,
 } from "./playlistForm";
 
@@ -106,10 +111,46 @@ describe("playlistSuccessHeadline", () => {
   });
 });
 
+describe("playlistUpdateRoundLabel", () => {
+  it("labels single and multi-round windows", () => {
+    expect(playlistUpdateRoundLabel(1)).toBe("Letzte Runde");
+    expect(playlistUpdateRoundLabel(4)).toBe("Letzte 4");
+  });
+});
+
+describe("normalizePlaylistUpdateRounds", () => {
+  it("keeps supported values and snaps unknown values", () => {
+    expect(normalizePlaylistUpdateRounds("8")).toBe("8");
+    expect(normalizePlaylistUpdateRounds("3")).toBe("2");
+  });
+});
+
+describe("newestMoodToTasteFocus", () => {
+  it("maps presets to taste focus values", () => {
+    expect(newestMoodToTasteFocus("variety")).toBe(0);
+    expect(newestMoodToTasteFocus("balanced")).toBe(0.25);
+    expect(newestMoodToTasteFocus("focused")).toBe(1);
+  });
+});
+
+describe("newestMoodHint", () => {
+  it("returns helper copy for each preset", () => {
+    expect(newestMoodHint("focused")).toContain("Musikprofil");
+  });
+});
+
+describe("playlistUpdateRoundPoolHint", () => {
+  it("describes the estimated fallback pool", () => {
+    expect(playlistUpdateRoundPoolHint("4")).toBe(
+      "~80 Reviews (geschätzt, je ~20 pro Runde).",
+    );
+  });
+});
+
 describe("playlistSourceContextLine", () => {
   it("describes newest and archive entry context", () => {
     expect(playlistSourceContextLine("aktuell", "4")).toBe(
-      "Aus deinen Neuheiten · Letzte 4 Update-Runden",
+      "Aus deinen Neuheiten · Letzte 4",
     );
     expect(playlistSourceContextLine("entdecken", "1")).toBe(
       "Aus dem Plattentests-Archiv",

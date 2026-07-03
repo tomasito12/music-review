@@ -2439,6 +2439,10 @@ p {
   margin-top: 0.15rem;
 }
 
+.playlist-update-round-chips {
+  flex-wrap: wrap;
+}
+
 .playlist-dual-slider {
   display: grid;
   gap: 0.35rem;
@@ -2606,7 +2610,7 @@ p {
 
 .playlist-track-row {
   display: grid;
-  grid-template-columns: 2.35rem minmax(0, 1fr);
+  grid-template-columns: 2.35rem 3rem minmax(0, 1fr);
   gap: 0.75rem;
   align-items: start;
   padding: 0.8rem 0.95rem;
@@ -2616,14 +2620,33 @@ p {
   box-shadow: 0 2px 10px rgba(23, 32, 51, 0.04);
 }
 
-.playlist-track-row-with-thumbnail {
-  grid-template-columns: 2.35rem 4.5rem minmax(0, 1fr);
+.playlist-track-media {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 3rem;
+  height: 3rem;
 }
 
 .playlist-track-row .recommendation-card-thumbnail {
-  width: 4.5rem;
-  height: 4.5rem;
+  width: 3rem;
+  height: 3rem;
   border-radius: 10px;
+  object-fit: cover;
+}
+
+.playlist-track-initials {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 3rem;
+  height: 3rem;
+  border-radius: 10px;
+  background: rgba(196, 58, 49, 0.12);
+  color: var(--accent);
+  font-size: 0.82rem;
+  font-weight: 700;
+  letter-spacing: 0.03em;
 }
 
 .playlist-track-main {
@@ -2939,13 +2962,20 @@ select {
     width: 100%;
   }
 
-  .playlist-track-row,
-  .playlist-track-row-with-thumbnail {
-    grid-template-columns: 2rem minmax(0, 1fr);
+  .playlist-track-row {
+    grid-template-columns: 2rem 2.75rem minmax(0, 1fr);
+    gap: 0.65rem;
   }
 
-  .playlist-track-row-with-thumbnail .recommendation-card-thumbnail {
-    display: none;
+  .playlist-track-media {
+    width: 2.75rem;
+    height: 2.75rem;
+  }
+
+  .playlist-track-row .recommendation-card-thumbnail,
+  .playlist-track-initials {
+    width: 2.75rem;
+    height: 2.75rem;
   }
 
   .highlight-tile {

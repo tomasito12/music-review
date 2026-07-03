@@ -99,7 +99,7 @@ Expand options (1 / 2 / 4 / 8 / 12 / 20), show estimated pool size, explain fall
 
 ## Phased Delivery
 
-### Phase 1 — Quick wins (frontend-only) ✅ in progress
+### Phase 1 — Quick wins (frontend-only) ✅ done
 
 1. Remove context line layout jump (A1)
 2. Export button grouping + mobile layout (E)
@@ -111,11 +111,11 @@ Expand options (1 / 2 / 4 / 8 / 12 / 20), show estimated pool size, explain fall
 
 **Exit criteria:** PO re-test mobile + desktop; Playwright screenshots updated.
 
-### Phase 2 — Control redesign
+### Phase 2 — Control redesign ✅ done
 
-1. Neuheiten mood presets (B)
-2. Zeitraum expansion + fallback copy (D)
-3. Archiv pool control simplification (A5)
+1. Neuheiten mood presets (B) — Vielfalt / Ausgewogen / Stark fokussiert
+2. Zeitraum expansion + fallback copy (D) — chips 1/2/4/8/12/20
+3. Archiv pool control simplification (A5) — chips only, slider removed
 4. Remove mosaic, compact success header (F1)
 5. Thumbnail size + initials fallback (F3)
 
@@ -180,3 +180,4 @@ After v2, a tester should answer **yes** to:
 |-------|-------|----------|
 | 2026-07-03 | Plan | Initial v2 redesign plan from PR feedback doc |
 | 2026-07-03 | Phase 1 | Quick wins: export flow, form collapse, copy fixes |
+| 2026-07-03 | Phase 2 | Mood presets, update-round chips, pool chips only, mosaic removed, initials |
