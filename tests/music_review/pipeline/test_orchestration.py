@@ -125,6 +125,39 @@ def test_in_process_runs_enrichment_from_first_new_id(
     assert captured["min_id"] == 11
 
 
+def test_in_process_verifies_update_batch_after_scrape(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Production in-process scrape persists update batches for later pool selection."""
+    data_dir = tmp_path / "data"
+    data_dir.mkdir(exist_ok=True)
+    monkeypatch.setenv("MUSIC_REVIEW_PROJECT_ROOT", str(tmp_path))
+    _write_review(data_dir / "reviews.jsonl", 10)
+    batches_path = data_dir / "update_batches.jsonl"
+
+    def fake_scrape_in_process(_config: PipelineConfig) -> ScrapeResult:
+        return _scrape_result([11, 12])
+
+    monkeypatch.setattr(orchestration, "scrape_in_process", fake_scrape_in_process)
+    monkeypatch.setattr(orchestration, "run_enrichment_steps", lambda *_a, **_k: 0)
+
+    cfg = replace(
+        _config(tmp_path, exit_if_no_new_reviews=True),
+        reviews_path=data_dir / "reviews.jsonl",
+        metadata_path=data_dir / "metadata.jsonl",
+        artist_genres_path=data_dir / "artist_genres.json",
+        metadata_imputed_path=data_dir / "metadata_imputed.jsonl",
+        dq_output_path=data_dir / "pipeline_health_report.json",
+    )
+    assert run_pipeline_update(cfg, scrape_mode="in_process") == 0
+
+    assert batches_path.is_file()
+    last_line = batches_path.read_text(encoding="utf-8").strip().splitlines()[-1]
+    batches = json.loads(last_line)
+    assert batches["review_ids"] == [11, 12]
+
+
 def test_run_enrichment_steps_fetches_artist_images_when_enabled(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,

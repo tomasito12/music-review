@@ -30,25 +30,25 @@ describe("archiveAlbumLimitBounds", () => {
   });
 
   it("caps the slider at the API archive limit", () => {
-    expect(archiveAlbumLimitBounds(6236)).toEqual({ min: 20, max: 1000 });
+    expect(archiveAlbumLimitBounds(6236)).toEqual({ min: 20, max: 6236 });
   });
 });
 
 describe("defaultArchiveAlbumLimit", () => {
-  it("caps at 200 albums by default", () => {
-    expect(defaultArchiveAlbumLimit(347)).toBe(200);
+  it("caps at 100 albums by default", () => {
+    expect(defaultArchiveAlbumLimit(347)).toBe(100);
     expect(defaultArchiveAlbumLimit(45)).toBe(45);
   });
 });
 
 describe("archivePoolChipLimits", () => {
   it("includes relative chips and the full pool", () => {
-    expect(archivePoolChipLimits(347)).toEqual([50, 200, 347]);
-    expect(archivePoolChipLimits(120)).toEqual([50, 120]);
+    expect(archivePoolChipLimits(347)).toEqual([50, 100, 250, 347]);
+    expect(archivePoolChipLimits(120)).toEqual([50, 100, 120]);
   });
 
-  it("caps the largest chip at the API archive limit", () => {
-    expect(archivePoolChipLimits(6236)).toEqual([50, 200, 1000]);
+  it("caps the largest chip at the full matching pool", () => {
+    expect(archivePoolChipLimits(6236)).toEqual([50, 100, 250, 500, 750, 6236]);
   });
 });
 
@@ -61,14 +61,18 @@ describe("clampArchiveAlbumLimit", () => {
 
 describe("archivePoolSummary", () => {
   it("describes the personalized archive pool", () => {
-    expect(archivePoolSummary(347, 200)).toBe(
-      "347 Alben passen zu deinem Profil — Playlist aus den Top 200.",
+    expect(archivePoolSummary(347, 100)).toBe(
+      "347 Alben passen zu deinem Profil — Playlist aus den Top 100.",
     );
   });
 
-  it("describes capped pools above the API archive limit", () => {
-    expect(archivePoolSummary(6236, 1000)).toBe(
-      "6236 Alben passen zu deinem Profil — Playlist aus den Top 1000.",
+  it("describes very large pools with optional technical cap", () => {
+    expect(archivePoolSummary(25000, 20000)).toContain("technisches Maximum");
+  });
+
+  it("offers all albums when the pool fits within the API cap", () => {
+    expect(archivePoolSummary(5341, 5341)).toBe(
+      "5.341 Alben passen zu deinem Profil — Playlist aus allen.",
     );
   });
 });
@@ -89,16 +93,12 @@ describe("trackCountHint", () => {
 });
 
 describe("archivePoolChipLabel", () => {
-  it("labels capped pools with Bis 1000", () => {
-    expect(archivePoolChipLabel(1000, 6236, 1000)).toBe("Bis 1000");
-  });
-
-  it("labels full pools within the API limit as Alle", () => {
-    expect(archivePoolChipLabel(347, 347, 347)).toBe("Alle");
+  it("labels the full pool chip as Alle", () => {
+    expect(archivePoolChipLabel(5341, 5341, 5341)).toBe("Alle");
   });
 
   it("returns numeric labels for intermediate chips", () => {
-    expect(archivePoolChipLabel(200, 6236, 1000)).toBe("200");
+    expect(archivePoolChipLabel(250, 5341, 5341)).toBe("250");
   });
 });
 
@@ -108,15 +108,15 @@ describe("playlistSuccessHeadline", () => {
       "Deine Playlist ist fertig — 30 Titel aus deinen Neuheiten.",
     );
     expect(playlistSuccessHeadline("entdecken", 12)).toBe(
-      "Deine Playlist ist fertig — 12 Titel aus dem Archiv.",
+      "Deine Playlist ist fertig — 12 Titel aus Entdecken.",
     );
   });
 });
 
 describe("archiveSpreadHint", () => {
-  it("returns helper copy for archive spread presets", () => {
-    expect(archiveSpreadHint("variety")).toContain("je 1 Titel");
-    expect(archiveSpreadHint("deep")).toContain("4 Titel");
+  it("returns track-count-aware helper copy for archive spread presets", () => {
+    expect(archiveSpreadHint("variety", 50)).toContain("50 Alben");
+    expect(archiveSpreadHint("deep", 50)).toContain("Top 2–3");
   });
 });
 
@@ -136,30 +136,30 @@ describe("normalizePlaylistUpdateRounds", () => {
 
 describe("isNewestMoodPresetSelected", () => {
   it("matches preset taste-focus values within a small tolerance", () => {
-    expect(isNewestMoodPresetSelected(0.25, "balanced")).toBe(true);
+    expect(isNewestMoodPresetSelected(0.5, "balanced")).toBe(true);
     expect(isNewestMoodPresetSelected(0.4, "balanced")).toBe(false);
   });
 });
 
 describe("newestMoodToTasteFocus", () => {
-  it("maps presets to taste focus values", () => {
+  it("maps presets to taste focus values aligned with Streamlit exponents", () => {
     expect(newestMoodToTasteFocus("variety")).toBe(0);
-    expect(newestMoodToTasteFocus("balanced")).toBe(0.25);
+    expect(newestMoodToTasteFocus("balanced")).toBe(0.5);
     expect(newestMoodToTasteFocus("focused")).toBe(1);
   });
 });
 
 describe("newestMoodHint", () => {
   it("returns helper copy for each preset", () => {
-    expect(newestMoodHint("focused")).toContain("Musikprofil");
+    expect(newestMoodHint("variety")).toContain("zusätzlich");
+    expect(newestMoodHint("focused")).toContain("Titel pro Album");
   });
 });
 
 describe("playlistUpdateRoundPoolHint", () => {
-  it("describes the estimated fallback pool", () => {
-    expect(playlistUpdateRoundPoolHint("4")).toBe(
-      "~80 Reviews (geschätzt, je ~20 pro Runde).",
-    );
+  it("describes batch history and fallback pool sizing", () => {
+    expect(playlistUpdateRoundPoolHint("1")).toContain("exakt");
+    expect(playlistUpdateRoundPoolHint("4")).toContain("geschätzt ~80");
   });
 });
 

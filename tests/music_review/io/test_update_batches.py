@@ -8,6 +8,7 @@ from pathlib import Path
 from music_review.io.update_batches import (
     UpdateBatch,
     append_update_batch,
+    ensure_scrape_batch_recorded,
     load_update_batches,
     review_ids_for_last_n_batches,
     update_batch_from_raw,
@@ -53,3 +54,30 @@ def test_review_ids_for_last_n_batches_uses_most_recent_runs() -> None:
 
     assert review_ids_for_last_n_batches(history, 1) == frozenset({5})
     assert review_ids_for_last_n_batches(history, 2) == frozenset({3, 4, 5})
+
+
+def test_ensure_scrape_batch_recorded_skips_duplicate_latest_batch(
+    tmp_path: Path,
+) -> None:
+    """Repeated scrape finalization does not append the same ids twice."""
+    path = tmp_path / "update_batches.jsonl"
+
+    first = ensure_scrape_batch_recorded([11, 12], path=path)
+    second = ensure_scrape_batch_recorded([12, 11], path=path)
+
+    assert first is not None
+    assert second is not None
+    assert first.review_ids == (11, 12)
+    assert second.review_ids == (11, 12)
+    assert len(load_update_batches(path)) == 1
+
+
+def test_ensure_scrape_batch_recorded_appends_new_scrape_run(tmp_path: Path) -> None:
+    """A new scrape run with different ids appends another batch row."""
+    path = tmp_path / "update_batches.jsonl"
+
+    ensure_scrape_batch_recorded([11, 12], path=path)
+    ensure_scrape_batch_recorded([13], path=path)
+
+    batches = load_update_batches(path)
+    assert [batch.review_ids for batch in batches] == [(11, 12), (13,)]

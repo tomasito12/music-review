@@ -88,6 +88,11 @@ def load_update_batches(path: str | Path | None = None) -> tuple[UpdateBatch, ..
     return tuple(batches)
 
 
+def _unique_review_ids(review_ids: Sequence[int]) -> tuple[int, ...]:
+    """Return review ids in first-seen order without duplicates."""
+    return tuple(dict.fromkeys(int(review_id) for review_id in review_ids))
+
+
 def append_update_batch(
     review_ids: Sequence[int],
     *,
@@ -95,7 +100,7 @@ def append_update_batch(
     run_at: datetime | None = None,
 ) -> UpdateBatch | None:
     """Append one scrape batch when new review ids were discovered."""
-    unique_ids = tuple(dict.fromkeys(int(review_id) for review_id in review_ids))
+    unique_ids = _unique_review_ids(review_ids)
     if not unique_ids:
         return None
 
@@ -107,6 +112,24 @@ def append_update_batch(
     file_path.parent.mkdir(parents=True, exist_ok=True)
     append_jsonl_line(file_path, update_batch_to_raw(batch))
     return batch
+
+
+def ensure_scrape_batch_recorded(
+    review_ids: Sequence[int],
+    *,
+    path: str | Path | None = None,
+) -> UpdateBatch | None:
+    """Persist a scrape batch unless the latest stored batch already matches."""
+    unique_ids = _unique_review_ids(review_ids)
+    if not unique_ids:
+        return None
+
+    file_path = Path(update_batches_path() if path is None else path)
+    batches = load_update_batches(file_path)
+    if batches and set(batches[-1].review_ids) == set(unique_ids):
+        return batches[-1]
+
+    return append_update_batch(unique_ids, path=file_path)
 
 
 def review_ids_for_last_n_batches(

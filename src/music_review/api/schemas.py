@@ -43,7 +43,7 @@ class PlaylistExportRequest(ApiModel):
     format: PlaylistExportFormat = "txt"
     update_rounds: int = Field(default=1, ge=1, le=20)
     newest_count: int | None = Field(default=None, ge=1, le=200)
-    archive_limit: int = Field(default=200, ge=1, le=1000)
+    archive_limit: int = Field(default=200, ge=1, le=20000)
 
 
 class HealthResponse(ApiModel):

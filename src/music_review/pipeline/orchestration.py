@@ -21,6 +21,7 @@ from music_review.data_access.paths import (
     DATA_REVIEWS,
 )
 from music_review.io.reviews_jsonl import review_line_count_and_max_id
+from music_review.io.update_batches import ensure_scrape_batch_recorded
 from music_review.pipeline.scraper.service import ScrapeResult, scrape_until_gap
 
 logger = logging.getLogger(__name__)
@@ -292,6 +293,14 @@ def run_pipeline_update(
     if not config.skip_reviews:
         if scrape_mode == "in_process":
             scraper_result = scrape_in_process(config)
+            if scraper_result.scraped_ids:
+                batch = ensure_scrape_batch_recorded(scraper_result.scraped_ids)
+                if batch is not None:
+                    logger.info(
+                        "Verified update batch with %s reviews at %s.",
+                        batch.count,
+                        batch.run_at.isoformat(),
+                    )
             if not scraper_result.scraped_ids:
                 if config.exit_if_no_new_reviews:
                     logger.info(

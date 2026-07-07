@@ -26,6 +26,7 @@ import {
   PLAYLIST_TRACK_MIN,
   PLAYLIST_TRACK_PRESETS,
   PLAYLIST_UPDATE_ROUND_OPTIONS,
+  playlistShortfallHint,
   playlistSuccessHeadline,
   playlistUpdateRoundPoolHint,
   trackCountHint,
@@ -277,8 +278,8 @@ export function PlaylistGenerator({
             }}
             type="button"
           >
-            Archiv
-            <small>Plattentests-Archiv</small>
+            Entdecken
+            <small>Playlist aus dem Archiv</small>
           </button>
         </div>
       </fieldset>
@@ -306,7 +307,7 @@ export function PlaylistGenerator({
 
       {source === "aktuell" && (
         <fieldset className="playlist-fieldset">
-          <legend>Auswahl-Stil</legend>
+          <legend>Passung zum Musikprofil</legend>
           <div className="filter-segmented">
             {NEWEST_MOOD_PRESETS.map((preset) => (
               <button
@@ -382,7 +383,7 @@ export function PlaylistGenerator({
               </button>
             ))}
           </div>
-          <p className="field-hint">{archiveSpreadHint(archiveSpread)}</p>
+          <p className="field-hint">{archiveSpreadHint(archiveSpread, trackCount)}</p>
         </fieldset>
       )}
 
@@ -450,12 +451,12 @@ export function PlaylistGenerator({
         </label>
         {source === "aktuell" && (
           <div className="playlist-fieldset">
-            <span className="playlist-field-label">Auswahl-Stil fein einstellen</span>
+            <span className="playlist-field-label">Passung fein einstellen</span>
             <PlaylistDualSlider
-              ariaLabel="Feine Einstellung zwischen Entdecken und Fokus"
-              leftLabel="Entdecken"
+              ariaLabel="Feine Einstellung zwischen breiterem Mix und enger Profil-Passung"
+              leftLabel="Mehr Streuung"
               onChange={setNewestTasteFocus}
-              rightLabel="Fokus"
+              rightLabel="Eng am Profil"
               value={newestTasteFocus}
             />
           </div>
@@ -584,8 +585,12 @@ export function PlaylistGenerator({
             <p className="playlist-success-name">{name}</p>
             {exportResult.items.length < trackCount && (
               <p className="playlist-warning">
-                Es wurden {exportResult.items.length} von {trackCount} gewünschten Titeln
-                gefunden (wenige eindeutige Tracks im Pool).
+                {playlistShortfallHint(
+                  trackCount,
+                  exportResult.items.length,
+                  source,
+                  source === "entdecken" ? archiveSpread : undefined,
+                )}
               </p>
             )}
           </header>

@@ -60,6 +60,7 @@ class AlbumSpreadLimits:
 
     max_tracks_per_album: int
     max_distinct_albums: int | None = None
+    caps_by_pool_index: dict[int, int] | None = None
 
 
 @dataclass(slots=True)
@@ -275,18 +276,70 @@ def primary_review_label(review: Review) -> str | None:
     return None
 
 
-def album_spread_limits(mode: AlbumSpreadMode) -> AlbumSpreadLimits:
-    """Map UI archive spread presets to builder enforcement rules."""
+def album_spread_limits(
+    mode: AlbumSpreadMode,
+    *,
+    target_count: int,
+) -> AlbumSpreadLimits:
+    """Map UI archive spread presets to default builder enforcement rules."""
+    _ = target_count
     if mode == "variety":
         return AlbumSpreadLimits(max_tracks_per_album=1)
     if mode == "balanced":
         return AlbumSpreadLimits(max_tracks_per_album=3)
-    return AlbumSpreadLimits(max_tracks_per_album=4, max_distinct_albums=3)
+    return AlbumSpreadLimits(max_tracks_per_album=4)
+
+
+def _deep_cap_for_rank(rank: int) -> int:
+    """Graduated per-album cap for the deep spread preset (by score rank)."""
+    if rank <= 1:
+        return 4
+    if rank <= 3:
+        return 3
+    if rank <= 7:
+        return 2
+    return 1
+
+
+def _balanced_cap_for_rank(rank: int) -> int:
+    """Graduated per-album cap for the balanced spread preset (by score rank)."""
+    if rank <= 2:
+        return 3
+    if rank <= 11:
+        return 2
+    return 1
+
+
+def build_graduated_caps_by_pool_index(
+    mode: AlbumSpreadMode,
+    weights: list[float],
+) -> dict[int, int]:
+    """Assign per-pool-index track caps sorted by descending album weight."""
+    if not weights:
+        return {}
+    if mode == "variety":
+        return dict.fromkeys(range(len(weights)), 1)
+    ranked = sorted(range(len(weights)), key=lambda i: weights[i], reverse=True)
+    cap_for_rank = _balanced_cap_for_rank if mode == "balanced" else _deep_cap_for_rank
+    return {pool_idx: cap_for_rank(rank) for rank, pool_idx in enumerate(ranked)}
+
+
+def _spread_cap_for_pool_index(
+    album_idx: int,
+    spread_limits: AlbumSpreadLimits | None,
+) -> int | None:
+    """Return the active per-album track cap, if any."""
+    if spread_limits is None:
+        return None
+    if spread_limits.caps_by_pool_index is not None:
+        return spread_limits.caps_by_pool_index.get(album_idx, 1)
+    return spread_limits.max_tracks_per_album
 
 
 def _album_can_accept_more(
     review: Review,
     *,
+    album_idx: int,
     tracks_per_review_id: dict[int, int],
     albums_used: set[int],
     spread_limits: AlbumSpreadLimits | None,
@@ -295,8 +348,11 @@ def _album_can_accept_more(
     if spread_limits is None:
         return True
     review_id = int(review.id)
-    if tracks_per_review_id.get(review_id, 0) >= spread_limits.max_tracks_per_album:
+    cap = _spread_cap_for_pool_index(album_idx, spread_limits)
+    if cap is not None and tracks_per_review_id.get(review_id, 0) >= cap:
         return False
+    if spread_limits.caps_by_pool_index is not None:
+        return True
     return not (
         spread_limits.max_distinct_albums is not None
         and review_id not in albums_used
@@ -307,11 +363,17 @@ def _album_can_accept_more(
 def _cap_stratified_slot_plans(
     plans: list[StratifiedSlotPlan],
     max_tracks_per_album: int,
+    caps_by_pool_index: dict[int, int] | None = None,
 ) -> list[StratifiedSlotPlan]:
     """Limit per-album slot quotas before track picking starts."""
     capped: list[StratifiedSlotPlan] = []
-    for plan in plans:
-        quota = min(plan.quota, max_tracks_per_album)
+    for album_idx, plan in enumerate(plans):
+        per_album_cap = (
+            caps_by_pool_index.get(album_idx, max_tracks_per_album)
+            if caps_by_pool_index is not None
+            else max_tracks_per_album
+        )
+        quota = min(plan.quota, per_album_cap)
         floor_slots = min(plan.floor_slots, quota)
         remainder_extra_slots = max(0, quota - floor_slots)
         capped.append(
@@ -366,6 +428,7 @@ def next_album_index_with_capacity_cyclic(
         review = reviews[idx]
         if not _album_can_accept_more(
             review,
+            album_idx=idx,
             tracks_per_review_id=tracks_per_review_id,
             albums_used=albums_used,
             spread_limits=spread_limits,
@@ -497,7 +560,12 @@ def build_playlist_suggestions(
     albums_used: set[int] = set()
     spread_limits = None
     if album_spread_mode is not None:
-        spread_limits = album_spread_limits(album_spread_mode)
+        base_limits = album_spread_limits(album_spread_mode, target_count=target_count)
+        graduated_caps = build_graduated_caps_by_pool_index(album_spread_mode, weights)
+        spread_limits = AlbumSpreadLimits(
+            max_tracks_per_album=base_limits.max_tracks_per_album,
+            caps_by_pool_index=graduated_caps,
+        )
     score_weight_by_id = {
         int(r.id): float(w) for r, w in zip(reviews, weights, strict=True)
     }
@@ -517,6 +585,7 @@ def build_playlist_suggestions(
         strat_plans = _cap_stratified_slot_plans(
             strat_plans,
             spread_limits.max_tracks_per_album,
+            spread_limits.caps_by_pool_index,
         )
         slot_album_indices = []
         for album_idx, plan in enumerate(strat_plans):
@@ -587,6 +656,7 @@ def build_playlist_suggestions(
         review = reviews[album_idx]
         if not _album_can_accept_more(
             review,
+            album_idx=album_idx,
             tracks_per_review_id=tracks_per_review_id,
             albums_used=albums_used,
             spread_limits=spread_limits,
