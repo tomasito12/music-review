@@ -136,7 +136,7 @@ describe("normalizePlaylistUpdateRounds", () => {
 
 describe("isNewestMoodPresetSelected", () => {
   it("matches preset taste-focus values within a small tolerance", () => {
-    expect(isNewestMoodPresetSelected(0.25, "balanced")).toBe(true);
+    expect(isNewestMoodPresetSelected(0.5, "balanced")).toBe(true);
     expect(isNewestMoodPresetSelected(0.4, "balanced")).toBe(false);
   });
 });
