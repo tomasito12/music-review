@@ -10,7 +10,7 @@ from typing import Any
 
 from music_review.io.jsonl import append_jsonl_line
 from music_review.io.reviews_jsonl import review_to_raw
-from music_review.io.update_batches import append_update_batch
+from music_review.io.update_batches import ensure_scrape_batch_recorded
 from music_review.pipeline.scraper.client import (
     RateLimiter,
     ScraperClient,
@@ -207,7 +207,7 @@ def _finalize_corpus(
     else:
         logger.info("Done. Processed %s reviews.", result.processed)
         if result.scraped_ids:
-            batch = append_update_batch(result.scraped_ids)
+            batch = ensure_scrape_batch_recorded(result.scraped_ids)
             if batch is not None:
                 logger.info(
                     "Recorded update batch with %s reviews at %s.",

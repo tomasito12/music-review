@@ -56,7 +56,7 @@ from music_review.application.models import (
     TasteCommunityMapNode,
     TasteProfile,
 )
-from music_review.application.newest_review_pool import newest_reviews_for_update_rounds
+from music_review.application.newest_review_pool import resolve_newest_review_pool
 from music_review.application.newest_reviews_service import (
     NewestReviewsInputs,
     NewestReviewsService,
@@ -427,13 +427,15 @@ def create_app() -> FastAPI:
     ) -> RecommendationSet:
         """Return recommendations from the latest review batch."""
         profile = _resolve_profile(request.profile, conn, authorization)
-        rows = _new_review_rows(provider, request, profile)
+        rows, pool_mode = _new_review_rows(provider, request, profile)
         return _recommendation_set(
             source="new_reviews",
             rows=rows,
             limit=request.limit,
             offset=request.offset,
             artist_mbid_for_review=provider.artist_mbid_for_review,
+            newest_pool_mode=pool_mode,
+            newest_pool_size=len(rows),
         )
 
     @app.post("/v1/playlists/export", response_model=PlaylistExport)
@@ -530,9 +532,9 @@ def _new_review_rows(
     provider: CorpusProvider,
     request: NewReviewsRecommendationRequest,
     profile: TasteProfile,
-) -> list[dict[str, Any]]:
+) -> tuple[list[dict[str, Any]], Literal["update_batches", "review_count_fallback"]]:
     """Compute newest-review rows from provider data."""
-    newest = newest_reviews_for_update_rounds(
+    newest, pool_mode = resolve_newest_review_pool(
         provider.reviews(),
         request.update_rounds,
     )
@@ -550,16 +552,19 @@ def _new_review_rows(
     if rows is None:
         rows = [_unranked_new_review_row(review) for review in newest]
     selected_comms = selected_communities_from_profile(profile)
-    return [
-        _with_new_review_card_fields(
-            row,
-            affinity_by_review_id=affinity_by_id,
-            genre_labels=genre_labels,
-            comm_by_id=comm_by_id,
-            selected_community_ids=selected_comms,
-        )
-        for row in rows
-    ]
+    return (
+        [
+            _with_new_review_card_fields(
+                row,
+                affinity_by_review_id=affinity_by_id,
+                genre_labels=genre_labels,
+                comm_by_id=comm_by_id,
+                selected_community_ids=selected_comms,
+            )
+            for row in rows
+        ],
+        pool_mode,
+    )
 
 
 def _playlist_candidates(
@@ -577,7 +582,7 @@ def _playlist_candidates(
             offset=0,
             update_rounds=request.update_rounds,
         )
-        rows = _new_review_rows(provider, new_request, profile)
+        rows, _pool_mode = _new_review_rows(provider, new_request, profile)
         return _reviews_from_rows(rows), _ranked_playlist_rows(rows)
 
     archive_request = RecommendationRequest(
@@ -602,6 +607,8 @@ def _recommendation_set(
     offset: int,
     reviews_by_id: Mapping[int, Review] | None = None,
     artist_mbid_for_review: Callable[[int], str | None] | None = None,
+    newest_pool_mode: Literal["update_batches", "review_count_fallback"] | None = None,
+    newest_pool_size: int | None = None,
 ) -> RecommendationSet:
     """Map raw service rows into a paginated recommendation response."""
     total = len(rows)
@@ -612,6 +619,8 @@ def _recommendation_set(
         limit=limit,
         offset=offset,
         generated_at=datetime.now(UTC).isoformat(),
+        newest_pool_mode=newest_pool_mode,
+        newest_pool_size=newest_pool_size,
         items=tuple(
             _recommendation_from_row(
                 index + offset + 1,
