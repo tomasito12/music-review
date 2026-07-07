@@ -58,7 +58,14 @@ export function playlistApiSource(source: RecommendationSource): PlaylistApiSour
   return source === "entdecken" ? "archive" : "new_reviews";
 }
 
-/** Map newest-playlist taste slider to API weighting parameters. */
+/**
+ * Map newest-playlist taste focus to API weighting parameters.
+ *
+ * Mirrors Streamlit ``pages/playlist_section.py`` for Neuheiten: always
+ * ``stratified`` selection; taste slider only changes ``taste_exponent``
+ * (1.0 = etwas, 2.0 = mittel, 3.0 = stark). ``weighted_sample`` is reserved
+ * for archive playlists in Streamlit, not newest reviews.
+ */
 export function tasteSettingsForNewest(tasteFocus: number): {
   selectionStrategy: PlaylistSelectionStrategy;
   tasteExponent: number;
@@ -66,7 +73,7 @@ export function tasteSettingsForNewest(tasteFocus: number): {
   const clamped = Math.min(1, Math.max(0, tasteFocus));
   return {
     tasteExponent: 1 + clamped * 2,
-    selectionStrategy: clamped < 0.5 ? "stratified" : "weighted_sample",
+    selectionStrategy: "stratified",
   };
 }
 

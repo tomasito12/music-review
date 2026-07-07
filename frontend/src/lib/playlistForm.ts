@@ -44,7 +44,7 @@ export const NEWEST_MOOD_PRESETS: ReadonlyArray<{
     id: "balanced",
     label: "Ausgewogen",
     hint: "Überwiegend passend, mit etwas Abstand für Abwechslung.",
-    tasteFocus: 0.25,
+    tasteFocus: 0.5,
   },
   {
     id: "focused",

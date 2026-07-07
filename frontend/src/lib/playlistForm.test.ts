@@ -142,9 +142,9 @@ describe("isNewestMoodPresetSelected", () => {
 });
 
 describe("newestMoodToTasteFocus", () => {
-  it("maps presets to taste focus values", () => {
+  it("maps presets to taste focus values aligned with Streamlit exponents", () => {
     expect(newestMoodToTasteFocus("variety")).toBe(0);
-    expect(newestMoodToTasteFocus("balanced")).toBe(0.25);
+    expect(newestMoodToTasteFocus("balanced")).toBe(0.5);
     expect(newestMoodToTasteFocus("focused")).toBe(1);
   });
 });

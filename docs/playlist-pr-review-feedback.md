@@ -579,6 +579,7 @@ verankert. Nächster Schritt: PO-Re-Test auf Mobile und Desktop.
 | **Vielfalt-Hilfetext** | „Überraschungen“ / „weiter weg“ impliziert Ausschluss Naher | Neu: passende Neuheiten **plus** entferntere |
 | **Ausgewogen-Hilfetext** | „Bekanntes“ passt nicht bei Neuheiten | Neu: überwiegend passend, etwas Abstand |
 | **Stark fokussiert** | Mehrere Titel pro Album erwähnen | Hilfetext ergänzt |
+| **Passung-Slider wirkungslos** | Max. Fokus liefert noch viele unpassende Titel | Frontend nutzte fälschlich `weighted_sample`; an Streamlit angeglichen (`stratified` + Exponent 1–3) |
 | **Erweitert Abstand** | Playlist-Name zu nah am Folgeblock | CSS-Abstand erhöht |
 
 ---

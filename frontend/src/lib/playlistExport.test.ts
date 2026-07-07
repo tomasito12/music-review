@@ -99,7 +99,14 @@ describe("tasteSettingsForNewest", () => {
   it("favors focused playlists at the high end", () => {
     expect(tasteSettingsForNewest(1)).toEqual({
       tasteExponent: 3,
-      selectionStrategy: "weighted_sample",
+      selectionStrategy: "stratified",
+    });
+  });
+
+  it("uses stratified selection for mid-range focus", () => {
+    expect(tasteSettingsForNewest(0.5)).toEqual({
+      tasteExponent: 2,
+      selectionStrategy: "stratified",
     });
   });
 });
@@ -176,7 +183,7 @@ describe("buildPlaylistExportPayload", () => {
     expect(payload.source).toBe("new_reviews");
     expect(payload.update_rounds).toBe(4);
     expect(payload.taste_exponent).toBe(3);
-    expect(payload.selection_strategy).toBe("weighted_sample");
+    expect(payload.selection_strategy).toBe("stratified");
     expect(payload.album_spread_mode).toBeUndefined();
   });
 
