@@ -151,15 +151,15 @@ describe("newestMoodToTasteFocus", () => {
 
 describe("newestMoodHint", () => {
   it("returns helper copy for each preset", () => {
-    expect(newestMoodHint("focused")).toContain("Musikprofil");
+    expect(newestMoodHint("variety")).toContain("Musikprofil");
+    expect(newestMoodHint("focused")).toContain("Titel pro Album");
   });
 });
 
 describe("playlistUpdateRoundPoolHint", () => {
-  it("describes the estimated fallback pool", () => {
-    expect(playlistUpdateRoundPoolHint("4")).toBe(
-      "~80 Reviews (geschätzt, je ~20 pro Runde).",
-    );
+  it("describes batch history and fallback pool sizing", () => {
+    expect(playlistUpdateRoundPoolHint("1")).toContain("exakt");
+    expect(playlistUpdateRoundPoolHint("4")).toContain("geschätzt ~80");
   });
 });
 

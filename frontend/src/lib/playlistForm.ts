@@ -37,19 +37,19 @@ export const NEWEST_MOOD_PRESETS: ReadonlyArray<{
   {
     id: "variety",
     label: "Vielfalt",
-    hint: "Breite Streuung, mehr Überraschungen.",
+    hint: "Mehr Alben — auch weiter weg von deinem Musikprofil.",
     tasteFocus: 0,
   },
   {
     id: "balanced",
     label: "Ausgewogen",
-    hint: "Mix aus Bekanntem und Entdeckungen.",
+    hint: "Mix aus nahen und weiter entfernten Neuheiten.",
     tasteFocus: 0.25,
   },
   {
     id: "focused",
     label: "Stark fokussiert",
-    hint: "Nah an deinem Musikprofil.",
+    hint: "Nur passende Alben — dafür oft mehrere Titel pro Album.",
     tasteFocus: 1,
   },
 ];
@@ -177,7 +177,16 @@ export function newestMoodHint(preset: NewestMoodPreset): string {
 export function playlistUpdateRoundPoolHint(updateRounds: string): string {
   const rounds = Number(normalizePlaylistUpdateRounds(updateRounds));
   const estimated = Math.min(200, rounds * NEW_REVIEWS_PER_ROUND);
-  return `~${estimated} Reviews (geschätzt, je ~${NEW_REVIEWS_PER_ROUND} pro Runde).`;
+  if (rounds === 1) {
+    return (
+      "Mit Batch-Historie: alle Reviews des letzten Scrape-Laufs (exakt, z. B. 12). " +
+      `Ohne Historie: geschätzt ~${NEW_REVIEWS_PER_ROUND} neueste Reviews.`
+    );
+  }
+  return (
+    "Mit Batch-Historie: alle Reviews der gewählten Scrape-Läufe (exakt). " +
+    `Ohne Historie: geschätzt ~${estimated} (je ~${NEW_REVIEWS_PER_ROUND} pro Runde).`
+  );
 }
 
 /** Human-readable archive pool summary for the form. */

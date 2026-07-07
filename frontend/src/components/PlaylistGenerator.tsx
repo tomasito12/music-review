@@ -306,7 +306,7 @@ export function PlaylistGenerator({
 
       {source === "aktuell" && (
         <fieldset className="playlist-fieldset">
-          <legend>Auswahl-Stil</legend>
+          <legend>Passung zum Musikprofil</legend>
           <div className="filter-segmented">
             {NEWEST_MOOD_PRESETS.map((preset) => (
               <button
@@ -450,12 +450,12 @@ export function PlaylistGenerator({
         </label>
         {source === "aktuell" && (
           <div className="playlist-fieldset">
-            <span className="playlist-field-label">Auswahl-Stil fein einstellen</span>
+            <span className="playlist-field-label">Passung fein einstellen</span>
             <PlaylistDualSlider
-              ariaLabel="Feine Einstellung zwischen Entdecken und Fokus"
-              leftLabel="Entdecken"
+              ariaLabel="Feine Einstellung zwischen weiter weg und nah am Musikprofil"
+              leftLabel="Weiter weg"
               onChange={setNewestTasteFocus}
-              rightLabel="Fokus"
+              rightLabel="Nah am Profil"
               value={newestTasteFocus}
             />
           </div>

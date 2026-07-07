@@ -2463,6 +2463,10 @@ p {
   margin-top: 0.85rem;
 }
 
+.playlist-advanced-options .playlist-fieldset {
+  margin-top: 1.25rem;
+}
+
 .playlist-dual-slider {
   display: grid;
   gap: 0.35rem;
