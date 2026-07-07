@@ -131,7 +131,7 @@ def test_in_process_verifies_update_batch_after_scrape(
 ) -> None:
     """Production in-process scrape persists update batches for later pool selection."""
     data_dir = tmp_path / "data"
-    data_dir.mkdir()
+    data_dir.mkdir(exist_ok=True)
     monkeypatch.setenv("MUSIC_REVIEW_PROJECT_ROOT", str(tmp_path))
     _write_review(data_dir / "reviews.jsonl", 10)
     batches_path = data_dir / "update_batches.jsonl"

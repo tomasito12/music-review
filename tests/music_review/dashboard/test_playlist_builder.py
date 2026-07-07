@@ -525,21 +525,25 @@ def test_build_playlist_suggestions_deep_graduated_fills_large_targets() -> None
     reviews = [
         _review(
             review_id,
-            tracks=[Track(track_no, f"T{track_no}", is_highlight=True) for track_no in range(1, 9)],
+            artist=f"Artist {review_id}",
+            tracks=[
+                Track(track_no, f"T{review_id}_{track_no}", is_highlight=True)
+                for track_no in range(1, 9)
+            ],
         )
-        for review_id in range(1, 31)
+        for review_id in range(1, 37)
     ]
     items = build_playlist_suggestions(
         reviews=reviews,
-        weights=[1.0 / 30] * 30,
-        raw_scores=[1.0] * 30,
-        target_count=50,
+        weights=[1.0 / 36] * 36,
+        raw_scores=[1.0] * 36,
+        target_count=36,
         rng=random.Random(21),
         selection_strategy="stratified",
         album_spread_mode="deep",
     )
     counts = Counter(item.review_id for item in items)
-    assert len(items) == 50
+    assert len(items) == 36
     assert max(counts.values()) <= 4
     assert len(counts) > 3
 
@@ -548,14 +552,18 @@ def test_build_playlist_suggestions_deep_limits_album_breadth_and_depth() -> Non
     reviews = [
         _review(
             review_id,
-            tracks=[Track(1, f"T{index}", is_highlight=True) for index in range(6)],
+            artist=f"Artist {review_id}",
+            tracks=[
+                Track(index + 1, f"T{review_id}_{index}", is_highlight=True)
+                for index in range(6)
+            ],
         )
-        for review_id in range(1, 6)
+        for review_id in range(1, 7)
     ]
     items = build_playlist_suggestions(
         reviews=reviews,
-        weights=[0.2, 0.2, 0.2, 0.2, 0.2],
-        raw_scores=[1.0, 1.0, 1.0, 1.0, 1.0],
+        weights=[0.35, 0.2, 0.15, 0.12, 0.1, 0.08],
+        raw_scores=[0.9, 0.7, 0.6, 0.5, 0.4, 0.3],
         target_count=12,
         rng=random.Random(11),
         selection_strategy="stratified",
