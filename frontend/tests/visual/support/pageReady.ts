@@ -136,6 +136,16 @@ export async function waitForEntdeckenRanking(page: Page): Promise<void> {
   await waitForVisualLayoutStable(page);
 }
 
+/** Select a playlist source card on the generator form. */
+export async function selectPlaylistSource(
+  page: Page,
+  source: "aktuell" | "entdecken",
+): Promise<void> {
+  const subtitle =
+    source === "aktuell" ? "Neueste Rezensionen" : "Playlist aus dem Archiv";
+  await page.locator(".playlist-mode-grid .choice-card", { hasText: subtitle }).click();
+}
+
 /** Wait until the playlist generator form is ready for screenshots. */
 export async function waitForPlaylistForm(page: Page): Promise<void> {
   await page.getByRole("heading", { name: "Neue Playlist erzeugen" }).waitFor({
