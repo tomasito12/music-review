@@ -35,20 +35,20 @@ describe("archiveAlbumLimitBounds", () => {
 });
 
 describe("defaultArchiveAlbumLimit", () => {
-  it("caps at 200 albums by default", () => {
-    expect(defaultArchiveAlbumLimit(347)).toBe(200);
+  it("caps at 100 albums by default", () => {
+    expect(defaultArchiveAlbumLimit(347)).toBe(100);
     expect(defaultArchiveAlbumLimit(45)).toBe(45);
   });
 });
 
 describe("archivePoolChipLimits", () => {
   it("includes relative chips and the full pool", () => {
-    expect(archivePoolChipLimits(347)).toEqual([50, 200, 347]);
-    expect(archivePoolChipLimits(120)).toEqual([50, 120]);
+    expect(archivePoolChipLimits(347)).toEqual([50, 100, 250, 347]);
+    expect(archivePoolChipLimits(120)).toEqual([50, 100, 120]);
   });
 
   it("caps the largest chip at the API archive limit", () => {
-    expect(archivePoolChipLimits(6236)).toEqual([50, 200, 1000]);
+    expect(archivePoolChipLimits(6236)).toEqual([50, 100, 250, 500, 750, 1000]);
   });
 });
 
@@ -68,7 +68,7 @@ describe("archivePoolSummary", () => {
 
   it("describes capped pools above the API archive limit", () => {
     expect(archivePoolSummary(6236, 1000)).toBe(
-      "6236 Alben passen zu deinem Profil — Playlist aus den Top 1000.",
+      "6236 Alben passen zu deinem Profil — Playlist aus bis zu 1000 Top-Alben (technisches Maximum 1000).",
     );
   });
 });
@@ -114,9 +114,9 @@ describe("playlistSuccessHeadline", () => {
 });
 
 describe("archiveSpreadHint", () => {
-  it("returns helper copy for archive spread presets", () => {
-    expect(archiveSpreadHint("variety")).toContain("je 1 Titel");
-    expect(archiveSpreadHint("deep")).toContain("4 Titel");
+  it("returns track-count-aware helper copy for archive spread presets", () => {
+    expect(archiveSpreadHint("variety", 50)).toContain("50 Alben");
+    expect(archiveSpreadHint("deep", 50)).toContain("13 Top-Alben");
   });
 });
 

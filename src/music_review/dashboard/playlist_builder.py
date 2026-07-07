@@ -275,13 +275,20 @@ def primary_review_label(review: Review) -> str | None:
     return None
 
 
-def album_spread_limits(mode: AlbumSpreadMode) -> AlbumSpreadLimits:
+def album_spread_limits(mode: AlbumSpreadMode, *, target_count: int) -> AlbumSpreadLimits:
     """Map UI archive spread presets to builder enforcement rules."""
     if mode == "variety":
         return AlbumSpreadLimits(max_tracks_per_album=1)
     if mode == "balanced":
         return AlbumSpreadLimits(max_tracks_per_album=3)
-    return AlbumSpreadLimits(max_tracks_per_album=4, max_distinct_albums=3)
+    max_per_album = 4
+    albums_needed = max(1, (max(1, target_count) + max_per_album - 1) // max_per_album)
+    # Prefer a small album set on short playlists; scale up so large targets stay fillable.
+    max_distinct = max(3, albums_needed)
+    return AlbumSpreadLimits(
+        max_tracks_per_album=max_per_album,
+        max_distinct_albums=max_distinct,
+    )
 
 
 def _album_can_accept_more(
@@ -497,7 +504,7 @@ def build_playlist_suggestions(
     albums_used: set[int] = set()
     spread_limits = None
     if album_spread_mode is not None:
-        spread_limits = album_spread_limits(album_spread_mode)
+        spread_limits = album_spread_limits(album_spread_mode, target_count=target_count)
     score_weight_by_id = {
         int(r.id): float(w) for r, w in zip(reviews, weights, strict=True)
     }

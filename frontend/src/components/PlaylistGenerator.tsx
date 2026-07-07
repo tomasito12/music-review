@@ -26,6 +26,7 @@ import {
   PLAYLIST_TRACK_MIN,
   PLAYLIST_TRACK_PRESETS,
   PLAYLIST_UPDATE_ROUND_OPTIONS,
+  playlistShortfallHint,
   playlistSuccessHeadline,
   playlistUpdateRoundPoolHint,
   trackCountHint,
@@ -277,8 +278,8 @@ export function PlaylistGenerator({
             }}
             type="button"
           >
-            Archiv
-            <small>Plattentests-Archiv</small>
+            Entdecken
+            <small>Playlist aus dem Archiv</small>
           </button>
         </div>
       </fieldset>
@@ -382,7 +383,7 @@ export function PlaylistGenerator({
               </button>
             ))}
           </div>
-          <p className="field-hint">{archiveSpreadHint(archiveSpread)}</p>
+          <p className="field-hint">{archiveSpreadHint(archiveSpread, trackCount)}</p>
         </fieldset>
       )}
 
@@ -584,8 +585,12 @@ export function PlaylistGenerator({
             <p className="playlist-success-name">{name}</p>
             {exportResult.items.length < trackCount && (
               <p className="playlist-warning">
-                Es wurden {exportResult.items.length} von {trackCount} gewünschten Titeln
-                gefunden (wenige eindeutige Tracks im Pool).
+                {playlistShortfallHint(
+                  trackCount,
+                  exportResult.items.length,
+                  source,
+                  source === "entdecken" ? archiveSpread : undefined,
+                )}
               </p>
             )}
           </header>

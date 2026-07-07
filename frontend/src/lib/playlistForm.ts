@@ -6,7 +6,7 @@ export const PLAYLIST_TRACK_MIN = 5;
 export const PLAYLIST_TRACK_MAX = 100;
 export const PLAYLIST_DEFAULT_TRACK_COUNT = 30;
 
-export const ARCHIVE_POOL_CHIP_VALUES = [50, 200] as const;
+export const ARCHIVE_POOL_CHIP_VALUES = [50, 100, 250, 500, 750] as const;
 
 /** Supported update-round counts for playlist generation (matches API max 20). */
 export const PLAYLIST_UPDATE_ROUND_VALUES = [1, 2, 4, 8, 12, 20] as const;
@@ -59,33 +59,57 @@ export const DEFAULT_NEWEST_MOOD_PRESET: NewestMoodPreset = "balanced";
 export type ArchiveSpreadPreset = "variety" | "balanced" | "deep";
 
 export const ARCHIVE_SPREAD_PRESETS: ReadonlyArray<{
-  hint: string;
   id: ArchiveSpreadPreset;
   label: string;
 }> = [
   {
     id: "variety",
     label: "Vielfalt",
-    hint: "Bis zu 30 Alben · je 1 Titel.",
   },
   {
     id: "balanced",
     label: "Ausgewogen",
-    hint: "Mix aus Breite und Tiefe · bis zu 3 Titel pro Album.",
   },
   {
     id: "deep",
     label: "Album vertiefen",
-    hint: "Wenige Alben, dafür bis zu 4 Titel pro Album.",
   },
 ];
 
 export const DEFAULT_ARCHIVE_SPREAD_PRESET: ArchiveSpreadPreset = "balanced";
 
-/** Helper copy under the archive spread preset chips. */
-export function archiveSpreadHint(preset: ArchiveSpreadPreset): string {
-  const match = ARCHIVE_SPREAD_PRESETS.find((entry) => entry.id === preset);
-  return match?.hint ?? "";
+/** Helper copy under the archive spread preset chips for the chosen track count. */
+export function archiveSpreadHint(
+  preset: ArchiveSpreadPreset,
+  trackCount: number,
+): string {
+  const tracks = clampTrackCount(trackCount);
+  if (preset === "variety") {
+    return `Bis zu ${tracks} Alben · je 1 Titel.`;
+  }
+  if (preset === "balanced") {
+    const albums = Math.ceil(tracks / 3);
+    return `Bis zu 3 Titel pro Album · aus bis zu ${albums} Alben.`;
+  }
+  const albums = Math.ceil(tracks / 4);
+  return `Bis zu 4 Titel pro Album · für ${tracks} Titel aus bis zu ${albums} Top-Alben.`;
+}
+
+/** User-facing hint when fewer tracks were generated than requested. */
+export function playlistShortfallHint(
+  wanted: number,
+  got: number,
+  source: RecommendationSource,
+  archiveSpread?: ArchiveSpreadPreset,
+): string {
+  const base = `Es wurden ${got} von ${wanted} gewünschten Titeln gefunden.`;
+  if (source === "entdecken" && archiveSpread === "deep" && got < wanted) {
+    return `${base} Bei „Album vertiefen“ fehlen auf den Top-Alben oft genug unterschiedliche Tracks — weniger Titel wählen, mehr Top-Alben, oder „Ausgewogen“.`;
+  }
+  if (got < wanted) {
+    return `${base} Der Pool hatte zu wenige eindeutige Tracks oder die Streu-Regeln waren zu eng.`;
+  }
+  return base;
 }
 
 /** Maximum archive pool size accepted by POST /v1/playlists/export. */
@@ -116,7 +140,7 @@ export function defaultArchiveAlbumLimit(poolSize: number): number {
   if (poolSize <= 0) {
     return 0;
   }
-  return Math.min(200, archiveAlbumLimitCap(poolSize));
+  return Math.min(100, archiveAlbumLimitCap(poolSize));
 }
 
 /** Clamp a top-N album selection into the valid pool range. */
@@ -196,6 +220,12 @@ export function archivePoolSummary(poolSize: number, albumLimit: number): string
   }
   const cap = archiveAlbumLimitCap(poolSize);
   const effectiveLimit = Math.min(albumLimit, cap);
+  if (poolSize > PLAYLIST_ARCHIVE_LIMIT_MAX) {
+    return (
+      `${poolSize} Alben passen zu deinem Profil — Playlist aus bis zu ${effectiveLimit} Top-Alben ` +
+      `(technisches Maximum ${PLAYLIST_ARCHIVE_LIMIT_MAX}).`
+    );
+  }
   if (effectiveLimit >= cap && poolSize <= PLAYLIST_ARCHIVE_LIMIT_MAX) {
     return `${poolSize} Alben passen zu deinem Profil — Playlist aus allen.`;
   }

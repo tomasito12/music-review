@@ -114,7 +114,7 @@ test.describe("live API reference screenshots", () => {
   test("playlists archive form desktop reference", async ({ page }) => {
     await page.goto("/playlists");
     await waitForPlaylistForm(page);
-    await page.getByRole("button", { name: "Archiv" }).click();
+    await page.getByRole("button", { name: "Entdecken" }).click();
     await page.locator('[data-visual-playlist-ready="form"]').waitFor({
       timeout: 30_000,
     });
