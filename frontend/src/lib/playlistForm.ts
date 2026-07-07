@@ -88,11 +88,11 @@ export function archiveSpreadHint(
     return `Bis zu ${tracks} Alben · je 1 Titel.`;
   }
   if (preset === "balanced") {
-    const albums = Math.ceil(tracks / 3);
-    return `Bis zu 3 Titel pro Album · aus bis zu ${albums} Alben.`;
+    return `Top-Alben stärker, bis 3 Titel/Album, weiter unten gestaffelt — Ziel: ${tracks} Titel.`;
   }
-  const albums = Math.ceil(tracks / 4);
-  return `Bis zu 4 Titel pro Album · für ${tracks} Titel aus bis zu ${albums} Top-Alben.`;
+  return (
+    `Top 2–3 Alben bis 4 Titel, dann abgestuft (3, 2, 1) — Ziel: ${tracks} Titel.`
+  );
 }
 
 /** User-facing hint when fewer tracks were generated than requested. */
@@ -113,7 +113,7 @@ export function playlistShortfallHint(
 }
 
 /** Maximum archive pool size accepted by POST /v1/playlists/export. */
-export const PLAYLIST_ARCHIVE_LIMIT_MAX = 1000;
+export const PLAYLIST_ARCHIVE_LIMIT_MAX = 20000;
 
 /** Highest selectable top-N album count for one archive playlist. */
 export function archiveAlbumLimitCap(poolSize: number): number {
@@ -222,14 +222,18 @@ export function archivePoolSummary(poolSize: number, albumLimit: number): string
   const effectiveLimit = Math.min(albumLimit, cap);
   if (poolSize > PLAYLIST_ARCHIVE_LIMIT_MAX) {
     return (
-      `${poolSize} Alben passen zu deinem Profil — Playlist aus bis zu ${effectiveLimit} Top-Alben ` +
-      `(technisches Maximum ${PLAYLIST_ARCHIVE_LIMIT_MAX}).`
+      `${poolSize.toLocaleString("de-DE")} Alben passen zu deinem Profil — Playlist aus bis zu ` +
+      `${effectiveLimit.toLocaleString("de-DE")} Top-Alben (technisches Maximum ` +
+      `${PLAYLIST_ARCHIVE_LIMIT_MAX.toLocaleString("de-DE")}).`
     );
   }
-  if (effectiveLimit >= cap && poolSize <= PLAYLIST_ARCHIVE_LIMIT_MAX) {
-    return `${poolSize} Alben passen zu deinem Profil — Playlist aus allen.`;
+  if (effectiveLimit >= cap) {
+    return `${poolSize.toLocaleString("de-DE")} Alben passen zu deinem Profil — Playlist aus allen.`;
   }
-  return `${poolSize} Alben passen zu deinem Profil — Playlist aus den Top ${effectiveLimit}.`;
+  return (
+    `${poolSize.toLocaleString("de-DE")} Alben passen zu deinem Profil — Playlist aus den Top ` +
+    `${effectiveLimit.toLocaleString("de-DE")}.`
+  );
 }
 
 /** Clamp playlist track count into the supported range. */
@@ -269,12 +273,9 @@ export function archivePoolChipLabel(
   boundsMax: number,
 ): string {
   if (chipValue >= boundsMax) {
-    if (poolSize > PLAYLIST_ARCHIVE_LIMIT_MAX) {
-      return "Bis 1000";
-    }
     return "Alle";
   }
-  return String(chipValue);
+  return chipValue.toLocaleString("de-DE");
 }
 
 /** Success headline shown after playlist generation. */
@@ -282,6 +283,6 @@ export function playlistSuccessHeadline(
   source: RecommendationSource,
   itemCount: number,
 ): string {
-  const sourceLabel = source === "entdecken" ? "dem Archiv" : "deinen Neuheiten";
+  const sourceLabel = source === "entdecken" ? "Entdecken" : "deinen Neuheiten";
   return `Deine Playlist ist fertig — ${itemCount} Titel aus ${sourceLabel}.`;
 }

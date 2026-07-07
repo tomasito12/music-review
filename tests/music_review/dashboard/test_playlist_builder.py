@@ -10,6 +10,7 @@ from music_review.dashboard.playlist_builder import (
     allocate_stratified_slot_counts,
     amplify_preference_weights,
     build_album_weights,
+    build_graduated_caps_by_pool_index,
     build_playlist_suggestions,
     build_stratified_slot_plans,
     candidate_tracks_for_review,
@@ -477,11 +478,21 @@ def test_album_spread_limits_match_product_presets() -> None:
     assert album_spread_limits("balanced", target_count=30).max_tracks_per_album == 3
     deep = album_spread_limits("deep", target_count=12)
     assert deep.max_tracks_per_album == 4
-    assert deep.max_distinct_albums == 3
 
 
-def test_album_spread_limits_deep_scales_album_breadth_with_target_count() -> None:
-    assert album_spread_limits("deep", target_count=50).max_distinct_albums == 13
+def test_build_graduated_caps_deep_favours_top_albums() -> None:
+    caps = build_graduated_caps_by_pool_index("deep", [0.5, 0.3, 0.2, 0.1])
+    assert caps[0] == 4
+    assert caps[1] == 4
+    assert caps[2] == 3
+    assert caps[3] == 3
+
+
+def test_build_graduated_caps_balanced_is_softer_than_deep() -> None:
+    weights = [0.25, 0.25, 0.25, 0.25]
+    balanced = build_graduated_caps_by_pool_index("balanced", weights)
+    deep = build_graduated_caps_by_pool_index("deep", weights)
+    assert sum(balanced.values()) <= sum(deep.values())
 
 
 def test_primary_review_label_returns_first_non_empty_label() -> None:
@@ -510,27 +521,27 @@ def test_build_playlist_suggestions_variety_caps_tracks_per_album() -> None:
     assert all(count <= 1 for count in counts.values())
 
 
-def test_build_playlist_suggestions_deep_scales_beyond_three_albums_for_large_targets() -> None:
+def test_build_playlist_suggestions_deep_graduated_fills_large_targets() -> None:
     reviews = [
         _review(
             review_id,
-            tracks=[Track(1, f"T{index}", is_highlight=True) for index in range(6)],
+            tracks=[Track(track_no, f"T{track_no}", is_highlight=True) for track_no in range(1, 9)],
         )
-        for review_id in range(1, 21)
+        for review_id in range(1, 31)
     ]
     items = build_playlist_suggestions(
         reviews=reviews,
-        weights=[0.05] * 20,
-        raw_scores=[1.0] * 20,
+        weights=[1.0 / 30] * 30,
+        raw_scores=[1.0] * 30,
         target_count=50,
-        rng=random.Random(17),
+        rng=random.Random(21),
         selection_strategy="stratified",
         album_spread_mode="deep",
     )
     counts = Counter(item.review_id for item in items)
-    assert len(items) > 12
+    assert len(items) == 50
+    assert max(counts.values()) <= 4
     assert len(counts) > 3
-    assert all(count <= 4 for count in counts.values())
 
 
 def test_build_playlist_suggestions_deep_limits_album_breadth_and_depth() -> None:
@@ -551,8 +562,9 @@ def test_build_playlist_suggestions_deep_limits_album_breadth_and_depth() -> Non
         album_spread_mode="deep",
     )
     counts = Counter(item.review_id for item in items)
-    assert len(counts) <= 3
+    assert len(items) == 12
     assert all(count <= 4 for count in counts.values())
+    assert max(counts.values()) >= 3
 
 
 def test_build_playlist_suggestions_includes_review_metadata() -> None:

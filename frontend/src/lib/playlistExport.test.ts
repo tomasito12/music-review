@@ -164,7 +164,7 @@ describe("buildPlaylistExportPayload", () => {
       format: "csv",
     });
 
-    expect(payload.archive_limit).toBe(1000);
+    expect(payload.archive_limit).toBe(6236);
   });
 
   it("uses update rounds and newest taste settings for aktuell", () => {
