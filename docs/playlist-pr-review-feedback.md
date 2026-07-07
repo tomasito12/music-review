@@ -576,8 +576,8 @@ verankert. Nächster Schritt: PO-Re-Test auf Mobile und Desktop.
 |-------|--------|--------|
 | **Zeitraum / Update-Runden** | Frage: echte Batch-Größe (z. B. 12 Reviews) vs. Heuristik ~20 | Copy erklärt jetzt beide Modi; Backend nutzt `update_batches.jsonl` exakt wenn vorhanden |
 | **Label „Auswahl-Stil“** | Trifft Inhalt nicht — geht um Profil-Passung/Streuung | Umbenannt zu **Passung zum Musikprofil** |
-| **Vielfalt-Hilfetext** | „Überraschungen“ irreführend | Neu: weiter weg vom Musikprofil |
-| **Ausgewogen-Hilfetext** | „Bekanntes“ passt nicht bei Neuheiten | Neu: nahe vs. entfernte Neuheiten |
+| **Vielfalt-Hilfetext** | „Überraschungen“ / „weiter weg“ impliziert Ausschluss Naher | Neu: passende Neuheiten **plus** entferntere |
+| **Ausgewogen-Hilfetext** | „Bekanntes“ passt nicht bei Neuheiten | Neu: überwiegend passend, etwas Abstand |
 | **Stark fokussiert** | Mehrere Titel pro Album erwähnen | Hilfetext ergänzt |
 | **Erweitert Abstand** | Playlist-Name zu nah am Folgeblock | CSS-Abstand erhöht |
 

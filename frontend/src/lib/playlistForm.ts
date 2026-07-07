@@ -37,19 +37,19 @@ export const NEWEST_MOOD_PRESETS: ReadonlyArray<{
   {
     id: "variety",
     label: "Vielfalt",
-    hint: "Mehr Alben — auch weiter weg von deinem Musikprofil.",
+    hint: "Passende Neuheiten plus zusätzlich Alben mit größerem Abstand zum Profil.",
     tasteFocus: 0,
   },
   {
     id: "balanced",
     label: "Ausgewogen",
-    hint: "Mix aus nahen und weiter entfernten Neuheiten.",
+    hint: "Überwiegend passend, mit etwas Abstand für Abwechslung.",
     tasteFocus: 0.25,
   },
   {
     id: "focused",
     label: "Stark fokussiert",
-    hint: "Nur passende Alben — dafür oft mehrere Titel pro Album.",
+    hint: "Fast nur passende Alben — dafür oft mehrere Titel pro Album.",
     tasteFocus: 1,
   },
 ];

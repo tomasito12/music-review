@@ -151,7 +151,7 @@ describe("newestMoodToTasteFocus", () => {
 
 describe("newestMoodHint", () => {
   it("returns helper copy for each preset", () => {
-    expect(newestMoodHint("variety")).toContain("Musikprofil");
+    expect(newestMoodHint("variety")).toContain("zusätzlich");
     expect(newestMoodHint("focused")).toContain("Titel pro Album");
   });
 });

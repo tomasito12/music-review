@@ -452,10 +452,10 @@ export function PlaylistGenerator({
           <div className="playlist-fieldset">
             <span className="playlist-field-label">Passung fein einstellen</span>
             <PlaylistDualSlider
-              ariaLabel="Feine Einstellung zwischen weiter weg und nah am Musikprofil"
-              leftLabel="Weiter weg"
+              ariaLabel="Feine Einstellung zwischen breiterem Mix und enger Profil-Passung"
+              leftLabel="Mehr Streuung"
               onChange={setNewestTasteFocus}
-              rightLabel="Nah am Profil"
+              rightLabel="Eng am Profil"
               value={newestTasteFocus}
             />
           </div>
