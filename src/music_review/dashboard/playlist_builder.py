@@ -276,7 +276,11 @@ def primary_review_label(review: Review) -> str | None:
     return None
 
 
-def album_spread_limits(mode: AlbumSpreadMode, *, target_count: int) -> AlbumSpreadLimits:
+def album_spread_limits(
+    mode: AlbumSpreadMode,
+    *,
+    target_count: int,
+) -> AlbumSpreadLimits:
     """Map UI archive spread presets to default builder enforcement rules."""
     _ = target_count
     if mode == "variety":

@@ -157,7 +157,7 @@ class TestFinalizeCorpus:
                 "music_review.pipeline.scraper.service.write_corpus",
             ) as mock_write,
             patch(
-                "music_review.pipeline.scraper.service.append_update_batch",
+                "music_review.pipeline.scraper.service.ensure_scrape_batch_recorded",
             ) as mock_batch,
         ):
             _finalize_corpus(

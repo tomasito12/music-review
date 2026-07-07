@@ -88,7 +88,7 @@ frontend-screenshot-update-linux = "bash scripts/update_visual_references_linux.
 visual-api = "python scripts/visual_api_server.py {args:}"
 artist-image-cli = "python -m music_review.pipeline.enrichment.artist_image_cli {args:}"
 artist-image-batch = "python -m music_review.pipeline.enrichment.artist_image_batch_cli {args:}"
-artist-image-verify = "python scripts/verify_artist_image_pipeline.py {args:}"
+backfill-update-batches = "python -m music_review.io.backfill_update_batches {args:}"
 
 # --- Lint environment -------------------------------------------------------
 

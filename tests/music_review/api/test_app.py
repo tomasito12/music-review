@@ -391,6 +391,39 @@ def test_explicit_profile_wins_over_saved_profile(
     assert response.json()["items"][0]["artist"] == "Alpha"
 
 
+def test_new_reviews_endpoint_uses_update_batches_when_history_exists(
+    tmp_path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Newest-review endpoint reports exact batch mode when history is stored."""
+    batches_path = tmp_path / "update_batches.jsonl"
+    batches_path.write_text(
+        '{"run_at":"2026-06-01T10:00:00Z","review_ids":[1],"count":1}\n'
+        '{"run_at":"2026-06-02T10:00:00Z","review_ids":[2],"count":1}\n',
+        encoding="utf-8",
+    )
+    monkeypatch.setattr(
+        "music_review.application.newest_review_pool.update_batches_path",
+        lambda: batches_path,
+    )
+
+    response = _client().post(
+        "/v1/recommendations/new-reviews",
+        json={
+            "profile": _profile_payload(),
+            "limit": 5,
+            "offset": 0,
+            "update_rounds": 2,
+        },
+    )
+
+    assert response.status_code == 200
+    payload = response.json()
+    assert payload["newest_pool_mode"] == "update_batches"
+    assert payload["newest_pool_size"] == 2
+    assert payload["total"] == 2
+
+
 def test_new_reviews_endpoint_returns_latest_batch() -> None:
     """Newest-review endpoint uses newest ids and the same taste profile."""
     response = _client().post(
@@ -407,6 +440,8 @@ def test_new_reviews_endpoint_returns_latest_batch() -> None:
     payload = response.json()
     assert payload["source"] == "new_reviews"
     assert payload["total"] == 2
+    assert payload["newest_pool_mode"] == "review_count_fallback"
+    assert payload["newest_pool_size"] == 2
     assert {item["artist"] for item in payload["items"]} == {"Alpha", "Beta"}
     assert all(item["matched_tags"] for item in payload["items"])
     assert all("score_display" in item for item in payload["items"])
