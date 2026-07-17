@@ -343,7 +343,14 @@ class RecommendationSet(ApiModel):
     offset: int = Field(ge=0)
     items: tuple[Recommendation, ...]
     generated_at: str | None = None
-    newest_pool_mode: Literal["update_batches", "review_count_fallback"] | None = None
+    newest_pool_mode: (
+        Literal[
+            "update_batches",
+            "inferred_first_seen_at",
+            "review_count_fallback",
+        ]
+        | None
+    ) = None
     newest_pool_size: int | None = Field(default=None, ge=0)
 
 
