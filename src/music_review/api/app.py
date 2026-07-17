@@ -532,7 +532,10 @@ def _new_review_rows(
     provider: CorpusProvider,
     request: NewReviewsRecommendationRequest,
     profile: TasteProfile,
-) -> tuple[list[dict[str, Any]], Literal["update_batches", "review_count_fallback"]]:
+) -> tuple[
+    list[dict[str, Any]],
+    Literal["update_batches", "inferred_first_seen_at", "review_count_fallback"],
+]:
     """Compute newest-review rows from provider data."""
     newest, pool_mode = resolve_newest_review_pool(
         provider.reviews(),
@@ -607,7 +610,12 @@ def _recommendation_set(
     offset: int,
     reviews_by_id: Mapping[int, Review] | None = None,
     artist_mbid_for_review: Callable[[int], str | None] | None = None,
-    newest_pool_mode: Literal["update_batches", "review_count_fallback"] | None = None,
+    newest_pool_mode: Literal[
+        "update_batches",
+        "inferred_first_seen_at",
+        "review_count_fallback",
+    ]
+    | None = None,
     newest_pool_size: int | None = None,
 ) -> RecommendationSet:
     """Map raw service rows into a paginated recommendation response."""

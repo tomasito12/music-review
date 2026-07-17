@@ -45,6 +45,16 @@ strip_managed_block() {
   '
 }
 
+strip_legacy_hourly_update_entries() {
+  awk '
+    /docker compose/ && /music-review-update/ && /hourly-update\.log/ { next }
+    /Managed production cron for music-review/ { next }
+    /Placeholder .* is replaced by scripts\/install_production_cron\.sh/ { next }
+    /Do not edit crontab manually on the server/ { next }
+    { print }
+  '
+}
+
 render_managed_block() {
   if [[ ! -f "$CRON_TEMPLATE" ]]; then
     fail "Missing cron template: $CRON_TEMPLATE"
@@ -59,7 +69,7 @@ merge_crontab() {
   else
     current="$(crontab -l 2>/dev/null || true)"
   fi
-  printf '%s\n' "$current" | strip_managed_block
+  printf '%s\n' "$current" | strip_managed_block | strip_legacy_hourly_update_entries
   render_managed_block
 }
 

@@ -112,7 +112,7 @@ cmd_status() {
     echo '=== docker ==='
     docker compose ps -a 2>/dev/null || docker ps -a --filter name=music-review
     echo '=== crontab (deploy user) ==='
-    crontab -l 2>/dev/null | grep -E 'music-review-managed|prod-update' || echo '(no music-review cron entries)'
+    crontab -l 2>/dev/null | grep -E 'music-review-managed|music-review-update|prod-update|hourly-update' || echo '(no music-review cron entries)'
     echo '=== reviews.jsonl ==='
     if [[ -f data/reviews.jsonl ]]; then
       python3 - <<'PY'
