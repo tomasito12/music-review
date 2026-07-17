@@ -63,6 +63,32 @@ def test_install_production_cron_writes_managed_block(tmp_path: Path) -> None:
     assert merged.count("# music-review-managed-begin") == 1
 
 
+def test_install_production_cron_removes_legacy_hourly_update_line(
+    tmp_path: Path,
+) -> None:
+    """Installer removes old unmanaged hourly update entries."""
+    target = tmp_path / "crontab.txt"
+    target.write_text(
+        "0 * * * * cd /srv/music-review && mkdir -p logs && "
+        "docker compose --profile jobs run --rm music-review-update "
+        ">> logs/hourly-update.log 2>&1\n"
+        "# Managed production cron for music-review (Infrastructure as Code).\n"
+        "15 2 * * * /usr/bin/backup\n",
+        encoding="utf-8",
+    )
+
+    result = _run_install_cron(
+        deploy_path="/srv/music-review",
+        crontab_target=target,
+    )
+
+    assert result.returncode == 0, result.stderr
+    merged = target.read_text(encoding="utf-8")
+    assert "15 2 * * * /usr/bin/backup" in merged
+    assert merged.count("music-review-update") == 1
+    assert "Managed production cron for music-review" in merged
+
+
 def test_install_production_cron_dry_run_prints_schedule(tmp_path: Path) -> None:
     """Dry-run mode prints the merged crontab without requiring crontab(1)."""
     target = tmp_path / "crontab.txt"
